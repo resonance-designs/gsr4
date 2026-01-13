@@ -37,6 +37,15 @@ export component GrainRustUI inherits Window {
     in-out property <float> gain: 0.5;
     in-out property <float> track-level: 1.0;
     in-out property <bool> track-muted: false;
+    in-out property <float> tape-speed: 1.0;
+    in-out property <float> tape-rotate: 0.0;
+    in-out property <float> tape-glide: 0.0;
+    in-out property <float> tape-sos: 0.0;
+    in-out property <bool> tape-reverse: false;
+    in-out property <bool> tape-freeze: false;
+    in-out property <bool> tape-keylock: false;
+    in-out property <bool> tape-monitor: false;
+    in-out property <bool> tape-overdub: false;
     in-out property <float> loop-start: 0.0;
     in-out property <float> loop-length: 1.0;
     in-out property <float> loop-xfade: 0.0;
@@ -62,6 +71,16 @@ export component GrainRustUI inherits Window {
     callback gain-changed(value: float);
     callback track-level-changed(value: float);
     callback toggle-track-mute();
+    callback tape-speed-changed(value: float);
+    callback tape-rotate-changed(value: float);
+    callback tape-glide-changed(value: float);
+    callback tape-sos-changed(value: float);
+    callback toggle-tape-reverse();
+    callback toggle-tape-freeze();
+    callback toggle-tape-keylock();
+    callback toggle-tape-monitor();
+    callback toggle-tape-overdub();
+    callback save-sample();
     callback loop-start-changed(value: float);
     callback loop-length-changed(value: float);
     callback loop-xfade-changed(value: float);
@@ -171,6 +190,38 @@ export component GrainRustUI inherits Window {
                     }
                 }
 
+                Text {
+                    text: "Tape Speed";
+                    color: #b9b9bf;
+                    font-size: 13px;
+                }
+
+                Slider {
+                    value: root.tape-speed;
+                    minimum: -4;
+                    maximum: 4;
+                    changed => {
+                        root.tape-speed = self.value;
+                        root.tape-speed-changed(self.value);
+                    }
+                }
+
+                Text {
+                    text: "Tape Rotate";
+                    color: #b9b9bf;
+                    font-size: 13px;
+                }
+
+                Slider {
+                    value: root.tape-rotate;
+                    minimum: 0;
+                    maximum: 1;
+                    changed => {
+                        root.tape-rotate = self.value;
+                        root.tape-rotate-changed(self.value);
+                    }
+                }
+
                 HorizontalLayout {
                     spacing: 8px;
                     Button {
@@ -180,6 +231,38 @@ export component GrainRustUI inherits Window {
                     Button {
                         text: root.loop-enabled ? "Loop On" : "Loop Off";
                         clicked => root.toggle-loop-enabled();
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button {
+                        text: root.tape-reverse ? "Reverse On" : "Reverse Off";
+                        clicked => root.toggle-tape-reverse();
+                    }
+                    Button {
+                        text: root.tape-freeze ? "Freeze On" : "Freeze Off";
+                        clicked => root.toggle-tape-freeze();
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button {
+                        text: root.tape-keylock ? "Keylock On" : "Keylock Off";
+                        clicked => root.toggle-tape-keylock();
+                    }
+                    Button {
+                        text: root.tape-monitor ? "Monitor On" : "Monitor Off";
+                        clicked => root.toggle-tape-monitor();
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button {
+                        text: root.tape-overdub ? "Overdub On" : "Overdub Off";
+                        clicked => root.toggle-tape-overdub();
                     }
                 }
 
@@ -232,6 +315,38 @@ export component GrainRustUI inherits Window {
                 }
 
                 Text {
+                    text: "Tape Glide";
+                    color: #b9b9bf;
+                    font-size: 13px;
+                }
+
+                Slider {
+                    value: root.tape-glide;
+                    minimum: 0;
+                    maximum: 1;
+                    changed => {
+                        root.tape-glide = self.value;
+                        root.tape-glide-changed(self.value);
+                    }
+                }
+
+                Text {
+                    text: "Tape SOS";
+                    color: #b9b9bf;
+                    font-size: 13px;
+                }
+
+                Slider {
+                    value: root.tape-sos;
+                    minimum: 0;
+                    maximum: 1;
+                    changed => {
+                        root.tape-sos = self.value;
+                        root.tape-sos-changed(self.value);
+                    }
+                }
+
+                Text {
                     text: "Loop XFade";
                     color: #b9b9bf;
                     font-size: 13px;
@@ -252,6 +367,7 @@ export component GrainRustUI inherits Window {
         HorizontalLayout {
             spacing: 8px;
             Button { text: "Load Sample"; clicked => root.load-sample(); }
+            Button { text: "Save Sample"; clicked => root.save-sample(); }
             Button { text: root.is-recording ? "Stop Record" : "Record"; clicked => root.toggle-record(); }
             Button { text: root.is-playing ? "Stop" : "Play"; clicked => root.toggle-play(); }
             Button { text: "Settings"; clicked => root.toggle-settings(); }

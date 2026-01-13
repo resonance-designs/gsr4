@@ -48,6 +48,26 @@ struct Track {
     level_smooth: AtomicU32,
     /// Track mute state.
     is_muted: AtomicBool,
+    /// Tape speed multiplier.
+    tape_speed: AtomicU32,
+    /// Smoothed tape speed.
+    tape_speed_smooth: AtomicU32,
+    /// Tape rotate amount (normalized 0..1).
+    tape_rotate: AtomicU32,
+    /// Tape glide amount (normalized 0..1).
+    tape_glide: AtomicU32,
+    /// Tape sound-on-sound amount (normalized 0..1).
+    tape_sos: AtomicU32,
+    /// Tape reverse toggle.
+    tape_reverse: AtomicBool,
+    /// Tape freeze toggle.
+    tape_freeze: AtomicBool,
+    /// Tape keylock toggle.
+    tape_keylock: AtomicBool,
+    /// Tape monitor toggle.
+    tape_monitor: AtomicBool,
+    /// Tape overdub toggle.
+    tape_overdub: AtomicBool,
     /// Loop start position as normalized 0..1.
     loop_start: AtomicU32,
     /// Loop length as normalized 0..1.
@@ -76,6 +96,16 @@ impl Default for Track {
             level: AtomicU32::new(1.0f32.to_bits()),
             level_smooth: AtomicU32::new(1.0f32.to_bits()),
             is_muted: AtomicBool::new(false),
+            tape_speed: AtomicU32::new(1.0f32.to_bits()),
+            tape_speed_smooth: AtomicU32::new(1.0f32.to_bits()),
+            tape_rotate: AtomicU32::new(0.0f32.to_bits()),
+            tape_glide: AtomicU32::new(0.0f32.to_bits()),
+            tape_sos: AtomicU32::new(0.0f32.to_bits()),
+            tape_reverse: AtomicBool::new(false),
+            tape_freeze: AtomicBool::new(false),
+            tape_keylock: AtomicBool::new(false),
+            tape_monitor: AtomicBool::new(false),
+            tape_overdub: AtomicBool::new(false),
             loop_start: AtomicU32::new(0.0f32.to_bits()),
             loop_length: AtomicU32::new(1.0f32.to_bits()),
             loop_xfade: AtomicU32::new(0.0f32.to_bits()),
@@ -268,6 +298,9 @@ impl Plugin for GrainRust {
 
             if track.is_recording.load(Ordering::Relaxed) {
                 if let Some(mut samples) = track.samples.try_lock() {
+                    let overdub = track.tape_overdub.load(Ordering::Relaxed);
+                    let sos = f32::from_bits(track.tape_sos.load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
                     // Ensure we have enough channels
                     while samples.len() < buffer.channels() {
                         samples.push(vec![]);
@@ -275,7 +308,18 @@ impl Plugin for GrainRust {
 
                     for channel_idx in 0..buffer.channels() {
                         let channel_data = &buffer.as_slice_immutable()[channel_idx];
-                        samples[channel_idx].extend_from_slice(channel_data);
+                        if overdub && !samples[channel_idx].is_empty() {
+                            let buf = &mut samples[channel_idx];
+                            if buf.len() < channel_data.len() {
+                                buf.resize(channel_data.len(), 0.0);
+                            }
+                            for (i, sample) in channel_data.iter().enumerate() {
+                                let existing = buf[i];
+                                buf[i] = existing * sos + *sample;
+                            }
+                        } else {
+                            samples[channel_idx].extend_from_slice(channel_data);
+                        }
                     }
                 }
             }
@@ -311,11 +355,27 @@ impl Plugin for GrainRust {
                     let track_level =
                         f32::from_bits(track.level.load(Ordering::Relaxed));
                     let track_muted = track.is_muted.load(Ordering::Relaxed);
+                    let tape_speed =
+                        f32::from_bits(track.tape_speed.load(Ordering::Relaxed)).clamp(-4.0, 4.0);
+                    let tape_freeze = track.tape_freeze.load(Ordering::Relaxed);
+                    let tape_reverse = track.tape_reverse.load(Ordering::Relaxed);
+                    let mut smooth_speed =
+                        f32::from_bits(track.tape_speed_smooth.load(Ordering::Relaxed));
                     let target_level = if track_muted { 0.0 } else { track_level };
                     let mut smooth_level =
                         f32::from_bits(track.level_smooth.load(Ordering::Relaxed));
                     let level_step = if num_buffer_samples > 0 {
                         (target_level - smooth_level) / num_buffer_samples as f32
+                    } else {
+                        0.0
+                    };
+                    let target_speed = if tape_freeze { 0.0 } else { tape_speed };
+                    let glide =
+                        f32::from_bits(track.tape_glide.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+                    let glide_factor = 1.0 + glide * 20.0;
+                    let speed_step = if num_buffer_samples > 0 {
+                        (target_speed - smooth_speed)
+                            / (num_buffer_samples as f32 * glide_factor)
                     } else {
                         0.0
                     };
@@ -334,7 +394,11 @@ impl Plugin for GrainRust {
                     let output = buffer.as_slice();
                     let mut play_pos = f32::from_bits(track.play_pos.load(Ordering::Relaxed));
 
-                    let loop_start = (loop_start_norm * num_samples as f32) as usize;
+                    let rotate_norm =
+                        f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+                    let base_start = (loop_start_norm * num_samples as f32) as usize;
+                    let rotate_offset = (rotate_norm * num_samples as f32) as usize;
+                    let loop_start = (base_start + rotate_offset) % num_samples.max(1);
                     let mut loop_len = (loop_length_norm * num_samples as f32) as usize;
                     if loop_len == 0 {
                         loop_len = num_samples.saturating_sub(loop_start).max(1);
@@ -350,6 +414,9 @@ impl Plugin for GrainRust {
                         3 => -1,
                         _ => 1,
                     };
+                    if tape_reverse {
+                        direction *= -1;
+                    }
 
                     if !track.debug_logged.swap(true, Ordering::Relaxed) {
                         let first_sample = samples.get(0).and_then(|ch| ch.get(0)).cloned().unwrap_or(0.0);
@@ -415,7 +482,8 @@ impl Plugin for GrainRust {
                             output[channel_idx][sample_idx] += sample_value * level;
                         }
 
-                        play_pos += direction as f32;
+                        let speed = smooth_speed + speed_step * sample_idx as f32;
+                        play_pos += direction as f32 * speed;
                         if loop_active && loop_end > loop_start {
                             if loop_mode == 1 {
                                 if direction > 0 && play_pos as usize >= loop_end {
@@ -434,6 +502,10 @@ impl Plugin for GrainRust {
                     }
                     
                     track.play_pos.store(play_pos.to_bits(), Ordering::Relaxed);
+                    smooth_speed += speed_step * num_buffer_samples as f32;
+                    track
+                        .tape_speed_smooth
+                        .store(smooth_speed.to_bits(), Ordering::Relaxed);
                     if loop_mode == 1 {
                         track.loop_dir.store(direction, Ordering::Relaxed);
                     }
@@ -530,6 +602,34 @@ fn load_audio_file(path: &std::path::Path) -> Result<Vec<Vec<f32>>, Box<dyn std:
     Ok(samples)
 }
 
+fn save_track_sample(track: &Track, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let samples = track.samples.lock();
+    if samples.is_empty() || samples[0].is_empty() {
+        return Err("No sample data to save".into());
+    }
+    let num_channels = samples.len().max(1);
+    let num_samples = samples[0].len();
+    let spec = hound::WavSpec {
+        channels: num_channels as u16,
+        sample_rate: 44100,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut writer = hound::WavWriter::create(path, spec)?;
+    for i in 0..num_samples {
+        for ch in 0..num_channels {
+            let sample = samples.get(ch).and_then(|buf| buf.get(i)).copied().unwrap_or(0.0);
+            writer.write_sample(sample)?;
+        }
+    }
+    writer.finalize()?;
+    Ok(())
+}
+
+fn default_one() -> f32 {
+    1.0
+}
+
 #[derive(Serialize, Deserialize)]
 struct ProjectFile {
     version: u32,
@@ -541,10 +641,29 @@ struct ProjectTrack {
     sample_path: Option<String>,
     level: f32,
     muted: bool,
+    #[serde(default = "default_one")]
+    tape_speed: f32,
+    #[serde(default)]
+    tape_rotate: f32,
+    #[serde(default)]
+    tape_glide: f32,
+    #[serde(default)]
+    tape_sos: f32,
+    #[serde(default)]
+    tape_reverse: bool,
+    #[serde(default)]
+    tape_freeze: bool,
+    #[serde(default)]
+    tape_keylock: bool,
+    #[serde(default)]
+    tape_monitor: bool,
+    #[serde(default)]
+    tape_overdub: bool,
     loop_start: f32,
     loop_length: f32,
     loop_xfade: f32,
     loop_enabled: bool,
+    #[serde(default)]
     loop_mode: u32,
 }
 
@@ -563,6 +682,15 @@ fn save_project(
             sample_path,
             level: f32::from_bits(track.level.load(Ordering::Relaxed)),
             muted: track.is_muted.load(Ordering::Relaxed),
+            tape_speed: f32::from_bits(track.tape_speed.load(Ordering::Relaxed)),
+            tape_rotate: f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)),
+            tape_glide: f32::from_bits(track.tape_glide.load(Ordering::Relaxed)),
+            tape_sos: f32::from_bits(track.tape_sos.load(Ordering::Relaxed)),
+            tape_reverse: track.tape_reverse.load(Ordering::Relaxed),
+            tape_freeze: track.tape_freeze.load(Ordering::Relaxed),
+            tape_keylock: track.tape_keylock.load(Ordering::Relaxed),
+            tape_monitor: track.tape_monitor.load(Ordering::Relaxed),
+            tape_overdub: track.tape_overdub.load(Ordering::Relaxed),
             loop_start: f32::from_bits(track.loop_start.load(Ordering::Relaxed)),
             loop_length: f32::from_bits(track.loop_length.load(Ordering::Relaxed)),
             loop_xfade: f32::from_bits(track.loop_xfade.load(Ordering::Relaxed)),
@@ -595,6 +723,16 @@ fn load_project(
         track
             .is_muted
             .store(track_state.muted, Ordering::Relaxed);
+        track.tape_speed.store(track_state.tape_speed.to_bits(), Ordering::Relaxed);
+        track.tape_speed_smooth.store(track_state.tape_speed.to_bits(), Ordering::Relaxed);
+        track.tape_rotate.store(track_state.tape_rotate.to_bits(), Ordering::Relaxed);
+        track.tape_glide.store(track_state.tape_glide.to_bits(), Ordering::Relaxed);
+        track.tape_sos.store(track_state.tape_sos.to_bits(), Ordering::Relaxed);
+        track.tape_reverse.store(track_state.tape_reverse, Ordering::Relaxed);
+        track.tape_freeze.store(track_state.tape_freeze, Ordering::Relaxed);
+        track.tape_keylock.store(track_state.tape_keylock, Ordering::Relaxed);
+        track.tape_monitor.store(track_state.tape_monitor, Ordering::Relaxed);
+        track.tape_overdub.store(track_state.tape_overdub, Ordering::Relaxed);
         track.loop_start.store(
             track_state.loop_start.clamp(0.0, 0.999).to_bits(),
             Ordering::Relaxed,
@@ -713,7 +851,7 @@ struct SlintWindow {
     slint_window: std::rc::Rc<MinimalSoftwareWindow>,
     ui: GrainRustUI,
     waveform_model: std::rc::Rc<VecModel<f32>>,
-    sample_dialog_rx: std::sync::mpsc::Receiver<(usize, Option<PathBuf>)>,
+    sample_dialog_rx: std::sync::mpsc::Receiver<SampleDialogAction>,
     project_dialog_rx: std::sync::mpsc::Receiver<ProjectDialogAction>,
     sb_surface: softbuffer::Surface<SoftbufferWindowHandleAdapter, SoftbufferWindowHandleAdapter>,
     _sb_context: softbuffer::Context<SoftbufferWindowHandleAdapter>,
@@ -821,6 +959,24 @@ impl SlintWindow {
         let track_level =
             f32::from_bits(self.tracks[track_idx].level.load(Ordering::Relaxed));
         let track_muted = self.tracks[track_idx].is_muted.load(Ordering::Relaxed);
+        let tape_speed =
+            f32::from_bits(self.tracks[track_idx].tape_speed.load(Ordering::Relaxed));
+        let tape_rotate =
+            f32::from_bits(self.tracks[track_idx].tape_rotate.load(Ordering::Relaxed));
+        let tape_glide =
+            f32::from_bits(self.tracks[track_idx].tape_glide.load(Ordering::Relaxed));
+        let tape_sos =
+            f32::from_bits(self.tracks[track_idx].tape_sos.load(Ordering::Relaxed));
+        let tape_reverse =
+            self.tracks[track_idx].tape_reverse.load(Ordering::Relaxed);
+        let tape_freeze =
+            self.tracks[track_idx].tape_freeze.load(Ordering::Relaxed);
+        let tape_keylock =
+            self.tracks[track_idx].tape_keylock.load(Ordering::Relaxed);
+        let tape_monitor =
+            self.tracks[track_idx].tape_monitor.load(Ordering::Relaxed);
+        let tape_overdub =
+            self.tracks[track_idx].tape_overdub.load(Ordering::Relaxed);
         let loop_start =
             f32::from_bits(self.tracks[track_idx].loop_start.load(Ordering::Relaxed));
         let loop_length =
@@ -855,6 +1011,15 @@ impl SlintWindow {
         self.ui.set_gain(gain);
         self.ui.set_track_level(track_level);
         self.ui.set_track_muted(track_muted);
+        self.ui.set_tape_speed(tape_speed);
+        self.ui.set_tape_rotate(tape_rotate);
+        self.ui.set_tape_glide(tape_glide);
+        self.ui.set_tape_sos(tape_sos);
+        self.ui.set_tape_reverse(tape_reverse);
+        self.ui.set_tape_freeze(tape_freeze);
+        self.ui.set_tape_keylock(tape_keylock);
+        self.ui.set_tape_monitor(tape_monitor);
+        self.ui.set_tape_overdub(tape_overdub);
         self.ui.set_loop_start(loop_start);
         self.ui.set_loop_length(loop_length);
         self.ui.set_loop_xfade(loop_xfade);
@@ -909,11 +1074,24 @@ impl SlintWindow {
 
 impl BaseWindowHandler for SlintWindow {
     fn on_frame(&mut self, _window: &mut BaseWindow) {
-        while let Ok((track_idx, path)) = self.sample_dialog_rx.try_recv() {
-            if track_idx < NUM_TRACKS {
-                if let Some(path) = path {
-                    self.async_executor
-                        .execute_background(GrainRustTask::LoadSample(track_idx, path));
+        while let Ok(action) = self.sample_dialog_rx.try_recv() {
+            match action {
+                SampleDialogAction::Load { track_idx, path } => {
+                    if track_idx < NUM_TRACKS {
+                        if let Some(path) = path {
+                            self.async_executor
+                                .execute_background(GrainRustTask::LoadSample(track_idx, path));
+                        }
+                    }
+                }
+                SampleDialogAction::Save { track_idx, path } => {
+                    if track_idx < NUM_TRACKS {
+                        if let Err(err) = save_track_sample(&self.tracks[track_idx], &path) {
+                            nih_log!("Failed to save sample: {:?}", err);
+                        } else {
+                            nih_log!("Saved sample: {:?}", path);
+                        }
+                    }
                 }
             }
         }
@@ -1010,7 +1188,7 @@ fn initialize_ui(
     output_devices: &[String],
     sample_rates: &[u32],
     buffer_sizes: &[u32],
-    sample_dialog_tx: std::sync::mpsc::Sender<(usize, Option<PathBuf>)>,
+    sample_dialog_tx: std::sync::mpsc::Sender<SampleDialogAction>,
     project_dialog_tx: std::sync::mpsc::Sender<ProjectDialogAction>,
 ) {
     ui.set_output_devices(ModelRc::new(VecModel::from(
@@ -1092,10 +1270,14 @@ fn initialize_ui(
                 let loop_mode = track.loop_mode.load(Ordering::Relaxed);
                 let loop_start_norm =
                     f32::from_bits(track.loop_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
+                let rotate_norm =
+                    f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
                 let loop_start = if loop_enabled {
                     if let Some(samples) = track.samples.try_lock() {
                         let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
-                        (loop_start_norm * len as f32) as f32
+                        let base_start = (loop_start_norm * len as f32) as usize;
+                        let rotate_offset = (rotate_norm * len as f32) as usize;
+                        ((base_start + rotate_offset) % len.max(1)) as f32
                     } else {
                         0.0
                     }
@@ -1112,9 +1294,10 @@ fn initialize_ui(
                                 as usize;
                         let loop_len = loop_len.max(1);
                         let loop_end = (loop_start as usize + loop_len).min(len).max(1);
-                        if loop_end > loop_start as usize {
-                            let rand_pos = loop_start as usize
-                                + fastrand::usize(..(loop_end - loop_start as usize));
+                        let loop_start_usize = loop_start as usize;
+                        if loop_end > loop_start_usize {
+                            let rand_pos =
+                                loop_start_usize + fastrand::usize(..(loop_end - loop_start_usize));
                             track.play_pos.store((rand_pos as f32).to_bits(), Ordering::Relaxed);
                         } else {
                             track.play_pos.store(loop_start.to_bits(), Ordering::Relaxed);
@@ -1143,10 +1326,13 @@ fn initialize_ui(
             .load(Ordering::Relaxed);
         if !recording {
             if let Some(mut samples) = tracks_record[track_idx].samples.try_lock() {
-                for channel in samples.iter_mut() {
-                    channel.clear();
+                let overdub = tracks_record[track_idx].tape_overdub.load(Ordering::Relaxed);
+                if !overdub {
+                    for channel in samples.iter_mut() {
+                        channel.clear();
+                    }
+                    *tracks_record[track_idx].sample_path.lock() = None;
                 }
-                *tracks_record[track_idx].sample_path.lock() = None;
                 tracks_record[track_idx]
                     .is_recording
                     .store(true, Ordering::Relaxed);
@@ -1170,18 +1356,36 @@ fn initialize_ui(
     });
 
     let params_load = Arc::clone(params);
-    let sample_dialog_tx = sample_dialog_tx.clone();
+    let sample_dialog_tx_load = sample_dialog_tx.clone();
     ui.on_load_sample(move || {
         let track_idx = params_load.selected_track.value().saturating_sub(1) as usize;
         if track_idx >= NUM_TRACKS {
             return;
         }
-        let sample_dialog_tx = sample_dialog_tx.clone();
+        let sample_dialog_tx = sample_dialog_tx_load.clone();
         std::thread::spawn(move || {
             let path = rfd::FileDialog::new()
                 .add_filter("Audio", &["wav", "flac", "mp3", "ogg"])
                 .pick_file();
-            let _ = sample_dialog_tx.send((track_idx, path));
+            let _ = sample_dialog_tx.send(SampleDialogAction::Load { track_idx, path });
+        });
+    });
+
+    let params_save = Arc::clone(params);
+    let sample_dialog_tx_save = sample_dialog_tx.clone();
+    ui.on_save_sample(move || {
+        let track_idx = params_save.selected_track.value().saturating_sub(1) as usize;
+        if track_idx >= NUM_TRACKS {
+            return;
+        }
+        let sample_dialog_tx = sample_dialog_tx_save.clone();
+        std::thread::spawn(move || {
+            let path = rfd::FileDialog::new()
+                .add_filter("WAV", &["wav"])
+                .save_file();
+            if let Some(path) = path {
+                let _ = sample_dialog_tx.send(SampleDialogAction::Save { track_idx, path });
+            }
         });
     });
 
@@ -1250,6 +1454,110 @@ fn initialize_ui(
             tracks_loop[track_idx]
                 .loop_enabled
                 .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_tape = Arc::clone(tracks);
+    let params_tape = Arc::clone(params);
+    ui.on_tape_speed_changed(move |value| {
+        let track_idx = params_tape.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_tape[track_idx]
+                .tape_speed
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_tape = Arc::clone(tracks);
+    let params_tape = Arc::clone(params);
+    ui.on_tape_rotate_changed(move |value| {
+        let track_idx = params_tape.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_tape[track_idx]
+                .tape_rotate
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_tape = Arc::clone(tracks);
+    let params_tape = Arc::clone(params);
+    ui.on_tape_glide_changed(move |value| {
+        let track_idx = params_tape.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_tape[track_idx]
+                .tape_glide
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_tape = Arc::clone(tracks);
+    let params_tape = Arc::clone(params);
+    ui.on_tape_sos_changed(move |value| {
+        let track_idx = params_tape.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_tape[track_idx]
+                .tape_sos
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_tape = Arc::clone(tracks);
+    let params_tape = Arc::clone(params);
+    ui.on_toggle_tape_reverse(move || {
+        let track_idx = params_tape.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let reversed = tracks_tape[track_idx].tape_reverse.load(Ordering::Relaxed);
+            tracks_tape[track_idx]
+                .tape_reverse
+                .store(!reversed, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_tape = Arc::clone(tracks);
+    let params_tape = Arc::clone(params);
+    ui.on_toggle_tape_freeze(move || {
+        let track_idx = params_tape.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let frozen = tracks_tape[track_idx].tape_freeze.load(Ordering::Relaxed);
+            tracks_tape[track_idx]
+                .tape_freeze
+                .store(!frozen, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_tape = Arc::clone(tracks);
+    let params_tape = Arc::clone(params);
+    ui.on_toggle_tape_keylock(move || {
+        let track_idx = params_tape.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let keylock = tracks_tape[track_idx].tape_keylock.load(Ordering::Relaxed);
+            tracks_tape[track_idx]
+                .tape_keylock
+                .store(!keylock, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_tape = Arc::clone(tracks);
+    let params_tape = Arc::clone(params);
+    ui.on_toggle_tape_monitor(move || {
+        let track_idx = params_tape.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let monitor = tracks_tape[track_idx].tape_monitor.load(Ordering::Relaxed);
+            tracks_tape[track_idx]
+                .tape_monitor
+                .store(!monitor, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_tape = Arc::clone(tracks);
+    let params_tape = Arc::clone(params);
+    ui.on_toggle_tape_overdub(move || {
+        let track_idx = params_tape.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let overdub = tracks_tape[track_idx].tape_overdub.load(Ordering::Relaxed);
+            tracks_tape[track_idx]
+                .tape_overdub
+                .store(!overdub, Ordering::Relaxed);
         }
     });
 
@@ -1368,6 +1676,12 @@ fn initialize_ui(
 enum ProjectDialogAction {
     Save(PathBuf),
     Load(PathBuf),
+}
+
+#[derive(Clone)]
+enum SampleDialogAction {
+    Load { track_idx: usize, path: Option<PathBuf> },
+    Save { track_idx: usize, path: PathBuf },
 }
 
 struct SlintPlatform {
