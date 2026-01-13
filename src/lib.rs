@@ -17,6 +17,7 @@ use raw_window_handle_06 as raw_window_handle_06;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
+use std::sync::atomic::AtomicI32;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::cell::RefCell;
 use std::sync::mpsc;
@@ -55,6 +56,10 @@ struct Track {
     loop_xfade: AtomicU32,
     /// Loop enabled.
     loop_enabled: AtomicBool,
+    /// Loop mode for playback.
+    loop_mode: AtomicU32,
+    /// Playback direction for ping-pong mode.
+    loop_dir: AtomicI32,
     /// Logs one debug line per playback start to confirm audio thread output.
     debug_logged: AtomicBool,
 }
@@ -75,6 +80,8 @@ impl Default for Track {
             loop_length: AtomicU32::new(1.0f32.to_bits()),
             loop_xfade: AtomicU32::new(0.0f32.to_bits()),
             loop_enabled: AtomicBool::new(true),
+            loop_mode: AtomicU32::new(0),
+            loop_dir: AtomicI32::new(1),
             debug_logged: AtomicBool::new(false),
         }
     }
@@ -313,6 +320,8 @@ impl Plugin for GrainRust {
                         0.0
                     };
                     let loop_enabled = track.loop_enabled.load(Ordering::Relaxed);
+                    let loop_mode = track.loop_mode.load(Ordering::Relaxed);
+                    let loop_active = loop_enabled && loop_mode != 2;
                     let loop_start_norm =
                         f32::from_bits(track.loop_start.load(Ordering::Relaxed))
                             .clamp(0.0, 0.999);
@@ -336,6 +345,11 @@ impl Plugin for GrainRust {
                     if xfade_samples * 2 > loop_len {
                         xfade_samples = loop_len / 2;
                     }
+                    let mut direction = match loop_mode {
+                        1 => track.loop_dir.load(Ordering::Relaxed),
+                        3 => -1,
+                        _ => 1,
+                    };
 
                     if !track.debug_logged.swap(true, Ordering::Relaxed) {
                         let first_sample = samples.get(0).and_then(|ch| ch.get(0)).cloned().unwrap_or(0.0);
@@ -349,12 +363,27 @@ impl Plugin for GrainRust {
                     }
 
                     for sample_idx in 0..num_buffer_samples {
-                        let mut pos = play_pos as usize;
-                        if pos >= num_samples {
-                            if loop_enabled {
-                                pos = loop_start.min(num_samples.saturating_sub(1));
+                        let mut pos = play_pos as isize;
+                        if pos < 0 || pos as usize >= num_samples {
+                            if loop_active {
+                                if direction >= 0 {
+                                    pos = loop_start as isize;
+                                } else {
+                                    pos = loop_end.saturating_sub(1) as isize;
+                                }
                                 play_pos = pos as f32;
                             } else {
+                                track.is_playing.store(false, Ordering::Relaxed);
+                                break;
+                            }
+                        }
+                        let pos = pos as usize;
+                        if loop_mode == 2 {
+                            if direction >= 0 && pos >= loop_end {
+                                track.is_playing.store(false, Ordering::Relaxed);
+                                break;
+                            }
+                            if direction < 0 && pos <= loop_start {
                                 track.is_playing.store(false, Ordering::Relaxed);
                                 break;
                             }
@@ -369,7 +398,7 @@ impl Plugin for GrainRust {
                                 continue;
                             };
                             let mut sample_value = samples[src_channel][pos];
-                            if loop_enabled && xfade_samples > 0 {
+                            if loop_active && direction > 0 && xfade_samples > 0 {
                                 let xfade_start = loop_end.saturating_sub(xfade_samples);
                                 if pos >= xfade_start && loop_end > loop_start {
                                     let tail_idx = pos - xfade_start;
@@ -386,15 +415,28 @@ impl Plugin for GrainRust {
                             output[channel_idx][sample_idx] += sample_value * level;
                         }
 
-                        play_pos += 1.0;
-                        if loop_enabled && loop_end > loop_start {
-                            if play_pos as usize >= loop_end {
+                        play_pos += direction as f32;
+                        if loop_active && loop_end > loop_start {
+                            if loop_mode == 1 {
+                                if direction > 0 && play_pos as usize >= loop_end {
+                                    direction = -1;
+                                    play_pos = loop_end.saturating_sub(1) as f32;
+                                } else if direction < 0 && play_pos <= loop_start as f32 {
+                                    direction = 1;
+                                    play_pos = loop_start as f32;
+                                }
+                            } else if direction > 0 && play_pos as usize >= loop_end {
                                 play_pos = loop_start as f32;
+                            } else if direction < 0 && play_pos < loop_start as f32 {
+                                play_pos = loop_end.saturating_sub(1) as f32;
                             }
                         }
                     }
                     
                     track.play_pos.store(play_pos.to_bits(), Ordering::Relaxed);
+                    if loop_mode == 1 {
+                        track.loop_dir.store(direction, Ordering::Relaxed);
+                    }
                     smooth_level += level_step * num_buffer_samples as f32;
                     track
                         .level_smooth
@@ -503,6 +545,7 @@ struct ProjectTrack {
     loop_length: f32,
     loop_xfade: f32,
     loop_enabled: bool,
+    loop_mode: u32,
 }
 
 fn save_project(
@@ -524,6 +567,7 @@ fn save_project(
             loop_length: f32::from_bits(track.loop_length.load(Ordering::Relaxed)),
             loop_xfade: f32::from_bits(track.loop_xfade.load(Ordering::Relaxed)),
             loop_enabled: track.loop_enabled.load(Ordering::Relaxed),
+            loop_mode: track.loop_mode.load(Ordering::Relaxed),
         });
     }
 
@@ -566,6 +610,10 @@ fn load_project(
         track
             .loop_enabled
             .store(track_state.loop_enabled, Ordering::Relaxed);
+        track
+            .loop_mode
+            .store(track_state.loop_mode, Ordering::Relaxed);
+        track.loop_dir.store(1, Ordering::Relaxed);
         track.is_playing.store(false, Ordering::Relaxed);
         track.is_recording.store(false, Ordering::Relaxed);
         track.play_pos.store(0.0f32.to_bits(), Ordering::Relaxed);
@@ -781,6 +829,7 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].loop_xfade.load(Ordering::Relaxed));
         let loop_enabled =
             self.tracks[track_idx].loop_enabled.load(Ordering::Relaxed);
+        let loop_mode = self.tracks[track_idx].loop_mode.load(Ordering::Relaxed);
 
         let play_pos = f32::from_bits(self.tracks[track_idx].play_pos.load(Ordering::Relaxed));
         let total_samples = if let Some(samples) = self.tracks[track_idx].samples.try_lock() {
@@ -810,6 +859,7 @@ impl SlintWindow {
         self.ui.set_loop_length(loop_length);
         self.ui.set_loop_xfade(loop_xfade);
         self.ui.set_loop_enabled(loop_enabled);
+        self.ui.set_loop_mode(loop_mode as i32);
         self.ui.set_playhead_index(playhead_index);
         self.waveform_model.set_vec(waveform);
     }
@@ -983,6 +1033,13 @@ fn initialize_ui(
             .map(|size| SharedString::from(size.to_string()))
             .collect::<Vec<_>>(),
     )));
+    ui.set_loop_modes(ModelRc::new(VecModel::from(vec![
+        SharedString::from("Forward"),
+        SharedString::from("Ping-Pong"),
+        SharedString::from("One-Shot"),
+        SharedString::from("Reverse"),
+        SharedString::from("Random Start"),
+    ])));
 
     let output_device_index = current_arg_value("--output-device")
         .and_then(|name| output_devices.iter().position(|device| device == &name))
@@ -1032,6 +1089,7 @@ fn initialize_ui(
                 track.is_playing.store(false, Ordering::Relaxed);
             } else {
                 let loop_enabled = track.loop_enabled.load(Ordering::Relaxed);
+                let loop_mode = track.loop_mode.load(Ordering::Relaxed);
                 let loop_start_norm =
                     f32::from_bits(track.loop_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
                 let loop_start = if loop_enabled {
@@ -1044,7 +1102,29 @@ fn initialize_ui(
                 } else {
                     0.0
                 };
-                track.play_pos.store(loop_start.to_bits(), Ordering::Relaxed);
+                let direction = if loop_mode == 3 { -1 } else { 1 };
+                track.loop_dir.store(direction, Ordering::Relaxed);
+                if loop_mode == 4 {
+                    if let Some(samples) = track.samples.try_lock() {
+                        let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
+                        let loop_len =
+                            (f32::from_bits(track.loop_length.load(Ordering::Relaxed)) * len as f32)
+                                as usize;
+                        let loop_len = loop_len.max(1);
+                        let loop_end = (loop_start as usize + loop_len).min(len).max(1);
+                        if loop_end > loop_start as usize {
+                            let rand_pos = loop_start as usize
+                                + fastrand::usize(..(loop_end - loop_start as usize));
+                            track.play_pos.store((rand_pos as f32).to_bits(), Ordering::Relaxed);
+                        } else {
+                            track.play_pos.store(loop_start.to_bits(), Ordering::Relaxed);
+                        }
+                    } else {
+                        track.play_pos.store(loop_start.to_bits(), Ordering::Relaxed);
+                    }
+                } else {
+                    track.play_pos.store(loop_start.to_bits(), Ordering::Relaxed);
+                }
                 track.debug_logged.store(false, Ordering::Relaxed);
                 track.is_playing.store(true, Ordering::Relaxed);
             }
@@ -1170,6 +1250,19 @@ fn initialize_ui(
             tracks_loop[track_idx]
                 .loop_enabled
                 .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_loop = Arc::clone(tracks);
+    let params_loop = Arc::clone(params);
+    ui.on_loop_mode_selected(move |index| {
+        let track_idx = params_loop.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let mode = index.clamp(0, 4) as u32;
+            tracks_loop[track_idx]
+                .loop_mode
+                .store(mode, Ordering::Relaxed);
+            tracks_loop[track_idx].loop_dir.store(1, Ordering::Relaxed);
         }
     });
 

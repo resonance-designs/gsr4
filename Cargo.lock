@@ -1985,6 +1985,7 @@ version = "0.1.0"
 dependencies = [
  "baseview",
  "cpal",
+ "fastrand",
  "fundsp",
  "hound",
  "nih_plug",

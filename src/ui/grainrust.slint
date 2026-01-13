@@ -41,6 +41,8 @@ export component GrainRustUI inherits Window {
     in-out property <float> loop-length: 1.0;
     in-out property <float> loop-xfade: 0.0;
     in-out property <bool> loop-enabled: true;
+    in property <[string]> loop-modes;
+    in-out property <int> loop-mode: 0;
     in property <[float]> waveform;
     in property <int> playhead-index: 0;
 
@@ -64,6 +66,7 @@ export component GrainRustUI inherits Window {
     callback loop-length-changed(value: float);
     callback loop-xfade-changed(value: float);
     callback toggle-loop-enabled();
+    callback loop-mode-selected(index: int);
     callback quit();
     callback toggle-settings();
     callback save-project();
@@ -178,6 +181,18 @@ export component GrainRustUI inherits Window {
                         text: root.loop-enabled ? "Loop On" : "Loop Off";
                         clicked => root.toggle-loop-enabled();
                     }
+                }
+
+                Text {
+                    text: "Loop Mode";
+                    color: #b9b9bf;
+                    font-size: 13px;
+                }
+
+                ComboBox {
+                    model: root.loop-modes;
+                    current-index: root.loop-mode;
+                    selected => { root.loop-mode-selected(self.current-index); }
                 }
             }
 
