@@ -35,3 +35,9 @@ npm run grainrust:build
 ```bash
 npm run version:sync
 ```
+
+## Local Docs Deployment
+
+```bash
+npm run grainrust:dev-docs
+```

@@ -1,15 +1,17 @@
 // @ts-check
-const lightCodeTheme = require('prism-react-renderer/themes/github');
-const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'GrainRust Docs',
   tagline: 'Documentation for the GrainRust sampler',
   url: 'https://grainrust.local',
-  baseUrl: '/',
-  onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
+  baseUrl: './',
+  onBrokenLinks: 'warn',
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: 'warn'
+    }
+  },
   organizationName: 'grainrust',
   projectName: 'grainrust',
   presets: [
@@ -36,10 +38,7 @@ const config = {
         { to: '/', label: 'Docs Home', position: 'left' }
       ]
     },
-    prism: {
-      theme: lightCodeTheme,
-      darkTheme: darkCodeTheme
-    }
+    prism: {}
   }
 };
 

@@ -1,0 +1,37 @@
+---
+title: User Manual
+sidebar_position: 3
+---
+
+# User Manual
+
+This manual covers the current GrainRust workflow as of the latest Mosaic update.
+
+## Tracks
+
+- Use the Track 1–4 buttons to select the active track.
+- Each track can load a sample and run the Tape engine + Mosaic device.
+
+## Tape Engine
+
+- Load the Tape engine per track via the Engine selector + Load Engine.
+- Use Tape controls for speed/tempo/loop/start/length/x‑fade/rotate and tape actions (reverse, freeze, keylock, monitor, overdub).
+
+## Mosaic Device
+
+- Mosaic runs after Tape and draws from a 4‑second buffer.
+- Mosaic ON/BYPASS toggles granular processing per track.
+- Pitch is bipolar (±36 semitones); contour is bipolar; other params are unipolar.
+- All Mosaic parameters are smoothed to avoid zipper noise.
+
+## Audio Settings (Standalone)
+
+- Open Settings to choose output/input device, sample rate, and buffer size.
+
+## Project Management
+
+- Save Project / Load Project stores per‑track sample paths and loop/mix state.
+
+## Documentation
+
+- Use the Docs button to open the local documentation site (installed with the app).
