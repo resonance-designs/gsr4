@@ -1,3 +1,12 @@
+/**
+ * GrainRust - A Rust-based granular audio sampler.
+ * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
+ * Author: Richard Bakos <info@resonancedesigns.dev>
+ * Website: https://resonancedesigns.dev
+ * Version: 0.1.2
+ * Component: UI Definitions
+ */
+
 import { Button, Slider, ComboBox, ScrollView } from "std-widgets.slint";
 
 component TrackButton {
@@ -123,6 +132,18 @@ export component GrainRustUI inherits Window {
     in-out property <bool> tape-keylock: false;
     in-out property <bool> tape-monitor: false;
     in-out property <bool> tape-overdub: false;
+    in-out property <float> mosaic-pitch: 0.0;
+    in-out property <float> mosaic-rate: 0.5;
+    in-out property <float> mosaic-size: 0.5;
+    in-out property <float> mosaic-contour: 0.5;
+    in-out property <float> mosaic-warp: 0.0;
+    in-out property <float> mosaic-spray: 0.0;
+    in-out property <float> mosaic-pattern: 0.0;
+    in-out property <float> mosaic-wet: 0.0;
+    in-out property <float> mosaic-detune: 0.0;
+    in-out property <float> mosaic-rand-rate: 0.0;
+    in-out property <float> mosaic-rand-size: 0.0;
+    in-out property <float> mosaic-sos: 0.0;
     in-out property <float> loop-start: 0.0;
     in-out property <float> loop-length: 1.0;
     in-out property <float> loop-xfade: 0.0;
@@ -141,6 +162,7 @@ export component GrainRustUI inherits Window {
     in property <[string]> engine-types;
     in-out property <int> engine-index: 0;
     in-out property <bool> engine-loaded: false;
+    in-out property <bool> mosaic-enabled: true;
     in-out property <bool> show-engine-confirm: false;
     in property <string> engine-confirm-text;
 
@@ -173,6 +195,19 @@ export component GrainRustUI inherits Window {
     callback toggle-tape-keylock();
     callback toggle-tape-monitor();
     callback toggle-tape-overdub();
+    callback mosaic-pitch-changed(value: float);
+    callback mosaic-rate-changed(value: float);
+    callback mosaic-size-changed(value: float);
+    callback mosaic-contour-changed(value: float);
+    callback mosaic-warp-changed(value: float);
+    callback mosaic-spray-changed(value: float);
+    callback mosaic-pattern-changed(value: float);
+    callback mosaic-wet-changed(value: float);
+    callback mosaic-detune-changed(value: float);
+    callback mosaic-rand-rate-changed(value: float);
+    callback mosaic-rand-size-changed(value: float);
+    callback mosaic-sos-changed(value: float);
+    callback toggle-mosaic-enabled();
     callback save-sample();
     callback loop-start-changed(value: float);
     callback loop-length-changed(value: float);
@@ -196,15 +231,19 @@ export component GrainRustUI inherits Window {
 
     background: #0f0f12;
 
-    VerticalLayout {
-        width: Math.min(parent.width, 1200px);
-        x: (parent.width - self.width) / 2;
-        padding: 12px;
-        spacing: 8px;
+    ScrollView {
+        width: parent.width;
+        height: parent.height;
 
-        HorizontalLayout {
-            width: parent.width;
-            spacing: 16px;
+        VerticalLayout {
+            width: Math.min(parent.width, 1200px);
+            x: (parent.width - self.width) / 2;
+            padding: 12px;
+            spacing: 8px;
+
+            HorizontalLayout {
+                width: parent.width;
+                spacing: 16px;
 
             Text {
                 text: "GrainRust";
@@ -234,31 +273,27 @@ export component GrainRustUI inherits Window {
             }
         }
 
-        Text {
-            text: "Active Track: " + root.selected-track;
-            color: #b9b9bf;
-            font-size: 16px;
-        }
-
-        HorizontalLayout {
-            spacing: 8px;
-            for track[i] in [0, 1, 2, 3] : TrackButton {
-                label: "Track " + (i + 1);
-                active: (i + 1) == root.selected-track;
-                clicked => { root.select-track(i + 1); }
+            HorizontalLayout {
+                spacing: 8px;
+                for track[i] in [0, 1, 2, 3] : TrackButton {
+                    label: "Track " + (i + 1);
+                    active: (i + 1) == root.selected-track;
+                    clicked => { root.select-track(i + 1); }
+                }
+                Rectangle { width: 1px; height: 26px; background: #2a2a35; }
+                ComboBox {
+                    model: root.engine-types;
+                    current-index: root.engine-index;
+                    selected => { root.engine-index = self.current-index; }
+                }
+                Button { text: "Load Engine"; clicked => root.load-engine(); }
+                Rectangle { width: 1px; height: 26px; background: #2a2a35; }
+                Button { text: "Save Project"; clicked => root.save-project(); }
+                Button { text: "Load Project"; clicked => root.load-project(); }
+                Button { text: "Settings"; clicked => root.toggle-settings(); }
+                Button { text: "Quit"; clicked => root.quit(); }
             }
-        }
 
-        HorizontalLayout {
-            spacing: 8px;
-            Text { text: "Engine"; color: #b9b9bf; font-size: 13px; width: 60px; vertical-alignment: center; }
-            ComboBox {
-                model: root.engine-types;
-                current-index: root.engine-index;
-                selected => { root.engine-index = self.current-index; }
-            }
-            Button { text: "Load Engine"; clicked => root.load-engine(); }
-        }
 
         VerticalLayout {
             visible: root.engine-loaded;
@@ -425,6 +460,18 @@ export component GrainRustUI inherits Window {
                     }
                 }
             }
+
+            HorizontalLayout {
+                spacing: 8px;
+                width: parent.width;
+                Button { text: "Load Sample"; clicked => root.load-sample(); }
+                Button { text: "Save Sample"; clicked => root.save-sample(); }
+                Button { text: root.is-recording ? "Stop Record" : "Record"; clicked => root.toggle-record(); }
+                Button { text: root.is-playing ? "Stop" : "Play"; clicked => root.toggle-play(); }
+            }
+
+            Text { text: "Tape Engine"; color: #f0f0f2; font-size: 15px; }
+            Text { text: "Tape Controls"; color: #e4e4ea; font-size: 14px; }
 
             HorizontalLayout {
                 spacing: 16px;
@@ -631,23 +678,206 @@ export component GrainRustUI inherits Window {
                 }
             }
 
+            Rectangle {
+                width: parent.width;
+                height: 1px;
+                background: #2a2a35;
+            }
+
+            Text { text: "Mosaic Controls"; color: #e4e4ea; font-size: 14px; }
             HorizontalLayout {
                 spacing: 8px;
-                width: parent.width;
-                Button { text: "Load Sample"; clicked => root.load-sample(); }
-                Button { text: "Save Sample"; clicked => root.save-sample(); }
-                Button { text: root.is-recording ? "Stop Record" : "Record"; clicked => root.toggle-record(); }
-                Button { text: root.is-playing ? "Stop" : "Play"; clicked => root.toggle-play(); }
-                Button { text: "Settings"; clicked => root.toggle-settings(); }
-                Button { text: "Quit"; clicked => root.quit(); }
+                Button {
+                    text: root.mosaic-enabled ? "Mosaic ON" : "Mosaic BYPASS";
+                    clicked => root.toggle-mosaic-enabled();
+                }
             }
 
             HorizontalLayout {
-                spacing: 8px;
+                spacing: 16px;
                 width: parent.width;
-                Button { text: "Save Project"; clicked => root.save-project(); }
-                Button { text: "Load Project"; clicked => root.load-project(); }
+
+                VerticalLayout {
+                    spacing: 6px;
+                    width: (parent.width - 16px) / 2;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Pitch"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-pitch;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-pitch = self.value;
+                                root.mosaic-pitch-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Rate"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-rate;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-rate = self.value;
+                                root.mosaic-rate-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Size"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-size;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-size = self.value;
+                                root.mosaic-size-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Contour"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-contour;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-contour = self.value;
+                                root.mosaic-contour-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Warp"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-warp;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-warp = self.value;
+                                root.mosaic-warp-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Spray"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-spray;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-spray = self.value;
+                                root.mosaic-spray-changed(self.value);
+                            }
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 6px;
+                    width: (parent.width - 16px) / 2;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Pattern"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-pattern;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-pattern = self.value;
+                                root.mosaic-pattern-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Wet"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-wet;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-wet = self.value;
+                                root.mosaic-wet-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Detune"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-detune;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-detune = self.value;
+                                root.mosaic-detune-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Rand Rate"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-rand-rate;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-rand-rate = self.value;
+                                root.mosaic-rand-rate-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Rand Size"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-rand-size;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-rand-size = self.value;
+                                root.mosaic-rand-size-changed(self.value);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "Mosaic SOS"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
+                        Slider {
+                            value: root.mosaic-sos;
+                            minimum: 0;
+                            maximum: 1;
+                            changed => {
+                                root.mosaic-sos = self.value;
+                                root.mosaic-sos-changed(self.value);
+                            }
+                        }
+                    }
+                }
             }
+
+
+        }
 
             Rectangle {
                 visible: root.show-settings;
@@ -715,8 +945,9 @@ export component GrainRustUI inherits Window {
                     }
                 }
             }
-        }
 
+        }
+    }
 
     Rectangle {
         visible: root.show-engine-confirm;
@@ -755,6 +986,4 @@ export component GrainRustUI inherits Window {
             }
         }
     }
-}
-
 }

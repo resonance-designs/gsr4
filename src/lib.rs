@@ -1,3 +1,12 @@
+/**
+ * GrainRust - A Rust-based granular audio sampler.
+ * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
+ * Author: Richard Bakos <info@resonancedesigns.dev>
+ * Website: https://resonancedesigns.dev
+ * Version: 0.1.2
+ * Component: Core Logic
+ */
+
 use nih_plug::prelude::*;
 use cpal::traits::{DeviceTrait, HostTrait};
 use parking_lot::Mutex;
@@ -30,6 +39,11 @@ pub const WAVEFORM_SUMMARY_SIZE: usize = 100;
 pub const RECORD_MAX_SECONDS: usize = 30;
 pub const RECORD_MAX_SAMPLE_RATE: usize = 48_000;
 pub const RECORD_MAX_SAMPLES: usize = RECORD_MAX_SECONDS * RECORD_MAX_SAMPLE_RATE;
+pub const MOSAIC_BUFFER_SECONDS: usize = 4;
+pub const MOSAIC_BUFFER_SAMPLES: usize = MOSAIC_BUFFER_SECONDS * RECORD_MAX_SAMPLE_RATE;
+pub const MOSAIC_BUFFER_CHANNELS: usize = 2;
+pub const MOSAIC_GRAIN_LEN_SAMPLES: usize = 2048;
+pub const MOSAIC_OUTPUT_GAIN: f32 = 1.0;
 const KEYLOCK_GRAIN_SIZE: usize = 256;
 const KEYLOCK_GRAIN_HOP: usize = KEYLOCK_GRAIN_SIZE / 2;
 const OSCILLOSCOPE_SAMPLES: usize = 256;
@@ -129,6 +143,44 @@ struct Track {
     loop_dir: AtomicI32,
     /// Last loop start position in samples (for jump-to behavior).
     loop_start_last: AtomicU32,
+    /// Granular device type (0 = none, 1 = Mosaic).
+    granular_type: AtomicU32,
+    /// Mosaic pitch amount.
+    mosaic_pitch: AtomicU32,
+    /// Mosaic grain rate.
+    mosaic_rate: AtomicU32,
+    /// Mosaic grain size.
+    mosaic_size: AtomicU32,
+    /// Mosaic contour.
+    mosaic_contour: AtomicU32,
+    /// Mosaic warp amount.
+    mosaic_warp: AtomicU32,
+    /// Mosaic spray amount.
+    mosaic_spray: AtomicU32,
+    /// Mosaic pattern amount.
+    mosaic_pattern: AtomicU32,
+    /// Mosaic wet/dry.
+    mosaic_wet: AtomicU32,
+    /// Mosaic detune.
+    mosaic_detune: AtomicU32,
+    /// Mosaic random rate.
+    mosaic_rand_rate: AtomicU32,
+    /// Mosaic random size.
+    mosaic_rand_size: AtomicU32,
+    /// Mosaic sound-on-sound.
+    mosaic_sos: AtomicU32,
+    /// Mosaic output enabled.
+    mosaic_enabled: AtomicBool,
+    /// Mosaic ring buffer fed by tape output.
+    mosaic_buffer: Arc<Mutex<Vec<Vec<f32>>>>,
+    /// Mosaic ring buffer write position.
+    mosaic_write_pos: AtomicU32,
+    /// Mosaic grain start position in ring buffer.
+    mosaic_grain_start: AtomicU32,
+    /// Mosaic grain position within current grain.
+    mosaic_grain_pos: AtomicU32,
+    /// Mosaic RNG state for grain start selection.
+    mosaic_rng_state: AtomicU32,
     /// Engine type loaded for this track (0 = none, 1 = tape).
     engine_type: AtomicU32,
     /// Logs one debug line per playback start to confirm audio thread output.
@@ -175,6 +227,28 @@ impl Default for Track {
             loop_mode: AtomicU32::new(0),
             loop_dir: AtomicI32::new(1),
             loop_start_last: AtomicU32::new(0),
+            granular_type: AtomicU32::new(0),
+            mosaic_pitch: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_rate: AtomicU32::new(0.5f32.to_bits()),
+            mosaic_size: AtomicU32::new(0.5f32.to_bits()),
+            mosaic_contour: AtomicU32::new(0.5f32.to_bits()),
+            mosaic_warp: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_spray: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_pattern: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_wet: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_detune: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_rand_rate: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_rand_size: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_sos: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_enabled: AtomicBool::new(true),
+            mosaic_buffer: Arc::new(Mutex::new(vec![
+                vec![0.0; MOSAIC_BUFFER_SAMPLES];
+                MOSAIC_BUFFER_CHANNELS
+            ])),
+            mosaic_write_pos: AtomicU32::new(0),
+            mosaic_grain_start: AtomicU32::new(0),
+            mosaic_grain_pos: AtomicU32::new(0),
+            mosaic_rng_state: AtomicU32::new(0x1234_abcd),
             engine_type: AtomicU32::new(0),
             debug_logged: AtomicBool::new(false),
             sample_rate: AtomicU32::new(44_100),
@@ -334,6 +408,29 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.loop_enabled.store(true, Ordering::Relaxed);
     track.loop_mode.store(0, Ordering::Relaxed);
     track.loop_dir.store(1, Ordering::Relaxed);
+    track.granular_type.store(1, Ordering::Relaxed);
+    track.mosaic_pitch.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_rate.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_size.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_contour.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_warp.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_spray.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_pattern.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_wet.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_detune.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_rand_rate.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_rand_size.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_sos.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_enabled.store(true, Ordering::Relaxed);
+    track.mosaic_write_pos.store(0, Ordering::Relaxed);
+    track.mosaic_grain_start.store(0, Ordering::Relaxed);
+    track.mosaic_grain_pos.store(0, Ordering::Relaxed);
+    track.mosaic_rng_state.store(0x1234_abcd, Ordering::Relaxed);
+    if let Some(mut buffer) = track.mosaic_buffer.try_lock() {
+        for channel in buffer.iter_mut() {
+            channel.fill(0.0);
+        }
+    }
     track.sample_rate.store(44_100, Ordering::Relaxed);
     track.debug_logged.store(false, Ordering::Relaxed);
 
@@ -564,6 +661,25 @@ impl Plugin for GrainRust {
                     let num_samples = samples[0].len();
                     let num_channels = samples.len();
                     let num_buffer_samples = buffer.samples();
+                    let mosaic_active =
+                        track.granular_type.load(Ordering::Relaxed) == 1;
+                    let mut mosaic_buffer = if mosaic_active {
+                        track.mosaic_buffer.try_lock()
+                    } else {
+                        None
+                    };
+                    let mosaic_len = if mosaic_active {
+                        let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as usize;
+                        let len = (sr * MOSAIC_BUFFER_SECONDS).min(MOSAIC_BUFFER_SAMPLES);
+                        len.max(1)
+                    } else {
+                        0
+                    };
+                    let mut mosaic_write_pos = if mosaic_active && mosaic_len > 0 {
+                        (track.mosaic_write_pos.load(Ordering::Relaxed) as usize) % mosaic_len
+                    } else {
+                        0
+                    };
                     let mut track_peak_left = 0.0f32;
                     let mut track_peak_right = 0.0f32;
                     let track_level =
@@ -745,6 +861,11 @@ impl Plugin for GrainRust {
                                 let level = smooth_level + level_step * sample_idx as f32;
                                 let out_value = sample_value * level;
                                 output[channel_idx][sample_idx] += out_value;
+                                if let Some(mosaic) = mosaic_buffer.as_mut() {
+                                    if mosaic_len > 0 && channel_idx < mosaic.len() {
+                                        mosaic[channel_idx][mosaic_write_pos] = out_value;
+                                    }
+                                }
                                 if channel_idx == 0 {
                                     let amp = out_value.abs();
                                     if amp > track_peak_left {
@@ -756,6 +877,10 @@ impl Plugin for GrainRust {
                                         track_peak_right = amp;
                                     }
                                 }
+                            }
+
+                            if mosaic_buffer.is_some() && mosaic_len > 0 {
+                                mosaic_write_pos = (mosaic_write_pos + 1) % mosaic_len;
                             }
 
                             keylock_phase += 1.0;
@@ -841,6 +966,11 @@ impl Plugin for GrainRust {
                             let level = smooth_level + level_step * sample_idx as f32;
                             let out_value = sample_value * level;
                             output[channel_idx][sample_idx] += out_value;
+                            if let Some(mosaic) = mosaic_buffer.as_mut() {
+                                if mosaic_len > 0 && channel_idx < mosaic.len() {
+                                    mosaic[channel_idx][mosaic_write_pos] = out_value;
+                                }
+                            }
                             if channel_idx == 0 {
                                 let amp = out_value.abs();
                                 if amp > track_peak_left {
@@ -852,6 +982,10 @@ impl Plugin for GrainRust {
                                     track_peak_right = amp;
                                 }
                             }
+                        }
+
+                        if mosaic_buffer.is_some() && mosaic_len > 0 {
+                            mosaic_write_pos = (mosaic_write_pos + 1) % mosaic_len;
                         }
 
                             let speed = smooth_speed + speed_step * sample_idx as f32;
@@ -875,6 +1009,11 @@ impl Plugin for GrainRust {
                     }
                     
                     track.play_pos.store(play_pos.to_bits(), Ordering::Relaxed);
+                    if mosaic_buffer.is_some() && mosaic_len > 0 {
+                        track
+                            .mosaic_write_pos
+                            .store(mosaic_write_pos as u32, Ordering::Relaxed);
+                    }
                     smooth_speed += speed_step * num_buffer_samples as f32;
                     track
                         .tape_speed_smooth
@@ -932,6 +1071,82 @@ impl Plugin for GrainRust {
 
         if any_monitoring {
             keep_alive = true;
+        }
+
+        let any_mosaic = self.tracks.iter().any(|track| {
+            track.is_playing.load(Ordering::Relaxed)
+                && track.granular_type.load(Ordering::Relaxed) == 1
+                && track.mosaic_enabled.load(Ordering::Relaxed)
+        });
+        if any_mosaic {
+            for channel_samples in buffer.iter_samples() {
+                for sample in channel_samples {
+                    *sample = 0.0;
+                }
+            }
+
+            let num_buffer_samples = buffer.samples();
+            let num_channels = buffer.channels();
+            let output = buffer.as_slice();
+
+            for track in self.tracks.iter() {
+                if !track.is_playing.load(Ordering::Relaxed) {
+                    continue;
+                }
+                if track.granular_type.load(Ordering::Relaxed) != 1 {
+                    continue;
+                }
+                if !track.mosaic_enabled.load(Ordering::Relaxed) {
+                    continue;
+                }
+                let mosaic_buffer = match track.mosaic_buffer.try_lock() {
+                    Some(buffer) => buffer,
+                    None => continue,
+                };
+                if mosaic_buffer.is_empty() || num_buffer_samples == 0 {
+                    continue;
+                }
+                let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as usize;
+                let mosaic_len = (sr * MOSAIC_BUFFER_SECONDS)
+                    .min(MOSAIC_BUFFER_SAMPLES)
+                    .max(1);
+                let grain_len = MOSAIC_GRAIN_LEN_SAMPLES.min(mosaic_len);
+                let mut grain_pos = track.mosaic_grain_pos.load(Ordering::Relaxed) as usize;
+                let mut grain_start =
+                    (track.mosaic_grain_start.load(Ordering::Relaxed) as usize) % mosaic_len;
+                let mut rng_state = track.mosaic_rng_state.load(Ordering::Relaxed);
+
+                for sample_idx in 0..num_buffer_samples {
+                    if grain_pos >= grain_len {
+                        let rand = next_mosaic_rng(&mut rng_state);
+                        grain_start = (rand as usize) % mosaic_len;
+                        grain_pos = 0;
+                    }
+                    let read_idx = (grain_start + grain_pos) % mosaic_len;
+                    let t = grain_pos as f32 / grain_len as f32;
+                    let env = if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 };
+                    for channel_idx in 0..num_channels {
+                        let src_channel = if channel_idx < mosaic_buffer.len() {
+                            channel_idx
+                        } else {
+                            0
+                        };
+                        let sample_value = mosaic_buffer[src_channel][read_idx];
+                        output[channel_idx][sample_idx] += sample_value * env * MOSAIC_OUTPUT_GAIN;
+                    }
+                    grain_pos += 1;
+                }
+
+                track
+                    .mosaic_grain_pos
+                    .store(grain_pos as u32, Ordering::Relaxed);
+                track
+                    .mosaic_grain_start
+                    .store(grain_start as u32, Ordering::Relaxed);
+                track
+                    .mosaic_rng_state
+                    .store(rng_state, Ordering::Relaxed);
+            }
         }
 
         // Apply global gain
@@ -1063,6 +1278,15 @@ fn wrap_loop_pos(
     } else {
         pos.clamp(0.0, (num_samples - 1) as f32)
     }
+}
+
+fn next_mosaic_rng(state: &mut u32) -> u32 {
+    let mut x = *state;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    *state = x;
+    x
 }
 
 fn smooth_meter(prev: f32, target: f32) -> f32 {
@@ -1475,7 +1699,7 @@ struct SlintWindow {
     visualizer: Arc<VisualizerState>,
     async_executor: AsyncExecutor<GrainRust>,
     slint_window: std::rc::Rc<MinimalSoftwareWindow>,
-    ui: GrainRustUI,
+    ui: Box<GrainRustUI>,
     waveform_model: std::rc::Rc<VecModel<f32>>,
     oscilloscope_model: std::rc::Rc<VecModel<f32>>,
     spectrum_model: std::rc::Rc<VecModel<f32>>,
@@ -1656,6 +1880,30 @@ impl SlintWindow {
             self.tracks[track_idx].tape_monitor.load(Ordering::Relaxed);
         let tape_overdub =
             self.tracks[track_idx].tape_overdub.load(Ordering::Relaxed);
+        let mosaic_pitch =
+            f32::from_bits(self.tracks[track_idx].mosaic_pitch.load(Ordering::Relaxed));
+        let mosaic_rate =
+            f32::from_bits(self.tracks[track_idx].mosaic_rate.load(Ordering::Relaxed));
+        let mosaic_size =
+            f32::from_bits(self.tracks[track_idx].mosaic_size.load(Ordering::Relaxed));
+        let mosaic_contour =
+            f32::from_bits(self.tracks[track_idx].mosaic_contour.load(Ordering::Relaxed));
+        let mosaic_warp =
+            f32::from_bits(self.tracks[track_idx].mosaic_warp.load(Ordering::Relaxed));
+        let mosaic_spray =
+            f32::from_bits(self.tracks[track_idx].mosaic_spray.load(Ordering::Relaxed));
+        let mosaic_pattern =
+            f32::from_bits(self.tracks[track_idx].mosaic_pattern.load(Ordering::Relaxed));
+        let mosaic_wet =
+            f32::from_bits(self.tracks[track_idx].mosaic_wet.load(Ordering::Relaxed));
+        let mosaic_detune =
+            f32::from_bits(self.tracks[track_idx].mosaic_detune.load(Ordering::Relaxed));
+        let mosaic_rand_rate =
+            f32::from_bits(self.tracks[track_idx].mosaic_rand_rate.load(Ordering::Relaxed));
+        let mosaic_rand_size =
+            f32::from_bits(self.tracks[track_idx].mosaic_rand_size.load(Ordering::Relaxed));
+        let mosaic_sos =
+            f32::from_bits(self.tracks[track_idx].mosaic_sos.load(Ordering::Relaxed));
         let loop_start =
             f32::from_bits(self.tracks[track_idx].loop_start.load(Ordering::Relaxed));
         let loop_length =
@@ -1665,6 +1913,7 @@ impl SlintWindow {
         let loop_enabled =
             self.tracks[track_idx].loop_enabled.load(Ordering::Relaxed);
         let loop_mode = self.tracks[track_idx].loop_mode.load(Ordering::Relaxed);
+        let mosaic_enabled = self.tracks[track_idx].mosaic_enabled.load(Ordering::Relaxed);
         let engine_loaded = self.tracks[track_idx].engine_type.load(Ordering::Relaxed) != 0;
 
         let play_pos = f32::from_bits(self.tracks[track_idx].play_pos.load(Ordering::Relaxed));
@@ -1729,12 +1978,26 @@ impl SlintWindow {
         self.ui.set_tape_keylock(tape_keylock);
         self.ui.set_tape_monitor(tape_monitor);
         self.ui.set_tape_overdub(tape_overdub);
+        self.ui.set_mosaic_pitch(mosaic_pitch);
+        self.ui.set_mosaic_rate(mosaic_rate);
+        self.ui.set_mosaic_size(mosaic_size);
+        self.ui.set_mosaic_contour(mosaic_contour);
+        self.ui.set_mosaic_warp(mosaic_warp);
+        self.ui.set_mosaic_spray(mosaic_spray);
+        self.ui.set_mosaic_pattern(mosaic_pattern);
+        self.ui.set_mosaic_wet(mosaic_wet);
+        self.ui.set_mosaic_detune(mosaic_detune);
+        self.ui.set_mosaic_rand_rate(mosaic_rand_rate);
+        self.ui.set_mosaic_rand_size(mosaic_rand_size);
+        self.ui.set_mosaic_sos(mosaic_sos);
         self.ui.set_loop_start(loop_start);
         self.ui.set_loop_length(loop_length);
         self.ui.set_loop_xfade(loop_xfade);
         self.ui.set_loop_enabled(loop_enabled);
         self.ui.set_loop_mode(loop_mode as i32);
+        self.ui.set_mosaic_enabled(mosaic_enabled);
         self.ui.set_engine_loaded(engine_loaded);
+
         self.ui.set_playhead_index(playhead_index);
         self.waveform_model.set_vec(waveform);
         self.oscilloscope_model.set_vec(oscilloscope);
@@ -2345,6 +2608,151 @@ fn initialize_ui(
         }
     });
 
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_pitch_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_pitch
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_rate_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_rate
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_size_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_size
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_contour_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_contour
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_warp_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_warp
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_spray_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_spray
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_pattern_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_pattern
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_wet_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_wet
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_detune_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_detune
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_rand_rate_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_rand_rate
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_rand_size_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_rand_size
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_sos_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_sos
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
+    ui.on_toggle_mosaic_enabled(move || {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let enabled = tracks_mosaic[track_idx].mosaic_enabled.load(Ordering::Relaxed);
+            tracks_mosaic[track_idx]
+                .mosaic_enabled
+                .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
     let tracks_tape = Arc::clone(tracks);
     let params_tape = Arc::clone(params);
     ui.on_toggle_tape_reverse(move || {
@@ -2427,6 +2835,7 @@ fn initialize_ui(
                 .store(!overdub, Ordering::Relaxed);
         }
     });
+
 
     let tracks_loop = Arc::clone(tracks);
     let params_loop = Arc::clone(params);
@@ -2638,11 +3047,11 @@ fn ensure_slint_platform() {
     });
 }
 
-fn create_slint_ui() -> (std::rc::Rc<MinimalSoftwareWindow>, GrainRustUI) {
+fn create_slint_ui() -> (std::rc::Rc<MinimalSoftwareWindow>, Box<GrainRustUI>) {
     SLINT_WINDOW_SLOT.with(|slot| {
         *slot.borrow_mut() = None;
     });
-    let ui = GrainRustUI::new().expect("Failed to create Slint UI");
+    let ui = Box::new(GrainRustUI::new().expect("Failed to create Slint UI"));
     let window = SLINT_WINDOW_SLOT.with(|slot| {
         slot.borrow_mut()
             .take()
