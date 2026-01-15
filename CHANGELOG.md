@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.3] - 2026-01-14
+
+- Added Mosaic parameter smoothing and full DSP mapping
+- Added local docs deployment, app Docs link, and installer docs bundling
+
 ## [0.1.2] - 2026-01-14
 
 - Added Mosaic granular buffer with per-track bypass

@@ -32,6 +32,14 @@ npm run docs:dev
 npm run storybook
 ```
 
+## Local Docs Deployment
+
+```bash
+npm run grainrust:dev-docs
+```
+
+This generates `documentation/index.html` in the repo root for the app to open.
+
 ## Packaging
 
 ```bash

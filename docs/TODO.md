@@ -21,6 +21,7 @@
 - [x] Implement granular buffer and grain spawning (basic)
 - [x] Map pitch/rate/size/contour/warp/spray/pattern/wet to DSP
 - [x] Map random rate/size, detune, and SOS to DSP
+- [x] Add smoothing for Mosaic parameters
 
 ## Phase 4: Filter Device (Ring)
 
@@ -60,4 +61,5 @@
 - [x] Add Storybook MDX end-user docs
 - [x] Add developer onboarding docs
 - [x] Add cross-platform packaging scripts (NSIS/pkgbuild/Linux staging)
+- [x] Bundle docs site with installers and expose in-app Docs link
 - [ ] Refine documentation

@@ -26,6 +26,8 @@ Section "Standalone App" SecStandalone
   SectionIn RO
   SetOutPath "$INSTDIR"
   File "${STANDALONE_SRC}"
+  SetOutPath "$INSTDIR\\documentation"
+  File /r "dist\\windows\\documentation\\*"
   CreateShortCut "$DESKTOP\\GrainRust.lnk" "$INSTDIR\\grainrust.exe"
 SectionEnd
 

@@ -1,6 +1,6 @@
 # GrainRust
 
-Version: 0.1.2
+Version: 0.1.3
 
 GrainRust is a 4-track granular sampler built in Rust, inspired by the Torso S-4 workflow. It runs as a standalone app and as a plugin via nih-plug, with a Slint-based UI.
 
@@ -40,6 +40,7 @@ Build a plugin binary using nih-plug (VST3/CLAP/etc.) depending on your local se
 - Developer onboarding: `docs/DEVELOPER_ONBOARDING.md`
 - Developer docs live in `docs/` and are published with Docusaurus
 - End-user MDX docs are maintained in Storybook
+- Local documentation is served from `documentation/index.html`
 
 ### Docs (Docusaurus)
 
@@ -52,6 +53,12 @@ npm run docs:dev
 
 ```bash
 npm run storybook
+```
+
+### Local Docs Deployment
+
+```bash
+npm run grainrust:dev-docs
 ```
 
 ## Packaging
@@ -71,6 +78,8 @@ npm run grainrust:build
 ### VST3 input path
 
 Set `GRAINRUST_VST3_PATH` to the built VST3 bundle before running `grainrust:build` on all platforms. On macOS also set `GRAINRUST_APP_PATH` to the `.app` bundle.
+
+Installers include the built documentation site under `documentation/` in the install location.
 
 ## Controls (Current UI)
 
@@ -98,7 +107,7 @@ Project files are saved as JSON and include:
 ## Notes
 
 - This project is an early-stage implementation focused on Phase 1 behavior. Device models and modulation are planned next.
-- Mosaic UI controls are present, but the DSP still uses fixed grain settings while the mapping is built out.
+- Mosaic DSP is now mapped to the UI controls with smoothed parameter changes.
 - The S-4 manual is included under `3rd-party/docs/` for reference.
 
 ## License

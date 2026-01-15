@@ -3,7 +3,16 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.2
+ * Version: 0.1.3
+ * Component: Core Logic
+ */
+
+/**
+ * GrainRust - A Rust-based granular audio sampler.
+ * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
+ * Author: Richard Bakos <info@resonancedesigns.dev>
+ * Website: https://resonancedesigns.dev
+ * Version: 0.1.3
  * Component: Core Logic
  */
 
@@ -49,6 +58,7 @@ const MOSAIC_SIZE_MIN_MS: f32 = 10.0;
 const MOSAIC_SIZE_MAX_MS: f32 = 250.0;
 const MOSAIC_PITCH_SEMITONES: f32 = 36.0;
 const MOSAIC_DETUNE_CENTS: f32 = 25.0;
+const MOSAIC_PARAM_SMOOTH_MS: f32 = 20.0;
 const KEYLOCK_GRAIN_SIZE: usize = 256;
 const KEYLOCK_GRAIN_HOP: usize = KEYLOCK_GRAIN_SIZE / 2;
 const OSCILLOSCOPE_SAMPLES: usize = 256;
@@ -152,28 +162,52 @@ struct Track {
     granular_type: AtomicU32,
     /// Mosaic pitch amount.
     mosaic_pitch: AtomicU32,
+    /// Smoothed mosaic pitch amount.
+    mosaic_pitch_smooth: AtomicU32,
     /// Mosaic grain rate.
     mosaic_rate: AtomicU32,
+    /// Smoothed mosaic grain rate.
+    mosaic_rate_smooth: AtomicU32,
     /// Mosaic grain size.
     mosaic_size: AtomicU32,
+    /// Smoothed mosaic grain size.
+    mosaic_size_smooth: AtomicU32,
     /// Mosaic contour.
     mosaic_contour: AtomicU32,
+    /// Smoothed mosaic contour.
+    mosaic_contour_smooth: AtomicU32,
     /// Mosaic warp amount.
     mosaic_warp: AtomicU32,
+    /// Smoothed mosaic warp amount.
+    mosaic_warp_smooth: AtomicU32,
     /// Mosaic spray amount.
     mosaic_spray: AtomicU32,
+    /// Smoothed mosaic spray amount.
+    mosaic_spray_smooth: AtomicU32,
     /// Mosaic pattern amount.
     mosaic_pattern: AtomicU32,
+    /// Smoothed mosaic pattern amount.
+    mosaic_pattern_smooth: AtomicU32,
     /// Mosaic wet/dry.
     mosaic_wet: AtomicU32,
+    /// Smoothed mosaic wet/dry.
+    mosaic_wet_smooth: AtomicU32,
     /// Mosaic detune.
     mosaic_detune: AtomicU32,
+    /// Smoothed mosaic detune.
+    mosaic_detune_smooth: AtomicU32,
     /// Mosaic random rate.
     mosaic_rand_rate: AtomicU32,
+    /// Smoothed mosaic random rate.
+    mosaic_rand_rate_smooth: AtomicU32,
     /// Mosaic random size.
     mosaic_rand_size: AtomicU32,
+    /// Smoothed mosaic random size.
+    mosaic_rand_size_smooth: AtomicU32,
     /// Mosaic sound-on-sound.
     mosaic_sos: AtomicU32,
+    /// Smoothed mosaic sound-on-sound.
+    mosaic_sos_smooth: AtomicU32,
     /// Mosaic output enabled.
     mosaic_enabled: AtomicBool,
     /// Mosaic ring buffer fed by tape output.
@@ -240,17 +274,29 @@ impl Default for Track {
             loop_start_last: AtomicU32::new(0),
             granular_type: AtomicU32::new(0),
             mosaic_pitch: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_pitch_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_rate: AtomicU32::new(0.5f32.to_bits()),
+            mosaic_rate_smooth: AtomicU32::new(0.5f32.to_bits()),
             mosaic_size: AtomicU32::new(0.5f32.to_bits()),
+            mosaic_size_smooth: AtomicU32::new(0.5f32.to_bits()),
             mosaic_contour: AtomicU32::new(0.5f32.to_bits()),
+            mosaic_contour_smooth: AtomicU32::new(0.5f32.to_bits()),
             mosaic_warp: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_warp_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_spray: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_spray_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_pattern: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_pattern_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_wet: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_wet_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_detune: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_detune_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_rand_rate: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_rand_rate_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_rand_size: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_rand_size_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_sos: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_sos_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_enabled: AtomicBool::new(true),
             mosaic_buffer: Arc::new(Mutex::new(vec![
                 vec![0.0; MOSAIC_BUFFER_SAMPLES];
@@ -424,17 +470,29 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.loop_dir.store(1, Ordering::Relaxed);
     track.granular_type.store(1, Ordering::Relaxed);
     track.mosaic_pitch.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_pitch_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_rate.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_rate_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.mosaic_size.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_size_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.mosaic_contour.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_contour_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.mosaic_warp.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_warp_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_spray.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_spray_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_pattern.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_pattern_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_wet.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_wet_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_detune.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_detune_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_rand_rate.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_rand_rate_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_rand_size.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_rand_size_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_sos.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.mosaic_sos_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_enabled.store(true, Ordering::Relaxed);
     track.mosaic_write_pos.store(0, Ordering::Relaxed);
     track.mosaic_grain_start.store(0, Ordering::Relaxed);
@@ -697,8 +755,17 @@ impl Plugin for GrainRust {
                     } else {
                         0
                     };
-                    let mosaic_sos =
+                    let target_mosaic_sos =
                         f32::from_bits(track.mosaic_sos.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+                    let smooth_mosaic_sos = smooth_param(
+                        f32::from_bits(track.mosaic_sos_smooth.load(Ordering::Relaxed)),
+                        target_mosaic_sos,
+                        num_buffer_samples,
+                        track.sample_rate.load(Ordering::Relaxed).max(1) as f32,
+                    );
+                    track
+                        .mosaic_sos_smooth
+                        .store(smooth_mosaic_sos.to_bits(), Ordering::Relaxed);
                     let mut track_peak_left = 0.0f32;
                     let mut track_peak_right = 0.0f32;
                     let track_level =
@@ -884,7 +951,8 @@ impl Plugin for GrainRust {
                                     if mosaic_len > 0 && channel_idx < mosaic.len() {
                                         let existing = mosaic[channel_idx][mosaic_write_pos];
                                         mosaic[channel_idx][mosaic_write_pos] =
-                                            out_value * (1.0 - mosaic_sos) + existing * mosaic_sos;
+                                            out_value * (1.0 - smooth_mosaic_sos)
+                                                + existing * smooth_mosaic_sos;
                                     }
                                 }
                                 if channel_idx == 0 {
@@ -991,7 +1059,8 @@ impl Plugin for GrainRust {
                                 if mosaic_len > 0 && channel_idx < mosaic.len() {
                                     let existing = mosaic[channel_idx][mosaic_write_pos];
                                     mosaic[channel_idx][mosaic_write_pos] =
-                                        out_value * (1.0 - mosaic_sos) + existing * mosaic_sos;
+                                        out_value * (1.0 - smooth_mosaic_sos)
+                                            + existing * smooth_mosaic_sos;
                                 }
                             }
                             if channel_idx == 0 {
@@ -1110,8 +1179,20 @@ impl Plugin for GrainRust {
                     && track.granular_type.load(Ordering::Relaxed) == 1
                     && track.mosaic_enabled.load(Ordering::Relaxed)
                 {
-                    let wet = f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
+                    let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as f32;
+                    let target_wet =
+                        f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed))
+                            .clamp(0.0, 1.0);
+                    let smooth_wet = smooth_param(
+                        f32::from_bits(track.mosaic_wet_smooth.load(Ordering::Relaxed)),
+                        target_wet,
+                        num_buffer_samples,
+                        sr,
+                    );
+                    track
+                        .mosaic_wet_smooth
+                        .store(smooth_wet.to_bits(), Ordering::Relaxed);
+                    let wet = smooth_wet.clamp(0.0, 1.0);
                     if wet > global_wet {
                         global_wet = wet;
                     }
@@ -1148,28 +1229,127 @@ impl Plugin for GrainRust {
                 let mosaic_len = (sr * MOSAIC_BUFFER_SECONDS)
                     .min(MOSAIC_BUFFER_SAMPLES)
                     .max(1);
-                let mosaic_pitch =
+                let target_pitch =
                     f32::from_bits(track.mosaic_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_rate =
+                let target_rate =
                     f32::from_bits(track.mosaic_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_size =
+                let target_size =
                     f32::from_bits(track.mosaic_size.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_contour =
+                let target_contour =
                     f32::from_bits(track.mosaic_contour.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_warp =
+                let target_warp =
                     f32::from_bits(track.mosaic_warp.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_spray =
+                let target_spray =
                     f32::from_bits(track.mosaic_spray.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_pattern =
+                let target_pattern =
                     f32::from_bits(track.mosaic_pattern.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_wet =
+                let target_wet =
                     f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_detune =
+                let target_detune =
                     f32::from_bits(track.mosaic_detune.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_rand_rate =
+                let target_rand_rate =
                     f32::from_bits(track.mosaic_rand_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_rand_size =
+                let target_rand_size =
                     f32::from_bits(track.mosaic_rand_size.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+                let mosaic_pitch = smooth_param(
+                    f32::from_bits(track.mosaic_pitch_smooth.load(Ordering::Relaxed)),
+                    target_pitch,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_rate = smooth_param(
+                    f32::from_bits(track.mosaic_rate_smooth.load(Ordering::Relaxed)),
+                    target_rate,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_size = smooth_param(
+                    f32::from_bits(track.mosaic_size_smooth.load(Ordering::Relaxed)),
+                    target_size,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_contour = smooth_param(
+                    f32::from_bits(track.mosaic_contour_smooth.load(Ordering::Relaxed)),
+                    target_contour,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_warp = smooth_param(
+                    f32::from_bits(track.mosaic_warp_smooth.load(Ordering::Relaxed)),
+                    target_warp,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_spray = smooth_param(
+                    f32::from_bits(track.mosaic_spray_smooth.load(Ordering::Relaxed)),
+                    target_spray,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_pattern = smooth_param(
+                    f32::from_bits(track.mosaic_pattern_smooth.load(Ordering::Relaxed)),
+                    target_pattern,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_wet = smooth_param(
+                    f32::from_bits(track.mosaic_wet_smooth.load(Ordering::Relaxed)),
+                    target_wet,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_detune = smooth_param(
+                    f32::from_bits(track.mosaic_detune_smooth.load(Ordering::Relaxed)),
+                    target_detune,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_rand_rate = smooth_param(
+                    f32::from_bits(track.mosaic_rand_rate_smooth.load(Ordering::Relaxed)),
+                    target_rand_rate,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                let mosaic_rand_size = smooth_param(
+                    f32::from_bits(track.mosaic_rand_size_smooth.load(Ordering::Relaxed)),
+                    target_rand_size,
+                    num_buffer_samples,
+                    sr as f32,
+                );
+                track
+                    .mosaic_pitch_smooth
+                    .store(mosaic_pitch.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_rate_smooth
+                    .store(mosaic_rate.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_size_smooth
+                    .store(mosaic_size.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_contour_smooth
+                    .store(mosaic_contour.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_warp_smooth
+                    .store(mosaic_warp.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_spray_smooth
+                    .store(mosaic_spray.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_pattern_smooth
+                    .store(mosaic_pattern.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_wet_smooth
+                    .store(mosaic_wet.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_detune_smooth
+                    .store(mosaic_detune.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_rand_rate_smooth
+                    .store(mosaic_rand_rate.to_bits(), Ordering::Relaxed);
+                track
+                    .mosaic_rand_size_smooth
+                    .store(mosaic_rand_size.to_bits(), Ordering::Relaxed);
                 let pitch_bipolar = mosaic_cc_bipolar(mosaic_pitch);
                 let contour_bipolar = mosaic_cc_bipolar(mosaic_contour);
                 let base_rate = MOSAIC_RATE_MIN + (MOSAIC_RATE_MAX - MOSAIC_RATE_MIN) * mosaic_rate;
@@ -1444,6 +1624,49 @@ fn sample_at_linear_ring(buffer: &[Vec<f32>], channel: usize, pos: f32) -> f32 {
     a + (b - a) * frac
 }
 
+fn open_docs() {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|dir| dir.to_path_buf()));
+
+    let mut candidates = Vec::new();
+    if let Some(dir) = exe_dir.clone() {
+        candidates.push(dir.join("documentation").join("index.html"));
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(contents) = dir.parent() {
+                candidates.push(contents.join("Resources").join("documentation").join("index.html"));
+            }
+        }
+    }
+    candidates.push(std::env::current_dir().unwrap_or_default().join("documentation").join("index.html"));
+
+    let doc_path = candidates.into_iter().find(|path| path.exists());
+    let Some(doc_path) = doc_path else {
+        eprintln!("Documentation not found. Expected documentation/index.html next to the app.");
+        return;
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", doc_path.to_string_lossy().as_ref()])
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(doc_path)
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(doc_path)
+            .spawn();
+    }
+}
+
 fn smooth_meter(prev: f32, target: f32) -> f32 {
     let attack = 0.6;
     let release = 0.96;
@@ -1453,6 +1676,17 @@ fn smooth_meter(prev: f32, target: f32) -> f32 {
         prev * release + target * (1.0 - release)
     };
     next.clamp(0.0, 1.0)
+}
+
+fn smooth_param(current: f32, target: f32, num_samples: usize, sample_rate: f32) -> f32 {
+    let smoothing_samples =
+        (sample_rate * (MOSAIC_PARAM_SMOOTH_MS / 1000.0)).max(1.0);
+    let step = (target - current) / smoothing_samples;
+    let mut next = current + step * num_samples as f32;
+    if (target - current).signum() != (target - next).signum() {
+        next = target;
+    }
+    next
 }
 
 fn build_time_labels(duration_secs: f32) -> Vec<SharedString> {
@@ -3047,6 +3281,10 @@ fn initialize_ui(
         if let Some(ui) = ui_toggle.upgrade() {
             ui.set_show_settings(!ui.get_show_settings());
         }
+    });
+
+    ui.on_open_docs(|| {
+        open_docs();
     });
 
     let ui_output_device = ui_weak.clone();

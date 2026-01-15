@@ -3,7 +3,16 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.2
+ * Version: 0.1.3
+ * Component: UI Definitions
+ */
+
+/**
+ * GrainRust - A Rust-based granular audio sampler.
+ * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
+ * Author: Richard Bakos <info@resonancedesigns.dev>
+ * Website: https://resonancedesigns.dev
+ * Version: 0.1.3
  * Component: UI Definitions
  */
 
@@ -228,6 +237,7 @@ export component GrainRustUI inherits Window {
     callback load-engine();
     callback confirm-engine-load();
     callback cancel-engine-load();
+    callback open-docs();
 
     background: #0f0f12;
 
@@ -288,11 +298,12 @@ export component GrainRustUI inherits Window {
                 }
                 Button { text: "Load Engine"; clicked => root.load-engine(); }
                 Rectangle { width: 1px; height: 26px; background: #2a2a35; }
-                Button { text: "Save Project"; clicked => root.save-project(); }
-                Button { text: "Load Project"; clicked => root.load-project(); }
-                Button { text: "Settings"; clicked => root.toggle-settings(); }
-                Button { text: "Quit"; clicked => root.quit(); }
-            }
+            Button { text: "Save Project"; clicked => root.save-project(); }
+            Button { text: "Load Project"; clicked => root.load-project(); }
+            Button { text: "Settings"; clicked => root.toggle-settings(); }
+            Button { text: "Docs"; clicked => root.open-docs(); }
+            Button { text: "Quit"; clicked => root.quit(); }
+        }
 
 
         VerticalLayout {

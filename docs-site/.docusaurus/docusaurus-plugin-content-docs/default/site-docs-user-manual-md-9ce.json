@@ -1,0 +1,27 @@
+{
+  "id": "user-manual",
+  "title": "User Manual",
+  "description": "This manual covers the current GrainRust workflow as of the latest Mosaic update.",
+  "source": "@site/../docs/user-manual.md",
+  "sourceDirName": ".",
+  "slug": "/user-manual",
+  "permalink": "/./docs/user-manual",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 3,
+  "frontMatter": {
+    "title": "User Manual",
+    "sidebar_position": 3
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Developer Onboarding",
+    "permalink": "/./docs/DEVELOPER_ONBOARDING"
+  },
+  "next": {
+    "title": "TODO",
+    "permalink": "/./docs/TODO"
+  }
+}

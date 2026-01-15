@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist/macos"
 PKG_DIR="$DIST_DIR/pkg"
+DOCS_DIR="$DIST_DIR/documentation"
 
 mkdir -p "$DIST_DIR" "$PKG_DIR"
 
@@ -25,6 +26,15 @@ fi
 if [[ ! -d "$VST3_PATH" ]]; then
   echo "VST3 bundle not found: $VST3_PATH" >&2
   exit 1
+fi
+
+if [[ -d "$DOCS_DIR" ]]; then
+  mkdir -p "$APP_PATH/Contents/Resources/documentation"
+  rm -rf "$APP_PATH/Contents/Resources/documentation"
+  mkdir -p "$APP_PATH/Contents/Resources/documentation"
+  cp -R "$DOCS_DIR/." "$APP_PATH/Contents/Resources/documentation"
+else
+  echo "Docs not found at $DOCS_DIR, continuing without bundled docs."
 fi
 
 APP_PKG="$PKG_DIR/GrainRust-App.pkg"
