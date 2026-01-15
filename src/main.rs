@@ -1,3 +1,12 @@
+/**
+ * GrainRust - A Rust-based granular audio sampler.
+ * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
+ * Author: Richard Bakos <info@resonancedesigns.dev>
+ * Website: https://resonancedesigns.dev
+ * Version: 0.1.2
+ * Component: Main Entry Point
+ */
+
 use nih_plug::prelude::*;
 use grainrust::GrainRust;
 
