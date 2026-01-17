@@ -8,5 +8,5 @@
  */
 
 fn main() {
-    slint_build::compile("src/ui/grainrust.slint").expect("Failed to compile Slint UI");
+    slint_build::compile("src/ui/all.slint").expect("Failed to compile Slint UI");
 }
