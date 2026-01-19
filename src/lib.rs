@@ -12,7 +12,7 @@ use cpal::traits::{DeviceTrait, HostTrait};
 use parking_lot::Mutex;
 use slint::{LogicalPosition, ModelRc, PhysicalSize, SharedString, VecModel};
 use slint::platform::{
-    self, Platform, PlatformError, PointerEventButton, WindowEvent,
+    self, Platform, PlatformError, PointerEventButton, WindowAdapter, WindowEvent,
 };
 use slint::platform::software_renderer::{
     MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType,
@@ -87,6 +87,18 @@ fn default_window_size() -> baseview::Size {
 }
 
 slint::include_modules!();
+
+#[cfg(feature = "ui-testing")]
+pub fn run_ui_testing() {
+    let ui = TestingGrounds::new().unwrap();
+    
+    let is_software = true;
+    #[cfg(any(feature = "renderer-opengl", feature = "renderer-vulkan"))]
+    let is_software = false;
+    ui.set_is_software_renderer(is_software);
+
+    ui.run().unwrap();
+}
 
 struct Track {
     /// Audio data for the track. Each channel is a Vec of f32.
@@ -549,6 +561,8 @@ pub struct GrainRust {
     metronome_phase_samples: u32,
     metronome_click_remaining: u32,
     animate_library: Arc<AnimateLibrary>,
+    master_fx: MasterFxState,
+    sample_rate: AtomicU32,
 }
 
 struct AnimateLibrary {
@@ -563,6 +577,12 @@ pub struct GrainRustParams {
 
     #[id = "gain"]
     pub gain: FloatParam,
+
+    #[id = "master_filter"]
+    pub master_filter: FloatParam,
+
+    #[id = "master_comp"]
+    pub master_comp: FloatParam,
 }
 
 impl AnimateLibrary {
@@ -625,6 +645,8 @@ impl Default for GrainRust {
             metronome_phase_samples: 0,
             metronome_click_remaining: 0,
             animate_library: Arc::new(AnimateLibrary::load()),
+            master_fx: MasterFxState::default(),
+            sample_rate: AtomicU32::new(44100),
         }
     }
 }
@@ -646,6 +668,24 @@ struct MasterMeters {
     right: AtomicU32,
 }
 
+struct MasterFxState {
+    // SVF filter state: [channel_idx]
+    filter_low: [f32; 2],
+    filter_band: [f32; 2],
+    // Compressor envelope follower
+    comp_env: f32,
+}
+
+impl Default for MasterFxState {
+    fn default() -> Self {
+        Self {
+            filter_low: [0.0; 2],
+            filter_band: [0.0; 2],
+            comp_env: 0.0,
+        }
+    }
+}
+
 #[derive(Default)]
 struct VisualizerState {
     oscilloscope: Mutex<Vec<f32>>,
@@ -659,7 +699,7 @@ impl Default for GrainRustParams {
         Self {
             selected_track: IntParam::new("Selected Track", 1, IntRange::Linear { min: 1, max: 4 }),
             gain: FloatParam::new(
-                "Gain",
+                "Master Gain",
                 util::db_to_gain(0.0),
                 FloatRange::Skewed {
                     min: util::db_to_gain(-70.0),
@@ -670,6 +710,29 @@ impl Default for GrainRustParams {
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+
+            master_filter: FloatParam::new(
+                "Master DJ Filter",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )
+            .with_value_to_string(Arc::new(|v| {
+                if v < 0.49 {
+                    format!("HP {:.0} Hz", 20.0 + (1.0 - v / 0.5) * 2000.0)
+                } else if v > 0.51 {
+                    format!("LP {:.0} Hz", 20000.0 - ((v - 0.5) / 0.5) * 19000.0)
+                } else {
+                    "Neutral".to_string()
+                }
+            })),
+
+            master_comp: FloatParam::new(
+                "Master Compression",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )
+            .with_unit("%")
+            .with_value_to_string(formatters::v2s_f32_percentage(0)),
         }
     }
 }
@@ -1138,6 +1201,16 @@ impl Plugin for GrainRust {
 
     type SysExMessage = ();
     type BackgroundTask = GrainRustTask;
+
+    fn initialize(
+        &mut self,
+        _audio_io_layout: &AudioIOLayout,
+        buffer_config: &BufferConfig,
+        _context: &mut impl InitContext<Self>,
+    ) -> bool {
+        self.sample_rate.store(buffer_config.sample_rate as u32, Ordering::Relaxed);
+        true
+    }
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -2486,12 +2559,89 @@ impl Plugin for GrainRust {
             keep_alive = true;
         }
 
-        // Apply global gain
-        for channel_samples in buffer.iter_samples() {
-            let gain = self.params.gain.smoothed.next();
+        // Master FX Chain
+        let sr = self.sample_rate.load(Ordering::Relaxed) as f32;
+        let master_filter = self.params.master_filter.smoothed.next();
+        let master_comp = self.params.master_comp.smoothed.next();
 
-            for sample in channel_samples {
-                *sample *= gain;
+        // Calculate DJ Filter coefficients
+        let mut filter_type = 0; // 0=None, 1=HP, 2=LP
+        let mut f = 0.0f32;
+        let mut q = 0.707f32;
+
+        if master_filter < 0.49 {
+            filter_type = 1; // HP
+            let cutoff_hz = 20.0 + (1.0 - master_filter / 0.5) * 2000.0;
+            f = (PI * cutoff_hz / sr).tan();
+        } else if master_filter > 0.51 {
+            filter_type = 2; // LP
+            let cutoff_hz = 20000.0 - ((master_filter - 0.5) / 0.5) * 19000.0;
+            f = (PI * cutoff_hz / sr).tan();
+        }
+
+        let res_coeff = 1.0 / q;
+
+        // Compressor parameters
+        let threshold_db = -24.0 * master_comp;
+        let threshold = util::db_to_gain(threshold_db);
+        let ratio = 1.0 + master_comp * 10.0;
+        let attack_ms = 5.0;
+        let release_ms = 100.0;
+        let attack_coeff = (-1.0 / (attack_ms * sr / 1000.0)).exp();
+        let release_coeff = (-1.0 / (release_ms * sr / 1000.0)).exp();
+
+        let num_channels = buffer.channels();
+        let num_samples = buffer.samples();
+
+        for sample_idx in 0..num_samples {
+            let mut max_abs = 0.0f32;
+            
+            // Process Filter + Find Max for Compressor
+            for channel_idx in 0..num_channels {
+                let mut x = buffer.as_slice()[channel_idx][sample_idx];
+                
+                if filter_type > 0 {
+                    let low = self.master_fx.filter_low[channel_idx];
+                    let band = self.master_fx.filter_band[channel_idx];
+                    let high = x - low - res_coeff * band;
+                    let new_band = f * high + band;
+                    let new_low = f * new_band + low;
+                    
+                    self.master_fx.filter_low[channel_idx] = new_low;
+                    self.master_fx.filter_band[channel_idx] = new_band;
+                    
+                    if filter_type == 1 {
+                        x = high;
+                    } else {
+                        x = new_low;
+                    }
+                }
+                
+                buffer.as_slice()[channel_idx][sample_idx] = x;
+                max_abs = max_abs.max(x.abs());
+            }
+
+            // Compressor
+            let mut env = self.master_fx.comp_env;
+            if max_abs > env {
+                env = attack_coeff * env + (1.0 - attack_coeff) * max_abs;
+            } else {
+                env = release_coeff * env + (1.0 - release_coeff) * max_abs;
+            }
+            self.master_fx.comp_env = env;
+
+            let mut reduction = 1.0f32;
+            if env > threshold {
+                let env_db = util::gain_to_db(env);
+                let over_db = env_db - threshold_db;
+                let reduced_db = over_db / ratio;
+                reduction = util::db_to_gain(reduced_db - over_db);
+            }
+
+            // Apply global gain + compression
+            let gain = self.params.gain.smoothed.next();
+            for channel_idx in 0..num_channels {
+                buffer.as_slice()[channel_idx][sample_idx] *= gain * reduction;
             }
         }
 
@@ -3308,14 +3458,19 @@ impl SlintWindow {
             .unwrap();
 
         slint_window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor });
-        slint_window.set_size(PhysicalSize::new(physical_width, physical_height));
+        slint_window.set_size(slint::WindowSize::Physical(PhysicalSize::new(physical_width, physical_height)));
 
         let output_devices = available_output_devices();
         let input_devices = available_input_devices();
         let sample_rates = vec![44100, 48000, 88200, 96000];
         let buffer_sizes = vec![256, 512, 1024, 2048, 4096];
 
-        initialize_ui(
+        let is_software = true;
+        #[cfg(any(feature = "renderer-opengl", feature = "renderer-vulkan"))]
+        let is_software = false;
+        
+        ui.set_is_software_renderer(is_software);
+    initialize_ui(
             &ui,
             &gui_context,
             &params,
@@ -3385,6 +3540,8 @@ impl SlintWindow {
             .any(|track| track.is_playing.load(Ordering::Relaxed));
         let is_recording = self.tracks[track_idx].is_recording.load(Ordering::Relaxed);
         let gain = self.params.gain.unmodulated_normalized_value();
+        let master_filter = self.params.master_filter.unmodulated_normalized_value();
+        let master_comp = self.params.master_comp.unmodulated_normalized_value();
         let track_level =
             f32::from_bits(self.tracks[track_idx].level.load(Ordering::Relaxed));
         let meter_left =
@@ -3614,6 +3771,8 @@ impl SlintWindow {
         self.ui.set_is_playing(is_playing);
         self.ui.set_is_recording(is_recording);
         self.ui.set_gain(gain);
+        self.ui.set_master_filter(master_filter);
+        self.ui.set_master_comp(master_comp);
         self.ui.set_track_level(track_level);
         self.ui.set_track_muted(track_muted);
         self.ui.set_meter_left(meter_left);
@@ -4127,6 +4286,24 @@ fn initialize_ui(
         setter.begin_set_parameter(&params_gain.gain);
         setter.set_parameter_normalized(&params_gain.gain, value);
         setter.end_set_parameter(&params_gain.gain);
+    });
+
+    let gui_context_filter = Arc::clone(gui_context);
+    let params_filter = Arc::clone(params);
+    ui.on_master_filter_changed(move |value| {
+        let setter = ParamSetter::new(gui_context_filter.as_ref());
+        setter.begin_set_parameter(&params_filter.master_filter);
+        setter.set_parameter_normalized(&params_filter.master_filter, value);
+        setter.end_set_parameter(&params_filter.master_filter);
+    });
+
+    let gui_context_comp = Arc::clone(gui_context);
+    let params_comp = Arc::clone(params);
+    ui.on_master_comp_changed(move |value| {
+        let setter = ParamSetter::new(gui_context_comp.as_ref());
+        setter.begin_set_parameter(&params_comp.master_comp);
+        setter.set_parameter_normalized(&params_comp.master_comp, value);
+        setter.end_set_parameter(&params_comp.master_comp);
     });
 
     let tracks_play = Arc::clone(tracks);
@@ -5772,7 +5949,7 @@ impl FigmaTestWindow {
         ).unwrap();
 
         slint_window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor });
-        slint_window.set_size(PhysicalSize::new(physical_width, physical_height));
+        slint_window.set_size(slint::WindowSize::Physical(PhysicalSize::new(physical_width, physical_height)));
 
         Self {
             slint_window,

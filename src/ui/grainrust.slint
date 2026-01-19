@@ -9,7 +9,6 @@
 
 import {
     Button,
-    Slider,
     ComboBox,
     ScrollView
 } from "std-widgets.slint";
@@ -20,8 +19,7 @@ import {
     RDSVUMeter,
     RDSVertVUMeter,
     RDSCircleToggle,
-    RDSKnob,
-    RDSSlider
+    RDSKnob
 } from "./components/index.slint";
 
 export component GrainRustUI inherits Window {
@@ -29,6 +27,8 @@ export component GrainRustUI inherits Window {
     in-out property <bool> is-playing: false;
     in-out property <bool> is-recording: false;
     in-out property <float> gain: 0.5;
+    in-out property <float> master-filter: 0.5;
+    in-out property <float> master-comp: 0.0;
     in-out property <float> track-level: 1.0;
     in-out property <bool> track-muted: false;
     in-out property <float> meter-left: 0.0;
@@ -108,6 +108,7 @@ export component GrainRustUI inherits Window {
     in-out property <bool> show-engine-confirm: false;
     in property <string> engine-confirm-text;
     in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate
+    in property <bool> is-software-renderer: false;
 
     // Animate Engine Properties
     in property <[string]> animate-slot-types;
@@ -183,6 +184,8 @@ export component GrainRustUI inherits Window {
     callback toggle-record();
     callback load-sample();
     callback gain-changed(value: float);
+    callback master-filter-changed(value: float);
+    callback master-comp-changed(value: float);
     callback track-level-changed(value: float);
     callback toggle-track-mute();
     callback tape-speed-changed(value: float);
@@ -331,13 +334,65 @@ export component GrainRustUI inherits Window {
                 width: 80px;
                 alignment: center;
                 Text {
+                    text: "Filter";
+                    color: #b9b9bf;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                }
+                RDSKnob {
+                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                    value: root.master-filter;
+                    min-value: 0;
+                    max-value: 1;
+                    size: 40px;
+                    indicator-position: 12px;
+                    sensitivity: 0.01;
+                    scroll-sensitivity: 0.01;
+                    value-changed(v) => {
+                        root.master-filter = v;
+                        root.master-filter-changed(v);
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                width: 80px;
+                alignment: center;
+                Text {
+                    text: "Comp";
+                    color: #b9b9bf;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                }
+                RDSKnob {
+                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                    value: root.master-comp;
+                    min-value: 0;
+                    max-value: 1;
+                    size: 40px;
+                    indicator-position: 12px;
+                    sensitivity: 0.01;
+                    scroll-sensitivity: 0.01;
+                    value-changed(v) => {
+                        root.master-comp = v;
+                        root.master-comp-changed(v);
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                width: 80px;
+                alignment: center;
+                Text {
                     text: "Master";
                     color: #b9b9bf;
                     font-size: 12px;
                     horizontal-alignment: center;
                 }
                 RDSKnob {
-                    renderer: "hi-fi";
+                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
                     value: root.gain;
                     min-value: 0;
                     max-value: 1;
@@ -354,19 +409,26 @@ export component GrainRustUI inherits Window {
 
             VerticalLayout {
                 spacing: 4px;
-                width: 180px;
+                width: 80px;
+                alignment: center;
                 Text {
                     text: root.tempo-label;
                     color: #b9b9bf;
                     font-size: 12px;
+                    horizontal-alignment: center;
                 }
-                Slider {
+                RDSKnob {
+                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
                     value: root.tape-tempo;
-                    minimum: 20;
-                    maximum: 240;
-                    changed => {
-                        root.tape-tempo = self.value;
-                        root.tape-tempo-changed(self.value);
+                    min-value: 20;
+                    max-value: 240;
+                    size: 48px;
+                    indicator-position: 15px;
+                    sensitivity: 0.5;
+                    scroll-sensitivity: 0.5;
+                    value-changed(v) => {
+                        root.tape-tempo = v;
+                        root.tape-tempo-changed(v);
                     }
                 }
             }
@@ -588,71 +650,79 @@ export component GrainRustUI inherits Window {
                 width: parent.width;
 
                 VerticalLayout {
-                    spacing: 6px;
-                    width: (parent.width - 16px) / 2;
+                    spacing: 12px;
+                    width: (parent.width - 16px) * 0.5;
 
                     HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Track Level"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        Slider {
-                            value: root.track-level;
-                            minimum: 0;
-                            maximum: 1;
-                            changed => {
-                                root.track-level = self.value;
-                                root.track-level-changed(self.value);
+                        spacing: 12px;
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 60px;
+                            Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                value: root.track-level;
+                                min-value: 0;
+                                max-value: 1;
+                                size: 48px;
+                                indicator-position: 15px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.track-level = v;
+                                    root.track-level-changed(v);
+                                }
                             }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Tape Speed"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        Slider {
-                            value: root.tape-speed;
-                            minimum: -4;
-                            maximum: 4;
-                            changed => {
-                                root.tape-speed = self.value;
-                                root.tape-speed-changed(self.value);
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 60px;
+                            Text { text: "Speed"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                value: root.tape-speed;
+                                min-value: -4;
+                                max-value: 4;
+                                size: 48px;
+                                indicator-position: 15px;
+                                sensitivity: 0.05;
+                                scroll-sensitivity: 0.05;
+                                value-changed(v) => {
+                                    root.tape-speed = v;
+                                    root.tape-speed-changed(v);
+                                }
                             }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Tape Tempo"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        Slider {
-                            value: root.tape-tempo;
-                            minimum: 20;
-                            maximum: 240;
-                            changed => {
-                                root.tape-tempo = self.value;
-                                root.tape-tempo-changed(self.value);
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 60px;
+                            Text { text: "Rotate"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                value: root.tape-rotate;
+                                min-value: 0;
+                                max-value: 1;
+                                size: 48px;
+                                indicator-position: 15px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.tape-rotate = v;
+                                    root.tape-rotate-changed(v);
+                                }
                             }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Rate Mode"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        ComboBox {
-                            model: root.tape-rate-modes;
-                            current-index: root.tape-rate-mode;
-                            selected => { root.tape-rate-mode-selected(self.current-index); }
-                        }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Tape Rotate"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        Slider {
-                            value: root.tape-rotate;
-                            minimum: 0;
-                            maximum: 1;
-                            changed => {
-                                root.tape-rotate = self.value;
-                                root.tape-rotate-changed(self.value);
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 100px;
+                            Text { text: "Rate Mode"; color: #b9b9bf; font-size: 11px; }
+                            ComboBox {
+                                model: root.tape-rate-modes;
+                                current-index: root.tape-rate-mode;
+                                selected => { root.tape-rate-mode-selected(self.current-index); }
                             }
                         }
                     }
@@ -667,10 +737,6 @@ export component GrainRustUI inherits Window {
                             text: root.loop-enabled ? "Loop On" : "Loop Off";
                             clicked => root.toggle-loop-enabled();
                         }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
                         Button {
                             text: root.tape-reverse ? "Reverse On" : "Reverse Off";
                             clicked => root.toggle-tape-reverse();
@@ -691,20 +757,12 @@ export component GrainRustUI inherits Window {
                             text: root.tape-monitor ? "Monitor On" : "Monitor Off";
                             clicked => root.toggle-tape-monitor();
                         }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
                         Button {
                             text: root.tape-overdub ? "Overdub On" : "Overdub Off";
                             clicked => root.toggle-tape-overdub();
                         }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Loop Mode"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
                         ComboBox {
+                            width: 120px;
                             model: root.loop-modes;
                             current-index: root.loop-mode;
                             selected => { root.loop-mode-selected(self.current-index); }
@@ -713,75 +771,108 @@ export component GrainRustUI inherits Window {
                 }
 
                 VerticalLayout {
-                    spacing: 6px;
-                    width: (parent.width - 16px) / 2;
+                    spacing: 12px;
+                    width: (parent.width - 16px) * 0.5;
 
                     HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Loop Start"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        Slider {
-                            value: root.loop-start;
-                            minimum: 0;
-                            maximum: 1;
-                            changed => {
-                                root.loop-start = self.value;
-                                root.loop-start-changed(self.value);
+                        spacing: 12px;
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 60px;
+                            Text { text: "Start"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                value: root.loop-start;
+                                min-value: 0;
+                                max-value: 1;
+                                size: 48px;
+                                indicator-position: 15px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.loop-start = v;
+                                    root.loop-start-changed(v);
+                                }
                             }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Loop Length"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        Slider {
-                            value: root.loop-length;
-                            minimum: 0.01;
-                            maximum: 1;
-                            changed => {
-                                root.loop-length = self.value;
-                                root.loop-length-changed(self.value);
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 60px;
+                            Text { text: "Length"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                value: root.loop-length;
+                                min-value: 0.01;
+                                max-value: 1;
+                                size: 48px;
+                                indicator-position: 15px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.loop-length = v;
+                                    root.loop-length-changed(v);
+                                }
                             }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Tape Glide"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        Slider {
-                            value: root.tape-glide;
-                            minimum: 0;
-                            maximum: 1;
-                            changed => {
-                                root.tape-glide = self.value;
-                                root.tape-glide-changed(self.value);
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 60px;
+                            Text { text: "Glide"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                value: root.tape-glide;
+                                min-value: 0;
+                                max-value: 1;
+                                size: 48px;
+                                indicator-position: 15px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.tape-glide = v;
+                                    root.tape-glide-changed(v);
+                                }
                             }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Tape SOS"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        Slider {
-                            value: root.tape-sos;
-                            minimum: 0;
-                            maximum: 1;
-                            changed => {
-                                root.tape-sos = self.value;
-                                root.tape-sos-changed(self.value);
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 60px;
+                            Text { text: "SOS"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                value: root.tape-sos;
+                                min-value: 0;
+                                max-value: 1;
+                                size: 48px;
+                                indicator-position: 15px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.tape-sos = v;
+                                    root.tape-sos-changed(v);
+                                }
                             }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { text: "Loop XFade"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                        Slider {
-                            value: root.loop-xfade;
-                            minimum: 0;
-                            maximum: 0.5;
-                            changed => {
-                                root.loop-xfade = self.value;
-                                root.loop-xfade-changed(self.value);
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 60px;
+                            Text { text: "XFade"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                value: root.loop-xfade;
+                                min-value: 0;
+                                max-value: 0.5;
+                                size: 48px;
+                                indicator-position: 15px;
+                                sensitivity: 0.005;
+                                scroll-sensitivity: 0.005;
+                                value-changed(v) => {
+                                    root.loop-xfade = v;
+                                    root.loop-xfade-changed(v);
+                                }
                             }
                         }
                     }
@@ -827,11 +918,18 @@ export component GrainRustUI inherits Window {
                                     }
                                 }
                             }
-                            Slider {
-                                width: 100px;
-                                value: root.animate-slot-a-level;
-                                minimum: 0; maximum: 1;
-                                changed => { root.animate-slot-a-level = self.value; root.animate-slot-a-level-changed(self.value); }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-slot-a-level;
+                                    min-value: 0; max-value: 1;
+                                    size: 32px; indicator-position: 10px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-slot-a-level = v; root.animate-slot-a-level-changed(v); }
+                                }
                             }
                         }
                         // Slot B
@@ -858,11 +956,18 @@ export component GrainRustUI inherits Window {
                                     }
                                 }
                             }
-                            Slider {
-                                width: 100px;
-                                value: root.animate-slot-b-level;
-                                minimum: 0; maximum: 1;
-                                changed => { root.animate-slot-b-level = self.value; root.animate-slot-b-level-changed(self.value); }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-slot-b-level;
+                                    min-value: 0; max-value: 1;
+                                    size: 32px; indicator-position: 10px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-slot-b-level = v; root.animate-slot-b-level-changed(v); }
+                                }
                             }
                         }
                         // Slot C
@@ -889,11 +994,18 @@ export component GrainRustUI inherits Window {
                                     }
                                 }
                             }
-                            Slider {
-                                width: 100px;
-                                value: root.animate-slot-c-level;
-                                minimum: 0; maximum: 1;
-                                changed => { root.animate-slot-c-level = self.value; root.animate-slot-c-level-changed(self.value); }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-slot-c-level;
+                                    min-value: 0; max-value: 1;
+                                    size: 32px; indicator-position: 10px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-slot-c-level = v; root.animate-slot-c-level-changed(v); }
+                                }
                             }
                         }
                         // Slot D
@@ -920,11 +1032,18 @@ export component GrainRustUI inherits Window {
                                     }
                                 }
                             }
-                            Slider {
-                                width: 100px;
-                                value: root.animate-slot-d-level;
-                                minimum: 0; maximum: 1;
-                                changed => { root.animate-slot-d-level = self.value; root.animate-slot-d-level-changed(self.value); }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-slot-d-level;
+                                    min-value: 0; max-value: 1;
+                                    size: 32px; indicator-position: 10px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-slot-d-level = v; root.animate-slot-d-level-changed(v); }
+                                }
                             }
                         }
                     }
@@ -968,25 +1087,52 @@ export component GrainRustUI inherits Window {
                         spacing: 6px;
                         Text { text: "Filter"; color: #e4e4ea; font-size: 14px; }
                         HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Cutoff"; color: #b9b9bf; font-size: 12px; width: 60px; }
-                            Slider {
-                                value: root.animate-filter-cutoff;
-                                changed => { root.animate-filter-cutoff = self.value; root.animate-filter-cutoff-changed(self.value); }
+                            spacing: 12px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 50px;
+                                Text { text: "Cutoff"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-filter-cutoff;
+                                    min-value: 0; max-value: 1;
+                                    size: 36px; indicator-position: 12px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-filter-cutoff = v; root.animate-filter-cutoff-changed(v); }
+                                }
                             }
-                        }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Res"; color: #b9b9bf; font-size: 12px; width: 60px; }
-                            Slider {
-                                value: root.animate-filter-resonance;
-                                changed => { root.animate-filter-resonance = self.value; root.animate-filter-resonance-changed(self.value); }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 50px;
+                                Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-filter-resonance;
+                                    min-value: 0; max-value: 1;
+                                    size: 36px; indicator-position: 12px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-filter-resonance = v; root.animate-filter-resonance-changed(v); }
+                                }
                             }
-                        }
-                        ComboBox {
-                            model: root.animate-filter-types;
-                            current-index: root.animate-filter-type;
-                            selected => { root.animate-filter-type = self.current-index; root.animate-filter-type-changed(self.current-index); }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 50px;
+                                Text { text: "Drive"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-filter-drive;
+                                    min-value: 0; max-value: 1;
+                                    size: 36px; indicator-position: 12px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-filter-drive = v; root.animate-filter-drive-changed(v); }
+                                }
+                            }
+                            ComboBox {
+                                width: 100px;
+                                model: root.animate-filter-types;
+                                current-index: root.animate-filter-type;
+                                selected => { root.animate-filter-type = self.current-index; root.animate-filter-type-changed(self.current-index); }
+                            }
                         }
                     }
 
@@ -994,15 +1140,59 @@ export component GrainRustUI inherits Window {
                         spacing: 6px;
                         Text { text: "Amp Envelope"; color: #e4e4ea; font-size: 14px; }
                         HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "A"; color: #b9b9bf; font-size: 11px; width: 15px; }
-                            Slider { value: root.animate-amp-attack; changed => { root.animate-amp-attack = self.value; root.animate-amp-attack-changed(self.value); } }
-                            Text { text: "D"; color: #b9b9bf; font-size: 11px; width: 15px; }
-                            Slider { value: root.animate-amp-decay; changed => { root.animate-amp-decay = self.value; root.animate-amp-decay-changed(self.value); } }
-                            Text { text: "S"; color: #b9b9bf; font-size: 11px; width: 15px; }
-                            Slider { value: root.animate-amp-sustain; changed => { root.animate-amp-sustain = self.value; root.animate-amp-sustain-changed(self.value); } }
-                            Text { text: "R"; color: #b9b9bf; font-size: 11px; width: 15px; }
-                            Slider { value: root.animate-amp-release; changed => { root.animate-amp-release = self.value; root.animate-amp-release-changed(self.value); } }
+                            spacing: 12px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 40px;
+                                Text { text: "A"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-amp-attack;
+                                    min-value: 0.01; max-value: 1;
+                                    size: 28px; indicator-position: 8px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-amp-attack = v; root.animate-amp-attack-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 40px;
+                                Text { text: "D"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-amp-decay;
+                                    min-value: 0.01; max-value: 1;
+                                    size: 28px; indicator-position: 8px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-amp-decay = v; root.animate-amp-decay-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 40px;
+                                Text { text: "S"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-amp-sustain;
+                                    min-value: 0; max-value: 1;
+                                    size: 28px; indicator-position: 8px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-amp-sustain = v; root.animate-amp-sustain-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 40px;
+                                Text { text: "R"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.animate-amp-release;
+                                    min-value: 0.01; max-value: 1;
+                                    size: 28px; indicator-position: 8px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.animate-amp-release = v; root.animate-amp-release-changed(v); }
+                                }
+                            }
                         }
                     }
                 }
@@ -1045,178 +1235,169 @@ export component GrainRustUI inherits Window {
                     width: parent.width;
 
                     VerticalLayout {
-                        spacing: 6px;
-                        width: (parent.width - 16px) / 2;
+                        spacing: 12px;
+                        width: parent.width;
 
                         HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Pitch"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-pitch;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-pitch = self.value;
-                                    root.mosaic-pitch-changed(self.value);
+                            spacing: 12px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Pitch"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-pitch;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-pitch = v; root.mosaic-pitch-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Rate"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-rate;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-rate = v; root.mosaic-rate-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Size"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-size;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-size = v; root.mosaic-size-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Contour"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-contour;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-contour = v; root.mosaic-contour-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Warp"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-warp;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-warp = v; root.mosaic-warp-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Spray"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-spray;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-spray = v; root.mosaic-spray-changed(v); }
                                 }
                             }
                         }
 
                         HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Rate"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-rate;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-rate = self.value;
-                                    root.mosaic-rate-changed(self.value);
+                            spacing: 12px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Pattern"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-pattern;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-pattern = v; root.mosaic-pattern-changed(v); }
                                 }
                             }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Size"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-size;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-size = self.value;
-                                    root.mosaic-size-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Wet"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-wet;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-wet = v; root.mosaic-wet-changed(v); }
                                 }
                             }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Contour"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-contour;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-contour = self.value;
-                                    root.mosaic-contour-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Detune"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-detune;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-detune = v; root.mosaic-detune-changed(v); }
                                 }
                             }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Warp"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-warp;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-warp = self.value;
-                                    root.mosaic-warp-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Rand Rate"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-rand-rate;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-rand-rate = v; root.mosaic-rand-rate-changed(v); }
                                 }
                             }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Spray"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-spray;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-spray = self.value;
-                                    root.mosaic-spray-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Rand Size"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-rand-size;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-rand-size = v; root.mosaic-rand-size-changed(v); }
                                 }
                             }
-                        }
-                    }
-
-                    VerticalLayout {
-                        spacing: 6px;
-                        width: (parent.width - 16px) / 2;
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Pattern"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-pattern;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-pattern = self.value;
-                                    root.mosaic-pattern-changed(self.value);
-                                }
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Wet"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-wet;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-wet = self.value;
-                                    root.mosaic-wet-changed(self.value);
-                                }
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Detune"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-detune;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-detune = self.value;
-                                    root.mosaic-detune-changed(self.value);
-                                }
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Rand Rate"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-rand-rate;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-rand-rate = self.value;
-                                    root.mosaic-rand-rate-changed(self.value);
-                                }
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Rand Size"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-rand-size;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-rand-size = self.value;
-                                    root.mosaic-rand-size-changed(self.value);
-                                }
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Mosaic SOS"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.mosaic-sos;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.mosaic-sos = self.value;
-                                    root.mosaic-sos-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "SOS"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.mosaic-sos;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.mosaic-sos = v; root.mosaic-sos-changed(v); }
                                 }
                             }
                         }
@@ -1248,146 +1429,192 @@ export component GrainRustUI inherits Window {
                     width: parent.width;
 
                     VerticalLayout {
-                        spacing: 6px;
-                        width: (parent.width - 16px) / 2;
+                        spacing: 12px;
+                        width: parent.width;
 
                         HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Cutoff"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.ring-cutoff;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.ring-cutoff = self.value;
-                                    root.ring-cutoff-changed(self.value);
+                            spacing: 12px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Cutoff"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-cutoff;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-cutoff = v; root.ring-cutoff-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-resonance;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-resonance = v; root.ring-resonance-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Decay"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-decay;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-decay = v; root.ring-decay-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Pitch"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-pitch;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-pitch = v; root.ring-pitch-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 100px;
+                                Text { text: "Decay Mode"; color: #b9b9bf; font-size: 11px; }
+                                ComboBox {
+                                    model: root.ring-decay-modes;
+                                    current-index: root.ring-decay-mode;
+                                    selected => { root.ring-decay-mode-selected(self.current-index); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Slope"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-slope;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-slope = v; root.ring-slope-changed(v); }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Tone"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-tone;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-tone = v; root.ring-tone-changed(v); }
                                 }
                             }
                         }
 
                         HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Resonance"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.ring-resonance;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.ring-resonance = self.value;
-                                    root.ring-resonance-changed(self.value);
+                            spacing: 12px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Tilt"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-tilt;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-tilt = v; root.ring-tilt-changed(v); }
                                 }
                             }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Decay"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.ring-decay;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.ring-decay = self.value;
-                                    root.ring-decay-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Wet"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-wet;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-wet = v; root.ring-wet-changed(v); }
                                 }
                             }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Pitch"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.ring-pitch;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.ring-pitch = self.value;
-                                    root.ring-pitch-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Detune"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-detune;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-detune = v; root.ring-detune-changed(v); }
                                 }
                             }
-                        }
-                    }
-
-                    VerticalLayout {
-                        spacing: 6px;
-                        width: (parent.width - 16px) / 2;
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Decay Mode"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            ComboBox {
-                                model: root.ring-decay-modes;
-                                current-index: root.ring-decay-mode;
-                                selected => { root.ring-decay-mode-selected(self.current-index); }
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Slope"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.ring-slope;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.ring-slope = self.value;
-                                    root.ring-slope-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Waves"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-waves;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-waves = v; root.ring-waves-changed(v); }
                                 }
                             }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Tone"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.ring-tone;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.ring-tone = self.value;
-                                    root.ring-tone-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "W-Rate"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-waves-rate;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-waves-rate = v; root.ring-waves-rate-changed(v); }
                                 }
                             }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Tilt"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.ring-tilt;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.ring-tilt = self.value;
-                                    root.ring-tilt-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "Noise"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-noise;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-noise = v; root.ring-noise-changed(v); }
                                 }
                             }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Wet"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.ring-wet;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.ring-wet = self.value;
-                                    root.ring-wet-changed(self.value);
-                                }
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Detune"; color: #b9b9bf; font-size: 13px; width: 100px; vertical-alignment: center; }
-                            Slider {
-                                value: root.ring-detune;
-                                minimum: 0;
-                                maximum: 1;
-                                changed => {
-                                    root.ring-detune = self.value;
-                                    root.ring-detune-changed(self.value);
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 60px;
+                                Text { text: "N-Rate"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                RDSKnob {
+                                    renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
+                                    value: root.ring-noise-rate;
+                                    min-value: 0; max-value: 1;
+                                    size: 48px; indicator-position: 15px;
+                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                    value-changed(v) => { root.ring-noise-rate = v; root.ring-noise-rate-changed(v); }
                                 }
                             }
                         }
@@ -1464,13 +1691,18 @@ export component GrainRustUI inherits Window {
                     HorizontalLayout {
                         spacing: 8px;
                         Text { text: root.metronome-count-in-label; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
-                        Slider {
+                        RDSKnob {
+                            renderer: root.is-software-renderer ? "lo-fi" : "hi-fi";
                             value: root.metronome-count-in;
-                            minimum: 0;
-                            maximum: 8;
-                            changed => {
-                                root.metronome-count-in = self.value;
-                                root.metronome-count-in-changed(self.value);
+                            min-value: 0;
+                            max-value: 8;
+                            size: 32px;
+                            indicator-position: 10px;
+                            sensitivity: 0.1;
+                            scroll-sensitivity: 0.1;
+                            value-changed(v) => {
+                                root.metronome-count-in = v;
+                                root.metronome-count-in-changed(v);
                             }
                         }
                     }

@@ -8,10 +8,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["assert_process_allocs", "standalone"] }
-slint = { version = "1.14.1", default-features = false, features = ["std", "renderer-software", "software-renderer-systemfonts", "compat-1-2"] }
+slint = { version = "1.14.1", default-features = false, features = ["std", "software-renderer-systemfonts", "compat-1-2"] }
 raw-window-handle = "0.5"
 raw-window-handle-06 = { package = "raw-window-handle", version = "0.6" }
 baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "579130ecb4f9f315ae52190af42f0ea46aeaa4a2", features = ["opengl"] }
+# ... rest of dependencies ...
 fundsp = "0.20"
 symphonia = { version = "0.5", features = ["all"] }
 cpal = "0.15"
@@ -33,3 +34,10 @@ softbuffer = { version = "0.4.6", default-features = false, features = ["kms", "
 
 [build-dependencies]
 slint-build = "1.14.1"
+
+[features]
+default = ["renderer-software"]
+ui-testing = ["slint/backend-winit", "slint/std"]
+renderer-software = ["slint/renderer-software"]
+renderer-opengl = ["slint/renderer-femtovg", "slint/std", "slint/backend-winit"]
+renderer-vulkan = ["slint/renderer-skia-vulkan", "slint/std", "slint/backend-winit"]
