@@ -12,7 +12,7 @@ use cpal::traits::{DeviceTrait, HostTrait};
 use parking_lot::Mutex;
 use slint::{LogicalPosition, ModelRc, PhysicalSize, SharedString, VecModel};
 use slint::platform::{
-    self, Platform, PlatformError, PointerEventButton, WindowEvent,
+    self, Platform, PlatformError, PointerEventButton, WindowAdapter, WindowEvent,
 };
 use slint::platform::software_renderer::{
     MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType,
@@ -88,6 +88,18 @@ fn default_window_size() -> baseview::Size {
 
 slint::include_modules!();
 
+#[cfg(feature = "ui-testing")]
+pub fn run_ui_testing() {
+    let ui = TestingGrounds::new().unwrap();
+    
+    let is_software = true;
+    #[cfg(any(feature = "renderer-opengl", feature = "renderer-vulkan"))]
+    let is_software = false;
+    ui.set_is_software_renderer(is_software);
+
+    ui.run().unwrap();
+}
+
 struct Track {
     /// Audio data for the track. Each channel is a Vec of f32.
     samples: Arc<Mutex<Vec<Vec<f32>>>>,
@@ -153,6 +165,8 @@ struct Track {
     tape_overdub: AtomicBool,
     /// Loop start position as normalized 0..1.
     loop_start: AtomicU32,
+    /// Trigger start position as normalized 0..1.
+    trigger_start: AtomicU32,
     /// Loop length as normalized 0..1.
     loop_length: AtomicU32,
     /// Loop crossfade amount as normalized 0..0.5.
@@ -415,6 +429,7 @@ impl Default for Track {
             tape_monitor: AtomicBool::new(false),
             tape_overdub: AtomicBool::new(false),
             loop_start: AtomicU32::new(0.0f32.to_bits()),
+            trigger_start: AtomicU32::new(0.0f32.to_bits()),
             loop_length: AtomicU32::new(1.0f32.to_bits()),
             loop_xfade: AtomicU32::new(0.0f32.to_bits()),
             loop_enabled: AtomicBool::new(true),
@@ -549,6 +564,8 @@ pub struct GrainRust {
     metronome_phase_samples: u32,
     metronome_click_remaining: u32,
     animate_library: Arc<AnimateLibrary>,
+    master_fx: MasterFxState,
+    sample_rate: AtomicU32,
 }
 
 struct AnimateLibrary {
@@ -563,6 +580,12 @@ pub struct GrainRustParams {
 
     #[id = "gain"]
     pub gain: FloatParam,
+
+    #[id = "master_filter"]
+    pub master_filter: FloatParam,
+
+    #[id = "master_comp"]
+    pub master_comp: FloatParam,
 }
 
 impl AnimateLibrary {
@@ -625,6 +648,8 @@ impl Default for GrainRust {
             metronome_phase_samples: 0,
             metronome_click_remaining: 0,
             animate_library: Arc::new(AnimateLibrary::load()),
+            master_fx: MasterFxState::default(),
+            sample_rate: AtomicU32::new(44100),
         }
     }
 }
@@ -646,6 +671,24 @@ struct MasterMeters {
     right: AtomicU32,
 }
 
+struct MasterFxState {
+    // SVF filter state: [channel_idx]
+    filter_low: [f32; 2],
+    filter_band: [f32; 2],
+    // Compressor envelope follower
+    comp_env: f32,
+}
+
+impl Default for MasterFxState {
+    fn default() -> Self {
+        Self {
+            filter_low: [0.0; 2],
+            filter_band: [0.0; 2],
+            comp_env: 0.0,
+        }
+    }
+}
+
 #[derive(Default)]
 struct VisualizerState {
     oscilloscope: Mutex<Vec<f32>>,
@@ -659,7 +702,7 @@ impl Default for GrainRustParams {
         Self {
             selected_track: IntParam::new("Selected Track", 1, IntRange::Linear { min: 1, max: 4 }),
             gain: FloatParam::new(
-                "Gain",
+                "Master Gain",
                 util::db_to_gain(0.0),
                 FloatRange::Skewed {
                     min: util::db_to_gain(-70.0),
@@ -670,6 +713,29 @@ impl Default for GrainRustParams {
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+
+            master_filter: FloatParam::new(
+                "Master DJ Filter",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )
+            .with_value_to_string(Arc::new(|v| {
+                if v < 0.49 {
+                    format!("HP {:.0} Hz", 20.0 + (1.0 - v / 0.5) * 2000.0)
+                } else if v > 0.51 {
+                    format!("LP {:.0} Hz", 20000.0 - ((v - 0.5) / 0.5) * 19000.0)
+                } else {
+                    "Neutral".to_string()
+                }
+            })),
+
+            master_comp: FloatParam::new(
+                "Master Compression",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )
+            .with_unit("%")
+            .with_value_to_string(formatters::v2s_f32_percentage(0)),
         }
     }
 }
@@ -745,6 +811,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.tape_monitor.store(false, Ordering::Relaxed);
     track.tape_overdub.store(false, Ordering::Relaxed);
     track.loop_start.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.trigger_start.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.loop_length.store(1.0f32.to_bits(), Ordering::Relaxed);
     track.loop_xfade.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.loop_enabled.store(true, Ordering::Relaxed);
@@ -1138,6 +1205,16 @@ impl Plugin for GrainRust {
 
     type SysExMessage = ();
     type BackgroundTask = GrainRustTask;
+
+    fn initialize(
+        &mut self,
+        _audio_io_layout: &AudioIOLayout,
+        buffer_config: &BufferConfig,
+        _context: &mut impl InitContext<Self>,
+    ) -> bool {
+        self.sample_rate.store(buffer_config.sample_rate as u32, Ordering::Relaxed);
+        true
+    }
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -1556,6 +1633,7 @@ impl Plugin for GrainRust {
                         );
                     }
 
+                    let mut prev_play_pos;
                     for sample_idx in 0..num_buffer_samples {
                         let mut pos = play_pos as isize;
                         if pos < 0 || pos as usize >= num_samples {
@@ -1653,6 +1731,7 @@ impl Plugin for GrainRust {
                                 keylock_grain_b += step * hop;
                             }
                             let keylock_pos = keylock_grain_a + keylock_phase;
+                            prev_play_pos = play_pos;
                             play_pos = keylock_pos;
                             if loop_mode == 2 {
                                 if direction >= 0 && play_pos >= loop_end as f32 {
@@ -1666,16 +1745,16 @@ impl Plugin for GrainRust {
                             }
                             if loop_active && loop_end > loop_start {
                                 if loop_mode == 1 {
-                                    if direction > 0 && play_pos as usize >= loop_end {
+                                    if direction > 0 && play_pos >= loop_end as f32 && prev_play_pos < loop_end as f32 {
                                         direction = -1;
                                         play_pos = loop_end.saturating_sub(1) as f32;
-                                    } else if direction < 0 && play_pos <= loop_start as f32 {
+                                    } else if direction < 0 && play_pos <= loop_start as f32 && prev_play_pos > loop_start as f32 {
                                         direction = 1;
                                         play_pos = loop_start as f32;
                                     }
-                                } else if direction > 0 && play_pos as usize >= loop_end {
+                                } else if direction > 0 && play_pos >= loop_end as f32 && prev_play_pos < loop_end as f32 {
                                     play_pos = loop_start as f32;
-                                } else if direction < 0 && play_pos < loop_start as f32 {
+                                } else if direction < 0 && play_pos < loop_start as f32 && prev_play_pos >= loop_start as f32 {
                                     play_pos = loop_end.saturating_sub(1) as f32;
                                 }
                             }
@@ -1755,19 +1834,20 @@ impl Plugin for GrainRust {
                         }
 
                             let speed = smooth_speed + speed_step * sample_idx as f32;
+                            prev_play_pos = play_pos;
                             play_pos += direction as f32 * speed;
                             if loop_active && loop_end > loop_start {
                                 if loop_mode == 1 {
-                                    if direction > 0 && play_pos as usize >= loop_end {
+                                    if direction > 0 && play_pos >= loop_end as f32 && prev_play_pos < loop_end as f32 {
                                         direction = -1;
                                         play_pos = loop_end.saturating_sub(1) as f32;
-                                    } else if direction < 0 && play_pos <= loop_start as f32 {
+                                    } else if direction < 0 && play_pos <= loop_start as f32 && prev_play_pos > loop_start as f32 {
                                         direction = 1;
                                         play_pos = loop_start as f32;
                                     }
-                                } else if direction > 0 && play_pos as usize >= loop_end {
+                                } else if direction > 0 && play_pos >= loop_end as f32 && prev_play_pos < loop_end as f32 {
                                     play_pos = loop_start as f32;
-                                } else if direction < 0 && play_pos < loop_start as f32 {
+                                } else if direction < 0 && play_pos < loop_start as f32 && prev_play_pos >= loop_start as f32 {
                                     play_pos = loop_end.saturating_sub(1) as f32;
                                 }
                             }
@@ -2486,12 +2566,89 @@ impl Plugin for GrainRust {
             keep_alive = true;
         }
 
-        // Apply global gain
-        for channel_samples in buffer.iter_samples() {
-            let gain = self.params.gain.smoothed.next();
+        // Master FX Chain
+        let sr = self.sample_rate.load(Ordering::Relaxed) as f32;
+        let master_filter = self.params.master_filter.smoothed.next();
+        let master_comp = self.params.master_comp.smoothed.next();
 
-            for sample in channel_samples {
-                *sample *= gain;
+        // Calculate DJ Filter coefficients
+        let mut filter_type = 0; // 0=None, 1=HP, 2=LP
+        let mut f = 0.0f32;
+        let mut q = 0.707f32;
+
+        if master_filter < 0.49 {
+            filter_type = 1; // HP
+            let cutoff_hz = 20.0 + (1.0 - master_filter / 0.5) * 2000.0;
+            f = (PI * cutoff_hz / sr).tan();
+        } else if master_filter > 0.51 {
+            filter_type = 2; // LP
+            let cutoff_hz = 20000.0 - ((master_filter - 0.5) / 0.5) * 19000.0;
+            f = (PI * cutoff_hz / sr).tan();
+        }
+
+        let res_coeff = 1.0 / q;
+
+        // Compressor parameters
+        let threshold_db = -24.0 * master_comp;
+        let threshold = util::db_to_gain(threshold_db);
+        let ratio = 1.0 + master_comp * 10.0;
+        let attack_ms = 5.0;
+        let release_ms = 100.0;
+        let attack_coeff = (-1.0 / (attack_ms * sr / 1000.0)).exp();
+        let release_coeff = (-1.0 / (release_ms * sr / 1000.0)).exp();
+
+        let num_channels = buffer.channels();
+        let num_samples = buffer.samples();
+
+        for sample_idx in 0..num_samples {
+            let mut max_abs = 0.0f32;
+            
+            // Process Filter + Find Max for Compressor
+            for channel_idx in 0..num_channels {
+                let mut x = buffer.as_slice()[channel_idx][sample_idx];
+                
+                if filter_type > 0 {
+                    let low = self.master_fx.filter_low[channel_idx];
+                    let band = self.master_fx.filter_band[channel_idx];
+                    let high = x - low - res_coeff * band;
+                    let new_band = f * high + band;
+                    let new_low = f * new_band + low;
+                    
+                    self.master_fx.filter_low[channel_idx] = new_low;
+                    self.master_fx.filter_band[channel_idx] = new_band;
+                    
+                    if filter_type == 1 {
+                        x = high;
+                    } else {
+                        x = new_low;
+                    }
+                }
+                
+                buffer.as_slice()[channel_idx][sample_idx] = x;
+                max_abs = max_abs.max(x.abs());
+            }
+
+            // Compressor
+            let mut env = self.master_fx.comp_env;
+            if max_abs > env {
+                env = attack_coeff * env + (1.0 - attack_coeff) * max_abs;
+            } else {
+                env = release_coeff * env + (1.0 - release_coeff) * max_abs;
+            }
+            self.master_fx.comp_env = env;
+
+            let mut reduction = 1.0f32;
+            if env > threshold {
+                let env_db = util::gain_to_db(env);
+                let over_db = env_db - threshold_db;
+                let reduced_db = over_db / ratio;
+                reduction = util::db_to_gain(reduced_db - over_db);
+            }
+
+            // Apply global gain + compression
+            let gain = self.params.gain.smoothed.next();
+            for channel_idx in 0..num_channels {
+                buffer.as_slice()[channel_idx][sample_idx] *= gain * reduction;
             }
         }
 
@@ -2609,20 +2766,20 @@ fn wrap_loop_pos(
     if num_samples == 0 {
         return 0.0;
     }
-    if loop_active && loop_end > loop_start {
-        let loop_len = (loop_end - loop_start) as f32;
-        let start = loop_start as f32;
-        let end = loop_end as f32;
-        while pos < start {
-            pos += loop_len;
+    if pos < 0.0 {
+        if loop_active && loop_end > loop_start {
+            pos = (loop_end.saturating_sub(1)) as f32;
+        } else {
+            pos = 0.0;
         }
-        while pos >= end {
-            pos -= loop_len;
+    } else if pos as usize >= num_samples {
+        if loop_active && loop_end > loop_start {
+            pos = loop_start as f32;
+        } else {
+            pos = (num_samples.saturating_sub(1)) as f32;
         }
-        pos
-    } else {
-        pos.clamp(0.0, (num_samples - 1) as f32)
     }
+    pos
 }
 
 fn next_mosaic_rng(state: &mut u32) -> u32 {
@@ -3308,14 +3465,19 @@ impl SlintWindow {
             .unwrap();
 
         slint_window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor });
-        slint_window.set_size(PhysicalSize::new(physical_width, physical_height));
+        slint_window.set_size(slint::WindowSize::Physical(PhysicalSize::new(physical_width, physical_height)));
 
         let output_devices = available_output_devices();
         let input_devices = available_input_devices();
         let sample_rates = vec![44100, 48000, 88200, 96000];
         let buffer_sizes = vec![256, 512, 1024, 2048, 4096];
 
-        initialize_ui(
+        let is_software = true;
+        #[cfg(any(feature = "renderer-opengl", feature = "renderer-vulkan"))]
+        let is_software = false;
+        
+        ui.set_is_software_renderer(is_software);
+    initialize_ui(
             &ui,
             &gui_context,
             &params,
@@ -3385,6 +3547,8 @@ impl SlintWindow {
             .any(|track| track.is_playing.load(Ordering::Relaxed));
         let is_recording = self.tracks[track_idx].is_recording.load(Ordering::Relaxed);
         let gain = self.params.gain.unmodulated_normalized_value();
+        let master_filter = self.params.master_filter.unmodulated_normalized_value();
+        let master_comp = self.params.master_comp.unmodulated_normalized_value();
         let track_level =
             f32::from_bits(self.tracks[track_idx].level.load(Ordering::Relaxed));
         let meter_left =
@@ -3486,6 +3650,8 @@ impl SlintWindow {
             self.tracks[track_idx].ring_scale.load(Ordering::Relaxed);
         let loop_start =
             f32::from_bits(self.tracks[track_idx].loop_start.load(Ordering::Relaxed));
+        let trigger_start =
+            f32::from_bits(self.tracks[track_idx].trigger_start.load(Ordering::Relaxed));
         let loop_length =
             f32::from_bits(self.tracks[track_idx].loop_length.load(Ordering::Relaxed));
         let loop_xfade =
@@ -3614,6 +3780,8 @@ impl SlintWindow {
         self.ui.set_is_playing(is_playing);
         self.ui.set_is_recording(is_recording);
         self.ui.set_gain(gain);
+        self.ui.set_master_filter(master_filter);
+        self.ui.set_master_comp(master_comp);
         self.ui.set_track_level(track_level);
         self.ui.set_track_muted(track_muted);
         self.ui.set_meter_left(meter_left);
@@ -3661,6 +3829,7 @@ impl SlintWindow {
         self.ui.set_ring_noise_rate_mode(ring_noise_rate_mode as i32);
         self.ui.set_ring_scale(ring_scale as i32);
         self.ui.set_loop_start(loop_start);
+        self.ui.set_trigger_start(trigger_start);
         self.ui.set_loop_length(loop_length);
         self.ui.set_loop_xfade(loop_xfade);
         self.ui.set_loop_enabled(loop_enabled);
@@ -3958,6 +4127,7 @@ fn initialize_ui(
         SharedString::from("Oscilloscope"),
         SharedString::from("Spectrum"),
         SharedString::from("Vectorscope"),
+        SharedString::from("Off"),
     ])));
     ui.set_tape_rate_modes(ModelRc::new(VecModel::from(vec![
         SharedString::from("Free"),
@@ -4129,6 +4299,24 @@ fn initialize_ui(
         setter.end_set_parameter(&params_gain.gain);
     });
 
+    let gui_context_filter = Arc::clone(gui_context);
+    let params_filter = Arc::clone(params);
+    ui.on_master_filter_changed(move |value| {
+        let setter = ParamSetter::new(gui_context_filter.as_ref());
+        setter.begin_set_parameter(&params_filter.master_filter);
+        setter.set_parameter_normalized(&params_filter.master_filter, value);
+        setter.end_set_parameter(&params_filter.master_filter);
+    });
+
+    let gui_context_comp = Arc::clone(gui_context);
+    let params_comp = Arc::clone(params);
+    ui.on_master_comp_changed(move |value| {
+        let setter = ParamSetter::new(gui_context_comp.as_ref());
+        setter.begin_set_parameter(&params_comp.master_comp);
+        setter.set_parameter_normalized(&params_comp.master_comp, value);
+        setter.end_set_parameter(&params_comp.master_comp);
+    });
+
     let tracks_play = Arc::clone(tracks);
     let global_tempo_play = Arc::clone(global_tempo);
     let metronome_enabled_play = Arc::clone(metronome_enabled);
@@ -4175,6 +4363,14 @@ fn initialize_ui(
             } else {
                 0.0
             };
+            let trigger_start_norm =
+                f32::from_bits(track.trigger_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
+            let trigger_start = if let Some(samples) = track.samples.try_lock() {
+                let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
+                (trigger_start_norm * len as f32) as f32
+            } else {
+                0.0
+            };
             let direction = if loop_mode == 3 { -1 } else { 1 };
             track.loop_dir.store(direction, Ordering::Relaxed);
             if loop_mode == 4 {
@@ -4191,13 +4387,13 @@ fn initialize_ui(
                             loop_start_usize + fastrand::usize(..(loop_end - loop_start_usize));
                         track.play_pos.store((rand_pos as f32).to_bits(), Ordering::Relaxed);
                     } else {
-                        track.play_pos.store(loop_start.to_bits(), Ordering::Relaxed);
+                        track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
                     }
                 } else {
-                    track.play_pos.store(loop_start.to_bits(), Ordering::Relaxed);
+                    track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
                 }
             } else {
-                track.play_pos.store(loop_start.to_bits(), Ordering::Relaxed);
+                track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
             }
             track
                 .loop_start_last
@@ -4230,6 +4426,110 @@ fn initialize_ui(
                 track.pending_play.store(false, Ordering::Relaxed);
                 track.count_in_remaining.store(0, Ordering::Relaxed);
                 track.is_playing.store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_audition = Arc::clone(tracks);
+    let params_audition = Arc::clone(params);
+    ui.on_audition_start({
+        let tracks = Arc::clone(&tracks_audition);
+        let params = Arc::clone(&params_audition);
+        move || {
+            let track_idx = params.selected_track.value().saturating_sub(1) as usize;
+            if track_idx >= NUM_TRACKS {
+                return;
+            }
+            let track = &tracks[track_idx];
+
+            let loop_enabled = track.loop_enabled.load(Ordering::Relaxed);
+            let loop_mode = track.loop_mode.load(Ordering::Relaxed);
+            let loop_start_norm =
+                f32::from_bits(track.loop_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
+            let rotate_norm =
+                f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+
+            let loop_start = if loop_enabled {
+                if let Some(samples) = track.samples.try_lock() {
+                    let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
+                    let base_start = (loop_start_norm * len as f32) as usize;
+                    let rotate_offset = (rotate_norm * len as f32) as usize;
+                    ((base_start + rotate_offset) % len.max(1)) as f32
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            };
+
+            let trigger_start_norm =
+                f32::from_bits(track.trigger_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
+            let trigger_start = if let Some(samples) = track.samples.try_lock() {
+                let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
+                (trigger_start_norm * len as f32) as f32
+            } else {
+                0.0
+            };
+
+            let direction = if loop_mode == 3 { -1 } else { 1 };
+            track.loop_dir.store(direction, Ordering::Relaxed);
+
+            if loop_mode == 4 {
+                if let Some(samples) = track.samples.try_lock() {
+                    let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
+                    let loop_len =
+                        (f32::from_bits(track.loop_length.load(Ordering::Relaxed)) * len as f32)
+                            as usize;
+                    let loop_len = loop_len.max(1);
+                    let loop_end = (loop_start as usize + loop_len).min(len).max(1);
+                    let loop_start_usize = loop_start as usize;
+                    if loop_end > loop_start_usize {
+                        let rand_pos =
+                            loop_start_usize + fastrand::usize(..(loop_end - loop_start_usize));
+                        track.play_pos.store((rand_pos as f32).to_bits(), Ordering::Relaxed);
+                    } else {
+                        track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
+                    }
+                } else {
+                    track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
+            }
+
+            track
+                .loop_start_last
+                .store(loop_start as u32, Ordering::Relaxed);
+            let mut direction = if loop_mode == 3 { -1 } else { 1 };
+            if track.tape_reverse.load(Ordering::Relaxed) {
+                direction *= -1;
+            }
+            let start_pos = f32::from_bits(track.play_pos.load(Ordering::Relaxed));
+            track
+                .keylock_phase
+                .store(0.0f32.to_bits(), Ordering::Relaxed);
+            track
+                .keylock_grain_a
+                .store(start_pos.to_bits(), Ordering::Relaxed);
+            track.keylock_grain_b.store(
+                (start_pos + direction as f32 * KEYLOCK_GRAIN_HOP as f32).to_bits(),
+                Ordering::Relaxed,
+            );
+
+            track.pending_play.store(false, Ordering::Relaxed);
+            track.count_in_remaining.store(0, Ordering::Relaxed);
+            track.is_playing.store(true, Ordering::Relaxed);
+        }
+    });
+
+    ui.on_audition_end({
+        let tracks = Arc::clone(&tracks_audition);
+        let params = Arc::clone(&params_audition);
+        move || {
+            let track_idx = params.selected_track.value().saturating_sub(1) as usize;
+            if track_idx < NUM_TRACKS {
+                tracks[track_idx].is_playing.store(false, Ordering::Relaxed);
+                tracks[track_idx].pending_play.store(false, Ordering::Relaxed);
             }
         }
     });
@@ -4394,6 +4694,17 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             tracks_loop[track_idx]
                 .loop_start
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_trigger = Arc::clone(tracks);
+    let params_trigger = Arc::clone(params);
+    ui.on_trigger_start_changed(move |value| {
+        let track_idx = params_trigger.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_trigger[track_idx]
+                .trigger_start
                 .store(value.to_bits(), Ordering::Relaxed);
         }
     });
@@ -5690,4 +6001,244 @@ fn restart_with_audio_settings(
 
     cmd.spawn().map_err(|err| err.to_string())?;
     std::process::exit(0);
+}
+
+pub fn run_figma_test() {
+    ensure_slint_platform();
+    
+    let initial_size = baseview::Size::new(1280.0, 800.0);
+    
+    baseview::Window::open_blocking(
+        WindowOpenOptions {
+            title: "GrainRust - Figma UI Test".to_string(),
+            size: initial_size,
+            scale: WindowScalePolicy::SystemScaleFactor,
+            gl_config: None,
+        },
+        move |window| {
+            FigmaTestWindow::new(window, initial_size)
+        },
+    );
+}
+
+struct FigmaTestWindow {
+    slint_window: std::rc::Rc<MinimalSoftwareWindow>,
+    ui: Box<FigmaTestUI>,
+    sb_surface: softbuffer::Surface<SoftbufferWindowHandleAdapter, SoftbufferWindowHandleAdapter>,
+    sb_context: softbuffer::Context<SoftbufferWindowHandleAdapter>,
+    physical_width: u32,
+    physical_height: u32,
+    scale_factor: f32,
+    pixel_buffer: Vec<PremultipliedRgbaColor>,
+    last_cursor: LogicalPosition,
+    start_time: Instant,
+}
+
+impl FigmaTestWindow {
+    fn new(window: &mut BaseWindow, initial_size: baseview::Size) -> Self {
+        SLINT_WINDOW_SLOT.with(|slot| {
+            *slot.borrow_mut() = None;
+        });
+        let ui = Box::new(FigmaTestUI::new().expect("Failed to create Figma Test UI"));
+        let slint_window = SLINT_WINDOW_SLOT.with(|slot| {
+            slot.borrow_mut()
+                .take()
+                .expect("Slint window adapter not created")
+        });
+
+        ui.on_action_triggered(|msg| {
+            nih_log!("UI Action: {}", msg);
+        });
+
+        let waveform_data: Vec<f32> = (0..100)
+            .map(|_| fastrand::f32() * 0.8 + 0.1)
+            .collect();
+        ui.set_mock_waveform(ModelRc::from(std::rc::Rc::new(VecModel::from(waveform_data))));
+
+        let mut scale_factor = 1.0_f32;
+        #[cfg(target_os = "windows")]
+        {
+            if let RawWindowHandle::Win32(handle) = window.raw_window_handle() {
+                unsafe {
+                    use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
+                    let dpi = GetDpiForWindow(handle.hwnd as isize) as f32;
+                    if dpi > 0.0 {
+                        scale_factor = dpi / 96.0;
+                    }
+                }
+            }
+        }
+
+        let logical_width = initial_size.width as f32;
+        let logical_height = initial_size.height as f32;
+        let physical_width = (logical_width * scale_factor).round() as u32;
+        let physical_height = (logical_height * scale_factor).round() as u32;
+
+        let target = baseview_window_to_surface_target(window);
+        let sb_context = softbuffer::Context::new(target.clone()).expect("Failed to create softbuffer context");
+        let mut sb_surface = softbuffer::Surface::new(&sb_context, target).expect("Failed to create softbuffer surface");
+        sb_surface.resize(
+            std::num::NonZeroU32::new(physical_width.max(1)).unwrap(),
+            std::num::NonZeroU32::new(physical_height.max(1)).unwrap(),
+        ).unwrap();
+
+        slint_window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor });
+        slint_window.set_size(slint::WindowSize::Physical(PhysicalSize::new(physical_width, physical_height)));
+
+        Self {
+            slint_window,
+            ui,
+            sb_surface,
+            sb_context,
+            physical_width,
+            physical_height,
+            scale_factor,
+            pixel_buffer: vec![PremultipliedRgbaColor::default(); (physical_width * physical_height) as usize],
+            last_cursor: LogicalPosition::new(0.0, 0.0),
+            start_time: Instant::now(),
+        }
+    }
+
+    fn update_mock_data(&mut self) {
+        let elapsed = self.start_time.elapsed().as_secs_f32();
+        // Oscillate meters
+        self.ui.set_mock_meter_l((elapsed * 2.0).sin().abs() * 0.8 + 0.1);
+        self.ui.set_mock_meter_r((elapsed * 2.5).cos().abs() * 0.7 + 0.1);
+    }
+
+    fn render(&mut self) {
+        if self.physical_width == 0 || self.physical_height == 0 {
+            return;
+        }
+
+        let expected_len = (self.physical_width * self.physical_height) as usize;
+
+        // Ensure buffer is the right size before rendering
+        if self.pixel_buffer.len() != expected_len {
+            self.pixel_buffer.resize(expected_len, PremultipliedRgbaColor::default());
+        }
+
+        self.slint_window.draw_if_needed(|renderer| {
+            renderer.render(&mut self.pixel_buffer, self.physical_width as usize);
+        });
+
+        if let Ok(mut buffer) = self.sb_surface.buffer_mut() {
+            // Use zip to be safe, but they should match
+            for (dst, src) in buffer.iter_mut().zip(self.pixel_buffer.iter()) {
+                *dst = ((src.red as u32) << 16)
+                    | ((src.green as u32) << 8)
+                    | (src.blue as u32)
+                    | ((src.alpha as u32) << 24);
+            }
+            buffer.present().unwrap();
+        }
+    }
+}
+
+impl BaseWindowHandler for FigmaTestWindow {
+    fn on_frame(&mut self, _window: &mut BaseWindow) {
+        platform::update_timers_and_animations();
+        self.update_mock_data();
+        self.slint_window.request_redraw();
+        self.render();
+    }
+
+    fn on_event(&mut self, _window: &mut BaseWindow, event: BaseEvent) -> BaseEventStatus {
+        match event {
+            BaseEvent::Window(event) => match event {
+                baseview::WindowEvent::Resized(info) => {
+                    self.scale_factor = info.scale() as f32;
+                    let physical = info.physical_size();
+                    self.physical_width = physical.width;
+                    self.physical_height = physical.height;
+
+                    nih_log!(
+                        "Resized event: logical={}x{} scale={} physical={}x{}",
+                        info.logical_size().width,
+                        info.logical_size().height,
+                        self.scale_factor,
+                        self.physical_width,
+                        self.physical_height
+                    );
+
+                    if self.physical_width > 0 && self.physical_height > 0 {
+                        let _ = self.sb_surface.resize(
+                            std::num::NonZeroU32::new(self.physical_width).unwrap(),
+                            std::num::NonZeroU32::new(self.physical_height).unwrap(),
+                        );
+
+                        self.slint_window.dispatch_event(WindowEvent::ScaleFactorChanged {
+                            scale_factor: self.scale_factor,
+                        });
+                        self.slint_window.set_size(PhysicalSize::new(
+                            self.physical_width,
+                            self.physical_height,
+                        ));
+                        self.pixel_buffer.resize(
+                            (self.physical_width * self.physical_height) as usize,
+                            PremultipliedRgbaColor::default(),
+                        );
+
+                        self.slint_window.request_redraw();
+                    }
+                    BaseEventStatus::Captured
+                }
+                baseview::WindowEvent::Focused => {
+                    self.slint_window.dispatch_event(WindowEvent::WindowActiveChanged(true));
+                    BaseEventStatus::Captured
+                }
+                baseview::WindowEvent::Unfocused => {
+                    self.slint_window.dispatch_event(WindowEvent::WindowActiveChanged(false));
+                    BaseEventStatus::Captured
+                }
+                baseview::WindowEvent::WillClose => {
+                    self.slint_window.dispatch_event(WindowEvent::CloseRequested);
+                    BaseEventStatus::Captured
+                }
+                _ => BaseEventStatus::Ignored,
+            },
+            BaseEvent::Mouse(event) => {
+                match event {
+                    baseview::MouseEvent::CursorMoved { position, .. } => {
+                        let cursor = LogicalPosition::new(position.x as f32, position.y as f32);
+                        self.last_cursor = cursor;
+                        self.slint_window.dispatch_event(WindowEvent::PointerMoved { position: cursor });
+                    }
+                    baseview::MouseEvent::ButtonPressed { button, .. } => {
+                        if let Some(button) = map_mouse_button(button) {
+                            self.slint_window.dispatch_event(WindowEvent::PointerPressed {
+                                position: self.last_cursor,
+                                button,
+                            });
+                        }
+                    }
+                    baseview::MouseEvent::ButtonReleased { button, .. } => {
+                        if let Some(button) = map_mouse_button(button) {
+                            self.slint_window.dispatch_event(WindowEvent::PointerReleased {
+                                position: self.last_cursor,
+                                button,
+                            });
+                        }
+                    }
+                    baseview::MouseEvent::WheelScrolled { delta, .. } => {
+                        let (dx, dy) = match delta {
+                            baseview::ScrollDelta::Lines { x, y } => (x * 32.0, y * 32.0),
+                            baseview::ScrollDelta::Pixels { x, y } => (x, y),
+                        };
+                        self.slint_window.dispatch_event(WindowEvent::PointerScrolled {
+                            position: self.last_cursor,
+                            delta_x: dx,
+                            delta_y: dy,
+                        });
+                    }
+                    baseview::MouseEvent::CursorLeft => {
+                        self.slint_window.dispatch_event(WindowEvent::PointerExited);
+                    }
+                    _ => {}
+                }
+                BaseEventStatus::Captured
+            }
+            _ => BaseEventStatus::Ignored,
+        }
+    }
 }

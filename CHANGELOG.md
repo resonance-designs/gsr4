@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5] - 2026-01-19
+
+- Reorganized UI layout with a consolidated 4x3 control grid for tape engine parameters
+- Moved global transport controls (Play/Stop) to the application header
+- Introduced momentary "Audition" button for per-track targeted playback
+- Refactored Slint UI structure for better responsiveness and codebase stability
+
 ## [0.1.4] - 2026-01-15
 
 - Added ring modulator effect with adjustable parameters including cutoff, resonance, decay, pitch, tone, tilt, slope, wet/dry mix, detuning, waveform selection, and noise integration

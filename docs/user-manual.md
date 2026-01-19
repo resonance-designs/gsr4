@@ -7,6 +7,11 @@ sidebar_position: 3
 
 This manual covers the current GrainRust workflow as of the latest Mosaic update.
 
+## Transport
+
+- **Play/Stop**: The global transport button in the header starts or stops all tracks simultaneously.
+- **Audition**: Located within the engine controls, this momentary button plays only the currently selected track while held down, allowing for quick checks without starting the entire project.
+
 ## Tracks
 
 - Use the Track 1–4 buttons to select the active track.
@@ -15,6 +20,7 @@ This manual covers the current GrainRust workflow as of the latest Mosaic update
 ## Tape Engine
 
 - Load the Tape engine per track via the Engine selector + Load Engine.
+- Use the **Audition** button for momentary playback of the selected track.
 - Use Tape controls for speed/tempo/loop/start/length/x‑fade/rotate and tape actions (reverse, freeze, keylock, monitor, overdub).
 
 ## Mosaic Device
@@ -35,3 +41,4 @@ This manual covers the current GrainRust workflow as of the latest Mosaic update
 ## Documentation
 
 - Use the Docs button to open the local documentation site (installed with the app).
+

@@ -1,0 +1,182 @@
+import { Button, VerticalBox, HorizontalBox, ScrollView, ComboBox } from "std-widgets.slint";
+import { 
+    RDSSelectButton, 
+    RDSSequencerCell, 
+    RDSVUMeter, 
+    RDSVertVUMeter, 
+    RDSCircleToggle, 
+    RDSKnob, 
+    RDSSlider,
+    Theme
+} from "./components/index.slint";
+
+export component TestingGrounds inherits Window {
+    title: "RDS Component Testing Grounds";
+    width: 1000px;
+    height: 800px;
+    background: Theme.active.background_main;
+
+    in-out property <bool> is-software-renderer: false;
+
+    ScrollView {
+        VerticalBox {
+            padding: 24px;
+            spacing: 32px;
+
+            Text {
+                text: "RDS UI Component Gallery";
+                font-size: 32px;
+                color: Theme.active.text_primary;
+                horizontal-alignment: center;
+            }
+
+            // Rendering Mode Switcher
+            HorizontalBox {
+                alignment: center;
+                spacing: 16px;
+                Text { text: "Renderer Mode:"; color: Theme.active.text_secondary; vertical-alignment: center; }
+                Button { 
+                    text: root.is-software-renderer ? "Software (Lo-Fi)" : "Hardware (Hi-Fi)";
+                    clicked => { root.is-software-renderer = !root.is-software-renderer; }
+                }
+            }
+
+            // Knobs Section
+            VerticalBox {
+                spacing: 16px;
+                Text { text: "Rotary Knobs (RDSKnob)"; font-size: 20px; color: Theme.active.accent_primary; }
+                HorizontalBox {
+                    spacing: 24px;
+                    alignment: start;
+                    
+                    // Large Knob
+                    VerticalBox {
+                        alignment: center;
+                        RDSKnob {
+                            size: 120px;
+                            indicator-position: 40px;
+                            min-value: 0;
+                            max-value: 100;
+                            value: 50;
+                        }
+                        Text { text: "Large (120px)"; color: Theme.active.text_secondary; horizontal-alignment: center; }
+                    }
+
+                    // Medium Knob
+                    VerticalBox {
+                        alignment: center;
+                        RDSKnob {
+                            size: 64px;
+                            indicator-position: 20px;
+                            min-value: 0;
+                            max-value: 1;
+                            value: 0.75;
+                        }
+                        Text { text: "Medium (64px)"; color: Theme.active.text_secondary; horizontal-alignment: center; }
+                    }
+
+                    // Small Knob
+                    VerticalBox {
+                        alignment: center;
+                        RDSKnob {
+                            size: 32px;
+                            indicator-position: 10px;
+                            min-value: -12;
+                            max-value: 12;
+                            value: 0;
+                        }
+                        Text { text: "Small (32px)"; color: Theme.active.text_secondary; horizontal-alignment: center; }
+                    }
+
+                    // Infinite Knob
+                    VerticalBox {
+                        alignment: center;
+                        RDSKnob {
+                            size: 64px;
+                            indicator-position: 20px;
+                            // Infinite mode (min == max)
+                        }
+                        Text { text: "Infinite"; color: Theme.active.text_secondary; horizontal-alignment: center; }
+                    }
+                }
+            }
+
+            // Sliders & Meters
+            HorizontalBox {
+                spacing: 40px;
+                
+                // Sliders
+                VerticalBox {
+                    spacing: 16px;
+                    Text { text: "Sliders (RDSSlider)"; font-size: 20px; color: Theme.active.accent_primary; }
+                    HorizontalBox {
+                        spacing: 20px;
+                        RDSSlider { height: 200px; width: 40px; value: 0.5; }
+                        RDSSlider { height: 200px; width: 40px; value: 0.2; }
+                        RDSSlider { height: 200px; width: 40px; value: 0.8; }
+                    }
+                }
+
+                // Vertical Meters
+                VerticalBox {
+                    spacing: 16px;
+                    Text { text: "Vertical Meters"; font-size: 20px; color: Theme.active.accent_primary; }
+                    HorizontalBox {
+                        spacing: 12px;
+                        RDSVertVUMeter { height: 200px; level: 0.3; fill-color: Theme.active.meter_normal; }
+                        RDSVertVUMeter { height: 200px; level: 0.6; fill-color: Theme.active.meter_warning; }
+                        RDSVertVUMeter { height: 200px; level: 0.95; fill-color: Theme.active.meter_clip; }
+                    }
+                }
+
+                // Horizontal Meters
+                VerticalBox {
+                    spacing: 16px;
+                    alignment: start;
+                    Text { text: "Horizontal Meters"; font-size: 20px; color: Theme.active.accent_primary; }
+                    RDSVUMeter { width: 300px; level: 0.4; }
+                    RDSVUMeter { width: 300px; level: 0.7; fill-color: Theme.active.accent_primary; }
+                    RDSVUMeter { width: 300px; level: 0.1; }
+                }
+            }
+
+            // Buttons & Toggles
+            HorizontalBox {
+                spacing: 40px;
+                
+                VerticalBox {
+                    spacing: 16px;
+                    Text { text: "Select Buttons"; font-size: 20px; color: Theme.active.accent_primary; }
+                    HorizontalBox {
+                        RDSSelectButton { label: "Inactive"; active: false; }
+                        RDSSelectButton { label: "Active State"; active: true; }
+                    }
+                }
+
+                VerticalBox {
+                    spacing: 16px;
+                    Text { text: "Circle Toggles"; font-size: 20px; color: Theme.active.accent_primary; }
+                    HorizontalBox {
+                        RDSCircleToggle { active: true; }
+                        RDSCircleToggle { active: false; }
+                        Text { text: "Enable Feature"; color: Theme.active.text_secondary; vertical-alignment: center; }
+                    }
+                }
+            }
+
+            // Sequencer Grid
+            VerticalBox {
+                spacing: 16px;
+                Text { text: "Sequencer Cells"; font-size: 20px; color: Theme.active.accent_primary; }
+                HorizontalBox {
+                    alignment: start;
+                    spacing: 4px;
+                    for i in 16 : RDSSequencerCell {
+                        active: Math.mod(i, 4) == 0;
+                        current: i == 4;
+                    }
+                }
+            }
+        }
+    }
+}
