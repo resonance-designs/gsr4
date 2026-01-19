@@ -2568,44 +2568,45 @@ impl Plugin for GrainRust {
 
         // Master FX Chain
         let sr = self.sample_rate.load(Ordering::Relaxed) as f32;
-        let master_filter = self.params.master_filter.smoothed.next();
-        let master_comp = self.params.master_comp.smoothed.next();
-
-        // Calculate DJ Filter coefficients
-        let mut filter_type = 0; // 0=None, 1=HP, 2=LP
-        let mut f = 0.0f32;
-        let mut q = 0.707f32;
-
-        if master_filter < 0.49 {
-            filter_type = 1; // HP
-            let cutoff_hz = 20.0 + (1.0 - master_filter / 0.5) * 2000.0;
-            f = (PI * cutoff_hz / sr).tan();
-        } else if master_filter > 0.51 {
-            filter_type = 2; // LP
-            let cutoff_hz = 20000.0 - ((master_filter - 0.5) / 0.5) * 19000.0;
-            f = (PI * cutoff_hz / sr).tan();
-        }
-
-        let res_coeff = 1.0 / q;
-
-        // Compressor parameters
-        let threshold_db = -24.0 * master_comp;
-        let threshold = util::db_to_gain(threshold_db);
-        let ratio = 1.0 + master_comp * 10.0;
-        let attack_ms = 5.0;
-        let release_ms = 100.0;
-        let attack_coeff = (-1.0 / (attack_ms * sr / 1000.0)).exp();
-        let release_coeff = (-1.0 / (release_ms * sr / 1000.0)).exp();
-
         let num_channels = buffer.channels();
         let num_samples = buffer.samples();
+        let output = buffer.as_slice();
 
         for sample_idx in 0..num_samples {
+            let master_filter = self.params.master_filter.smoothed.next();
+            let master_comp = self.params.master_comp.smoothed.next();
+
+            // Calculate DJ Filter coefficients
+            let mut filter_type = 0; // 0=None, 1=HP, 2=LP
+            let mut f = 0.0f32;
+            let q = 0.707f32;
+
+            if master_filter < 0.49 {
+                filter_type = 1; // HP
+                let cutoff_hz = 20.0 + (1.0 - master_filter / 0.5) * 2000.0;
+                f = (PI * cutoff_hz / sr).tan();
+            } else if master_filter > 0.51 {
+                filter_type = 2; // LP
+                let cutoff_hz = 20000.0 - ((master_filter - 0.5) / 0.5) * 19000.0;
+                f = (PI * cutoff_hz / sr).tan();
+            }
+
+            let res_coeff = 1.0 / q;
+
+            // Compressor parameters
+            let threshold_db = -24.0 * master_comp;
+            let threshold = util::db_to_gain(threshold_db);
+            let ratio = 1.0 + master_comp * 10.0;
+            let attack_ms = 5.0;
+            let release_ms = 100.0;
+            let attack_coeff = (-1.0 / (attack_ms * sr / 1000.0)).exp();
+            let release_coeff = (-1.0 / (release_ms * sr / 1000.0)).exp();
+
             let mut max_abs = 0.0f32;
             
             // Process Filter + Find Max for Compressor
             for channel_idx in 0..num_channels {
-                let mut x = buffer.as_slice()[channel_idx][sample_idx];
+                let mut x = output[channel_idx][sample_idx];
                 
                 if filter_type > 0 {
                     let low = self.master_fx.filter_low[channel_idx];
@@ -2624,7 +2625,7 @@ impl Plugin for GrainRust {
                     }
                 }
                 
-                buffer.as_slice()[channel_idx][sample_idx] = x;
+                output[channel_idx][sample_idx] = x;
                 max_abs = max_abs.max(x.abs());
             }
 
@@ -2648,7 +2649,7 @@ impl Plugin for GrainRust {
             // Apply global gain + compression
             let gain = self.params.gain.smoothed.next();
             for channel_idx in 0..num_channels {
-                buffer.as_slice()[channel_idx][sample_idx] *= gain * reduction;
+                output[channel_idx][sample_idx] *= gain * reduction;
             }
         }
 
@@ -3088,6 +3089,10 @@ fn default_tempo() -> f32 {
     120.0
 }
 
+fn default_zero() -> f32 {
+    0.0
+}
+
 #[derive(Serialize, Deserialize)]
 struct ProjectFile {
     version: u32,
@@ -3129,6 +3134,8 @@ struct ProjectTrack {
     loop_enabled: bool,
     #[serde(default)]
     loop_mode: u32,
+    #[serde(default = "default_zero")]
+    trigger_start: f32,
 }
 
 fn save_project(
@@ -3136,13 +3143,18 @@ fn save_project(
     global_tempo: f32,
     path: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
     let mut track_states = Vec::with_capacity(NUM_TRACKS);
     for track in tracks.iter() {
-        let sample_path = track
-            .sample_path
-            .lock()
-            .as_ref()
-            .map(|path| path.to_string_lossy().to_string());
+        let sample_path = track.sample_path.lock().as_ref().map(|path| {
+            if path.is_relative() {
+                path.to_string_lossy().to_string()
+            } else if let Ok(relative) = path.strip_prefix(base_dir) {
+                relative.to_string_lossy().to_string()
+            } else {
+                path.to_string_lossy().to_string()
+            }
+        });
         track_states.push(ProjectTrack {
             sample_path,
             level: f32::from_bits(track.level.load(Ordering::Relaxed)),
@@ -3163,6 +3175,7 @@ fn save_project(
             loop_xfade: f32::from_bits(track.loop_xfade.load(Ordering::Relaxed)),
             loop_enabled: track.loop_enabled.load(Ordering::Relaxed),
             loop_mode: track.loop_mode.load(Ordering::Relaxed),
+            trigger_start: f32::from_bits(track.trigger_start.load(Ordering::Relaxed)),
         });
     }
 
@@ -3228,6 +3241,10 @@ fn load_project(
         track
             .loop_mode
             .store(track_state.loop_mode, Ordering::Relaxed);
+        track.trigger_start.store(
+            track_state.trigger_start.clamp(0.0, 0.999).to_bits(),
+            Ordering::Relaxed,
+        );
         track.loop_dir.store(1, Ordering::Relaxed);
         track.engine_type.store(1, Ordering::Relaxed);
         track.is_playing.store(false, Ordering::Relaxed);
@@ -3239,11 +3256,17 @@ fn load_project(
         let mut summary = track.waveform_summary.lock();
         let mut sample_path = track.sample_path.lock();
         if let Some(path_str) = &track_state.sample_path {
-            let path = PathBuf::from(path_str);
-            match load_audio_file(&path) {
+            let stored_path = PathBuf::from(path_str);
+            let resolved = if stored_path.is_relative() {
+                let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+                base_dir.join(&stored_path)
+            } else {
+                stored_path
+            };
+            match load_audio_file(&resolved) {
                 Ok((new_samples, sample_rate)) => {
                     *samples = new_samples;
-                    *sample_path = Some(path);
+                    *sample_path = Some(resolved);
                     track.sample_rate.store(sample_rate, Ordering::Relaxed);
                     if !samples.is_empty() {
                         calculate_waveform_summary(&samples[0], &mut summary);
@@ -6003,242 +6026,4 @@ fn restart_with_audio_settings(
     std::process::exit(0);
 }
 
-pub fn run_figma_test() {
-    ensure_slint_platform();
-    
-    let initial_size = baseview::Size::new(1280.0, 800.0);
-    
-    baseview::Window::open_blocking(
-        WindowOpenOptions {
-            title: "GrainRust - Figma UI Test".to_string(),
-            size: initial_size,
-            scale: WindowScalePolicy::SystemScaleFactor,
-            gl_config: None,
-        },
-        move |window| {
-            FigmaTestWindow::new(window, initial_size)
-        },
-    );
-}
 
-struct FigmaTestWindow {
-    slint_window: std::rc::Rc<MinimalSoftwareWindow>,
-    ui: Box<FigmaTestUI>,
-    sb_surface: softbuffer::Surface<SoftbufferWindowHandleAdapter, SoftbufferWindowHandleAdapter>,
-    sb_context: softbuffer::Context<SoftbufferWindowHandleAdapter>,
-    physical_width: u32,
-    physical_height: u32,
-    scale_factor: f32,
-    pixel_buffer: Vec<PremultipliedRgbaColor>,
-    last_cursor: LogicalPosition,
-    start_time: Instant,
-}
-
-impl FigmaTestWindow {
-    fn new(window: &mut BaseWindow, initial_size: baseview::Size) -> Self {
-        SLINT_WINDOW_SLOT.with(|slot| {
-            *slot.borrow_mut() = None;
-        });
-        let ui = Box::new(FigmaTestUI::new().expect("Failed to create Figma Test UI"));
-        let slint_window = SLINT_WINDOW_SLOT.with(|slot| {
-            slot.borrow_mut()
-                .take()
-                .expect("Slint window adapter not created")
-        });
-
-        ui.on_action_triggered(|msg| {
-            nih_log!("UI Action: {}", msg);
-        });
-
-        let waveform_data: Vec<f32> = (0..100)
-            .map(|_| fastrand::f32() * 0.8 + 0.1)
-            .collect();
-        ui.set_mock_waveform(ModelRc::from(std::rc::Rc::new(VecModel::from(waveform_data))));
-
-        let mut scale_factor = 1.0_f32;
-        #[cfg(target_os = "windows")]
-        {
-            if let RawWindowHandle::Win32(handle) = window.raw_window_handle() {
-                unsafe {
-                    use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
-                    let dpi = GetDpiForWindow(handle.hwnd as isize) as f32;
-                    if dpi > 0.0 {
-                        scale_factor = dpi / 96.0;
-                    }
-                }
-            }
-        }
-
-        let logical_width = initial_size.width as f32;
-        let logical_height = initial_size.height as f32;
-        let physical_width = (logical_width * scale_factor).round() as u32;
-        let physical_height = (logical_height * scale_factor).round() as u32;
-
-        let target = baseview_window_to_surface_target(window);
-        let sb_context = softbuffer::Context::new(target.clone()).expect("Failed to create softbuffer context");
-        let mut sb_surface = softbuffer::Surface::new(&sb_context, target).expect("Failed to create softbuffer surface");
-        sb_surface.resize(
-            std::num::NonZeroU32::new(physical_width.max(1)).unwrap(),
-            std::num::NonZeroU32::new(physical_height.max(1)).unwrap(),
-        ).unwrap();
-
-        slint_window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor });
-        slint_window.set_size(slint::WindowSize::Physical(PhysicalSize::new(physical_width, physical_height)));
-
-        Self {
-            slint_window,
-            ui,
-            sb_surface,
-            sb_context,
-            physical_width,
-            physical_height,
-            scale_factor,
-            pixel_buffer: vec![PremultipliedRgbaColor::default(); (physical_width * physical_height) as usize],
-            last_cursor: LogicalPosition::new(0.0, 0.0),
-            start_time: Instant::now(),
-        }
-    }
-
-    fn update_mock_data(&mut self) {
-        let elapsed = self.start_time.elapsed().as_secs_f32();
-        // Oscillate meters
-        self.ui.set_mock_meter_l((elapsed * 2.0).sin().abs() * 0.8 + 0.1);
-        self.ui.set_mock_meter_r((elapsed * 2.5).cos().abs() * 0.7 + 0.1);
-    }
-
-    fn render(&mut self) {
-        if self.physical_width == 0 || self.physical_height == 0 {
-            return;
-        }
-
-        let expected_len = (self.physical_width * self.physical_height) as usize;
-
-        // Ensure buffer is the right size before rendering
-        if self.pixel_buffer.len() != expected_len {
-            self.pixel_buffer.resize(expected_len, PremultipliedRgbaColor::default());
-        }
-
-        self.slint_window.draw_if_needed(|renderer| {
-            renderer.render(&mut self.pixel_buffer, self.physical_width as usize);
-        });
-
-        if let Ok(mut buffer) = self.sb_surface.buffer_mut() {
-            // Use zip to be safe, but they should match
-            for (dst, src) in buffer.iter_mut().zip(self.pixel_buffer.iter()) {
-                *dst = ((src.red as u32) << 16)
-                    | ((src.green as u32) << 8)
-                    | (src.blue as u32)
-                    | ((src.alpha as u32) << 24);
-            }
-            buffer.present().unwrap();
-        }
-    }
-}
-
-impl BaseWindowHandler for FigmaTestWindow {
-    fn on_frame(&mut self, _window: &mut BaseWindow) {
-        platform::update_timers_and_animations();
-        self.update_mock_data();
-        self.slint_window.request_redraw();
-        self.render();
-    }
-
-    fn on_event(&mut self, _window: &mut BaseWindow, event: BaseEvent) -> BaseEventStatus {
-        match event {
-            BaseEvent::Window(event) => match event {
-                baseview::WindowEvent::Resized(info) => {
-                    self.scale_factor = info.scale() as f32;
-                    let physical = info.physical_size();
-                    self.physical_width = physical.width;
-                    self.physical_height = physical.height;
-
-                    nih_log!(
-                        "Resized event: logical={}x{} scale={} physical={}x{}",
-                        info.logical_size().width,
-                        info.logical_size().height,
-                        self.scale_factor,
-                        self.physical_width,
-                        self.physical_height
-                    );
-
-                    if self.physical_width > 0 && self.physical_height > 0 {
-                        let _ = self.sb_surface.resize(
-                            std::num::NonZeroU32::new(self.physical_width).unwrap(),
-                            std::num::NonZeroU32::new(self.physical_height).unwrap(),
-                        );
-
-                        self.slint_window.dispatch_event(WindowEvent::ScaleFactorChanged {
-                            scale_factor: self.scale_factor,
-                        });
-                        self.slint_window.set_size(PhysicalSize::new(
-                            self.physical_width,
-                            self.physical_height,
-                        ));
-                        self.pixel_buffer.resize(
-                            (self.physical_width * self.physical_height) as usize,
-                            PremultipliedRgbaColor::default(),
-                        );
-
-                        self.slint_window.request_redraw();
-                    }
-                    BaseEventStatus::Captured
-                }
-                baseview::WindowEvent::Focused => {
-                    self.slint_window.dispatch_event(WindowEvent::WindowActiveChanged(true));
-                    BaseEventStatus::Captured
-                }
-                baseview::WindowEvent::Unfocused => {
-                    self.slint_window.dispatch_event(WindowEvent::WindowActiveChanged(false));
-                    BaseEventStatus::Captured
-                }
-                baseview::WindowEvent::WillClose => {
-                    self.slint_window.dispatch_event(WindowEvent::CloseRequested);
-                    BaseEventStatus::Captured
-                }
-                _ => BaseEventStatus::Ignored,
-            },
-            BaseEvent::Mouse(event) => {
-                match event {
-                    baseview::MouseEvent::CursorMoved { position, .. } => {
-                        let cursor = LogicalPosition::new(position.x as f32, position.y as f32);
-                        self.last_cursor = cursor;
-                        self.slint_window.dispatch_event(WindowEvent::PointerMoved { position: cursor });
-                    }
-                    baseview::MouseEvent::ButtonPressed { button, .. } => {
-                        if let Some(button) = map_mouse_button(button) {
-                            self.slint_window.dispatch_event(WindowEvent::PointerPressed {
-                                position: self.last_cursor,
-                                button,
-                            });
-                        }
-                    }
-                    baseview::MouseEvent::ButtonReleased { button, .. } => {
-                        if let Some(button) = map_mouse_button(button) {
-                            self.slint_window.dispatch_event(WindowEvent::PointerReleased {
-                                position: self.last_cursor,
-                                button,
-                            });
-                        }
-                    }
-                    baseview::MouseEvent::WheelScrolled { delta, .. } => {
-                        let (dx, dy) = match delta {
-                            baseview::ScrollDelta::Lines { x, y } => (x * 32.0, y * 32.0),
-                            baseview::ScrollDelta::Pixels { x, y } => (x, y),
-                        };
-                        self.slint_window.dispatch_event(WindowEvent::PointerScrolled {
-                            position: self.last_cursor,
-                            delta_x: dx,
-                            delta_y: dy,
-                        });
-                    }
-                    baseview::MouseEvent::CursorLeft => {
-                        self.slint_window.dispatch_event(WindowEvent::PointerExited);
-                    }
-                    _ => {}
-                }
-                BaseEventStatus::Captured
-            }
-            _ => BaseEventStatus::Ignored,
-        }
-    }
-}

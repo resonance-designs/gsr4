@@ -4,9 +4,6 @@ import { Theme } from "../theme/index.slint";
 Component: RDSKnob
 Description: A rotary knob component that supports both bounded and infinite rotation modes, with optimized rendering for different backends.
 Public members:
-- renderer: string - "lo-fi" (default) for software rendering or "hi-fi" for hardware rendering
-    - IMPORTANT: This is dependent on your backend capabilities.
-        - If you use "hi-fi" on a software backend, it will fallback to "lo-fi" and you may see the UI render differently than expected
 - value: float - Current value
 - rotation-angle: angle - Current rotation angle
 - size: length - Size of the knob (width and height are bounded to this)
@@ -20,7 +17,6 @@ Public members:
 Example usage:
 - Basic bounded knob:
     RDSKnob {
-        renderer: "hi-fi";
         size: 64px;
         indicator-position: 20px;
         min-value: 0;

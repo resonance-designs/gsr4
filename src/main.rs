@@ -22,10 +22,6 @@ fn main() {
     #[cfg(not(feature = "ui-testing"))]
     {
         let mut args: Vec<String> = std::env::args().collect();
-        if args.iter().any(|arg| arg == "--test-ui") {
-            grainrust::run_figma_test();
-            return;
-        }
         #[cfg(target_os = "windows")]
         {
             let has_period_size = args.iter().any(|arg| arg == "-p" || arg == "--period-size");
