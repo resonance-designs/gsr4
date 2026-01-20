@@ -88,18 +88,6 @@ fn default_window_size() -> baseview::Size {
 
 slint::include_modules!();
 
-#[cfg(feature = "ui-testing")]
-pub fn run_ui_testing() {
-    let ui = TestingGrounds::new().unwrap();
-    
-    let is_software = true;
-    #[cfg(any(feature = "renderer-opengl", feature = "renderer-vulkan"))]
-    let is_software = false;
-    ui.set_is_software_renderer(is_software);
-
-    ui.run().unwrap();
-}
-
 struct Track {
     /// Audio data for the track. Each channel is a Vec of f32.
     samples: Arc<Mutex<Vec<Vec<f32>>>>,
@@ -2614,45 +2602,44 @@ impl Plugin for GrainRust {
 
         // Master FX Chain
         let sr = self.sample_rate.load(Ordering::Relaxed) as f32;
+        let master_filter = self.params.master_filter.smoothed.next();
+        let master_comp = self.params.master_comp.smoothed.next();
+
+        // Calculate DJ Filter coefficients
+        let mut filter_type = 0; // 0=None, 1=HP, 2=LP
+        let mut f = 0.0f32;
+        let mut q = 0.707f32;
+
+        if master_filter < 0.49 {
+            filter_type = 1; // HP
+            let cutoff_hz = 20.0 + (1.0 - master_filter / 0.5) * 2000.0;
+            f = (PI * cutoff_hz / sr).tan();
+        } else if master_filter > 0.51 {
+            filter_type = 2; // LP
+            let cutoff_hz = 20000.0 - ((master_filter - 0.5) / 0.5) * 19000.0;
+            f = (PI * cutoff_hz / sr).tan();
+        }
+
+        let res_coeff = 1.0 / q;
+
+        // Compressor parameters
+        let threshold_db = -24.0 * master_comp;
+        let threshold = util::db_to_gain(threshold_db);
+        let ratio = 1.0 + master_comp * 10.0;
+        let attack_ms = 5.0;
+        let release_ms = 100.0;
+        let attack_coeff = (-1.0 / (attack_ms * sr / 1000.0)).exp();
+        let release_coeff = (-1.0 / (release_ms * sr / 1000.0)).exp();
+
         let num_channels = buffer.channels();
         let num_samples = buffer.samples();
-        let output = buffer.as_slice();
 
         for sample_idx in 0..num_samples {
-            let master_filter = self.params.master_filter.smoothed.next();
-            let master_comp = self.params.master_comp.smoothed.next();
-
-            // Calculate DJ Filter coefficients
-            let mut filter_type = 0; // 0=None, 1=HP, 2=LP
-            let mut f = 0.0f32;
-            let q = 0.707f32;
-
-            if master_filter < 0.49 {
-                filter_type = 1; // HP
-                let cutoff_hz = 20.0 + (1.0 - master_filter / 0.5) * 2000.0;
-                f = (PI * cutoff_hz / sr).tan();
-            } else if master_filter > 0.51 {
-                filter_type = 2; // LP
-                let cutoff_hz = 20000.0 - ((master_filter - 0.5) / 0.5) * 19000.0;
-                f = (PI * cutoff_hz / sr).tan();
-            }
-
-            let res_coeff = 1.0 / q;
-
-            // Compressor parameters
-            let threshold_db = -24.0 * master_comp;
-            let threshold = util::db_to_gain(threshold_db);
-            let ratio = 1.0 + master_comp * 10.0;
-            let attack_ms = 5.0;
-            let release_ms = 100.0;
-            let attack_coeff = (-1.0 / (attack_ms * sr / 1000.0)).exp();
-            let release_coeff = (-1.0 / (release_ms * sr / 1000.0)).exp();
-
             let mut max_abs = 0.0f32;
             
             // Process Filter + Find Max for Compressor
             for channel_idx in 0..num_channels {
-                let mut x = output[channel_idx][sample_idx];
+                let mut x = buffer.as_slice()[channel_idx][sample_idx];
                 
                 if filter_type > 0 {
                     let low = self.master_fx.filter_low[channel_idx];
@@ -2671,7 +2658,7 @@ impl Plugin for GrainRust {
                     }
                 }
                 
-                output[channel_idx][sample_idx] = x;
+                buffer.as_slice()[channel_idx][sample_idx] = x;
                 max_abs = max_abs.max(x.abs());
             }
 
@@ -2695,7 +2682,7 @@ impl Plugin for GrainRust {
             // Apply global gain + compression
             let gain = self.params.gain.smoothed.next();
             for channel_idx in 0..num_channels {
-                output[channel_idx][sample_idx] *= gain * reduction;
+                buffer.as_slice()[channel_idx][sample_idx] *= gain * reduction;
             }
         }
 
@@ -3135,10 +3122,6 @@ fn default_tempo() -> f32 {
     120.0
 }
 
-fn default_zero() -> f32 {
-    0.0
-}
-
 #[derive(Serialize, Deserialize)]
 struct ProjectFile {
     version: u32,
@@ -3180,8 +3163,6 @@ struct ProjectTrack {
     loop_enabled: bool,
     #[serde(default)]
     loop_mode: u32,
-    #[serde(default = "default_zero")]
-    trigger_start: f32,
 }
 
 fn save_project(
@@ -3189,18 +3170,13 @@ fn save_project(
     global_tempo: f32,
     path: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
     let mut track_states = Vec::with_capacity(NUM_TRACKS);
     for track in tracks.iter() {
-        let sample_path = track.sample_path.lock().as_ref().map(|path| {
-            if path.is_relative() {
-                path.to_string_lossy().to_string()
-            } else if let Ok(relative) = path.strip_prefix(base_dir) {
-                relative.to_string_lossy().to_string()
-            } else {
-                path.to_string_lossy().to_string()
-            }
-        });
+        let sample_path = track
+            .sample_path
+            .lock()
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string());
         track_states.push(ProjectTrack {
             sample_path,
             level: f32::from_bits(track.level.load(Ordering::Relaxed)),
@@ -3221,7 +3197,6 @@ fn save_project(
             loop_xfade: f32::from_bits(track.loop_xfade.load(Ordering::Relaxed)),
             loop_enabled: track.loop_enabled.load(Ordering::Relaxed),
             loop_mode: track.loop_mode.load(Ordering::Relaxed),
-            trigger_start: f32::from_bits(track.trigger_start.load(Ordering::Relaxed)),
         });
     }
 
@@ -3287,10 +3262,6 @@ fn load_project(
         track
             .loop_mode
             .store(track_state.loop_mode, Ordering::Relaxed);
-        track.trigger_start.store(
-            track_state.trigger_start.clamp(0.0, 0.999).to_bits(),
-            Ordering::Relaxed,
-        );
         track.loop_dir.store(1, Ordering::Relaxed);
         track.engine_type.store(1, Ordering::Relaxed);
         track.is_playing.store(false, Ordering::Relaxed);
@@ -3302,17 +3273,11 @@ fn load_project(
         let mut summary = track.waveform_summary.lock();
         let mut sample_path = track.sample_path.lock();
         if let Some(path_str) = &track_state.sample_path {
-            let stored_path = PathBuf::from(path_str);
-            let resolved = if stored_path.is_relative() {
-                let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-                base_dir.join(&stored_path)
-            } else {
-                stored_path
-            };
-            match load_audio_file(&resolved) {
+            let path = PathBuf::from(path_str);
+            match load_audio_file(&path) {
                 Ok((new_samples, sample_rate)) => {
                     *samples = new_samples;
-                    *sample_path = Some(resolved);
+                    *sample_path = Some(path);
                     track.sample_rate.store(sample_rate, Ordering::Relaxed);
                     if !samples.is_empty() {
                         calculate_waveform_summary(&samples[0], &mut summary);
@@ -6085,5 +6050,4 @@ fn restart_with_audio_settings(
     cmd.spawn().map_err(|err| err.to_string())?;
     std::process::exit(0);
 }
-
 
