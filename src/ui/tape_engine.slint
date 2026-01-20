@@ -435,7 +435,10 @@ export component TapeEngine {
                                     height: 24px;
                                     model: root.tape-rate-modes;
                                     current-index: root.tape-rate-mode;
-                                    selected => { root.tape-rate-mode-selected(self.current-index); }
+                                    selected => {
+                                        root.tape-rate-mode = self.current-index;
+                                        root.tape-rate-mode-selected(self.current-index);
+                                    }
                                 }
                             }
                             VerticalLayout {
@@ -446,7 +449,10 @@ export component TapeEngine {
                                     height: 24px;
                                     model: root.loop-modes;
                                     current-index: root.loop-mode;
-                                    selected => { root.loop-mode-selected(self.current-index); }
+                                    selected => {
+                                        root.loop-mode = self.current-index;
+                                        root.loop-mode-selected(self.current-index);
+                                    }
                                 }
                             }
                         }
@@ -751,7 +757,10 @@ export component TapeEngine {
                                 ComboBox {
                                     model: root.ring-decay-modes;
                                     current-index: root.ring-decay-mode;
-                                    selected => { root.ring-decay-mode-selected(self.current-index); }
+                                    selected => {
+                                        root.ring-decay-mode = self.current-index;
+                                        root.ring-decay-mode-selected(self.current-index);
+                                    }
                                 }
                             }
                             VerticalLayout {

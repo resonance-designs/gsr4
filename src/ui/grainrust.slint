@@ -1087,7 +1087,10 @@ export component GrainRustUI inherits Window {
                     ComboBox {
                         model: root.output-devices;
                         current-index: root.output-device-index;
-                        selected => { root.output-device-selected(self.current-index); }
+                        selected => {
+                            root.output-device-index = self.current-index;
+                            root.output-device-selected(self.current-index);
+                        }
                     }
                 }
 
@@ -1097,7 +1100,10 @@ export component GrainRustUI inherits Window {
                     ComboBox {
                         model: root.input-devices;
                         current-index: root.input-device-index;
-                        selected => { root.input-device-selected(self.current-index); }
+                        selected => {
+                            root.input-device-index = self.current-index;
+                            root.input-device-selected(self.current-index);
+                        }
                     }
                 }
 
@@ -1107,7 +1113,10 @@ export component GrainRustUI inherits Window {
                     ComboBox {
                         model: root.sample-rates;
                         current-index: root.sample-rate-index;
-                        selected => { root.sample-rate-selected(self.current-index); }
+                        selected => {
+                            root.sample-rate-index = self.current-index;
+                            root.sample-rate-selected(self.current-index);
+                        }
                     }
                 }
 
@@ -1117,7 +1126,10 @@ export component GrainRustUI inherits Window {
                     ComboBox {
                         model: root.buffer-sizes;
                         current-index: root.buffer-size-index;
-                        selected => { root.buffer-size-selected(self.current-index); }
+                        selected => {
+                            root.buffer-size-index = self.current-index;
+                            root.buffer-size-selected(self.current-index);
+                        }
                     }
                 }
 

@@ -48,4 +48,3 @@ This manual covers the current GrainRust workflow as of the latest Mosaic update
 ## Documentation
 
 - Use the Docs button to open the local documentation site (installed with the app).
-

@@ -71,7 +71,7 @@ export component RDSKnob inherits Rectangle {
     }
 
     // Position/value indicator - size scales with knob size
-    indicator := Rectangle {
+    indicator_node := Rectangle {
         visible: root.renderer == "lo-fi" && root.indicator == "circle";
         width: root.size / 6;
         height: root.size / 6;
@@ -84,7 +84,7 @@ export component RDSKnob inherits Rectangle {
     }
 
     Rectangle {
-        visible: root.indicator == "line";
+        visible: root.indicator == "line" && root.renderer == "lo-fi";
         width: 2px;
         height: root.size / 4;
         x: root.width / 2 - self.width / 2 + Math.cos(root.rotation-angle - 90deg) * root.indicator-position;
@@ -94,7 +94,7 @@ export component RDSKnob inherits Rectangle {
     }
 
     Path {
-        visible: root.indicator == "carrot";
+        visible: root.indicator == "carrot" && root.renderer == "lo-fi";
         width: root.size / 5;
         height: root.size / 5;
         x: root.width / 2 - self.width / 2 + Math.cos(root.rotation-angle - 90deg) * root.indicator-position;
