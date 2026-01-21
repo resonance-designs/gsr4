@@ -344,6 +344,36 @@ struct Track {
     animate_vector_x_smooth: AtomicU32,
     /// Smoothed animate vector position Y.
     animate_vector_y_smooth: AtomicU32,
+    /// Animate vector LFO X waveform (0 = sine, 1 = triangle, 2 = square, 3 = saw, 4 = sample&hold).
+    animate_lfo_x_waveform: AtomicU32,
+    /// Animate vector LFO X sync to BPM.
+    animate_lfo_x_sync: AtomicBool,
+    /// Animate vector LFO X tempo division index.
+    animate_lfo_x_division: AtomicU32,
+    /// Animate vector LFO X rate (normalized 0..1, free mode).
+    animate_lfo_x_rate: AtomicU32,
+    /// Animate vector LFO X amount (normalized 0..1).
+    animate_lfo_x_amount: AtomicU32,
+    /// Animate vector LFO X phase (0..1).
+    animate_lfo_x_phase: AtomicU32,
+    /// Animate vector LFO X sample-and-hold value (-1..1).
+    animate_lfo_x_snh: AtomicU32,
+    /// Animate vector LFO Y waveform (0 = sine, 1 = triangle, 2 = square, 3 = saw, 4 = sample&hold).
+    animate_lfo_y_waveform: AtomicU32,
+    /// Animate vector LFO Y sync to BPM.
+    animate_lfo_y_sync: AtomicBool,
+    /// Animate vector LFO Y tempo division index.
+    animate_lfo_y_division: AtomicU32,
+    /// Animate vector LFO Y rate (normalized 0..1, free mode).
+    animate_lfo_y_rate: AtomicU32,
+    /// Animate vector LFO Y amount (normalized 0..1).
+    animate_lfo_y_amount: AtomicU32,
+    /// Animate vector LFO Y phase (0..1).
+    animate_lfo_y_phase: AtomicU32,
+    /// Animate vector LFO Y sample-and-hold value (-1..1).
+    animate_lfo_y_snh: AtomicU32,
+    /// Animate LFO RNG state.
+    animate_lfo_rng_state: AtomicU32,
     /// Animate filter cutoff.
     animate_filter_cutoff: AtomicU32,
     /// Smoothed animate filter cutoff.
@@ -522,6 +552,21 @@ impl Default for Track {
             animate_vector_y: AtomicU32::new(0.5f32.to_bits()),
             animate_vector_x_smooth: AtomicU32::new(0.5f32.to_bits()),
             animate_vector_y_smooth: AtomicU32::new(0.5f32.to_bits()),
+            animate_lfo_x_waveform: AtomicU32::new(0),
+            animate_lfo_x_sync: AtomicBool::new(false),
+            animate_lfo_x_division: AtomicU32::new(0),
+            animate_lfo_x_rate: AtomicU32::new(0.5f32.to_bits()),
+            animate_lfo_x_amount: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_x_phase: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_x_snh: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_y_waveform: AtomicU32::new(0),
+            animate_lfo_y_sync: AtomicBool::new(false),
+            animate_lfo_y_division: AtomicU32::new(0),
+            animate_lfo_y_rate: AtomicU32::new(0.5f32.to_bits()),
+            animate_lfo_y_amount: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_y_phase: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_y_snh: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_rng_state: AtomicU32::new(0x2468_ace1),
             animate_filter_cutoff: AtomicU32::new(0.5f32.to_bits()),
             animate_filter_cutoff_smooth: AtomicU32::new(0.5f32.to_bits()),
             animate_filter_resonance: AtomicU32::new(0.5f32.to_bits()),
@@ -913,6 +958,21 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.animate_vector_y.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.animate_vector_x_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.animate_vector_y_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_x_waveform.store(0, Ordering::Relaxed);
+    track.animate_lfo_x_sync.store(false, Ordering::Relaxed);
+    track.animate_lfo_x_division.store(0, Ordering::Relaxed);
+    track.animate_lfo_x_rate.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_x_amount.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_x_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_x_snh.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_y_waveform.store(0, Ordering::Relaxed);
+    track.animate_lfo_y_sync.store(false, Ordering::Relaxed);
+    track.animate_lfo_y_division.store(0, Ordering::Relaxed);
+    track.animate_lfo_y_rate.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_y_amount.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_y_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_y_snh.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_rng_state.store(0x2468_ace1, Ordering::Relaxed);
     track.animate_filter_cutoff.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.animate_filter_cutoff_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.animate_filter_resonance.store(0.5f32.to_bits(), Ordering::Relaxed);
@@ -976,6 +1036,40 @@ impl TLBX1 {
         let target_y = f32::from_bits(track.animate_vector_y.load(Ordering::Relaxed));
         let mut x_smooth = f32::from_bits(track.animate_vector_x_smooth.load(Ordering::Relaxed));
         let mut y_smooth = f32::from_bits(track.animate_vector_y_smooth.load(Ordering::Relaxed));
+        let lfo_x_waveform = track.animate_lfo_x_waveform.load(Ordering::Relaxed);
+        let lfo_x_sync = track.animate_lfo_x_sync.load(Ordering::Relaxed);
+        let lfo_x_division = track.animate_lfo_x_division.load(Ordering::Relaxed);
+        let lfo_x_rate =
+            f32::from_bits(track.animate_lfo_x_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let lfo_x_amount =
+            f32::from_bits(track.animate_lfo_x_amount.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut lfo_x_phase =
+            f32::from_bits(track.animate_lfo_x_phase.load(Ordering::Relaxed));
+        let mut lfo_x_snh = f32::from_bits(track.animate_lfo_x_snh.load(Ordering::Relaxed));
+        let lfo_y_waveform = track.animate_lfo_y_waveform.load(Ordering::Relaxed);
+        let lfo_y_sync = track.animate_lfo_y_sync.load(Ordering::Relaxed);
+        let lfo_y_division = track.animate_lfo_y_division.load(Ordering::Relaxed);
+        let lfo_y_rate =
+            f32::from_bits(track.animate_lfo_y_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let lfo_y_amount =
+            f32::from_bits(track.animate_lfo_y_amount.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut lfo_y_phase =
+            f32::from_bits(track.animate_lfo_y_phase.load(Ordering::Relaxed));
+        let mut lfo_y_snh = f32::from_bits(track.animate_lfo_y_snh.load(Ordering::Relaxed));
+        let mut lfo_rng_state = track.animate_lfo_rng_state.load(Ordering::Relaxed);
+
+        let lfo_x_rate_hz = if lfo_x_sync {
+            let beats = lfo_division_beats(lfo_x_division);
+            (tempo / 60.0) / beats
+        } else {
+            0.05 + lfo_x_rate * 10.0
+        };
+        let lfo_y_rate_hz = if lfo_y_sync {
+            let beats = lfo_division_beats(lfo_y_division);
+            (tempo / 60.0) / beats
+        } else {
+            0.05 + lfo_y_rate * 10.0
+        };
 
         let attack = f32::from_bits(track.animate_amp_attack.load(Ordering::Relaxed)).max(0.001);
         let decay = f32::from_bits(track.animate_amp_decay.load(Ordering::Relaxed)).max(0.001);
@@ -1067,8 +1161,27 @@ impl TLBX1 {
             }
 
             // Smooth vector position
-            x_smooth = x_smooth * 0.999 + target_x * 0.001;
-            y_smooth = y_smooth * 0.999 + target_y * 0.001;
+            let lfo_x_value = lfo_waveform_value(lfo_x_waveform, lfo_x_phase, lfo_x_snh);
+            let lfo_y_value = lfo_waveform_value(lfo_y_waveform, lfo_y_phase, lfo_y_snh);
+            let target_x_mod = (target_x + lfo_x_value * lfo_x_amount).clamp(0.0, 1.0);
+            let target_y_mod = (target_y + lfo_y_value * lfo_y_amount).clamp(0.0, 1.0);
+            x_smooth = x_smooth * 0.999 + target_x_mod * 0.001;
+            y_smooth = y_smooth * 0.999 + target_y_mod * 0.001;
+
+            lfo_x_phase += lfo_x_rate_hz / sr;
+            if lfo_x_phase >= 1.0 {
+                lfo_x_phase -= 1.0;
+                if lfo_x_waveform == 4 {
+                    lfo_x_snh = next_mosaic_rand_unit(&mut lfo_rng_state) * 2.0 - 1.0;
+                }
+            }
+            lfo_y_phase += lfo_y_rate_hz / sr;
+            if lfo_y_phase >= 1.0 {
+                lfo_y_phase -= 1.0;
+                if lfo_y_waveform == 4 {
+                    lfo_y_snh = next_mosaic_rand_unit(&mut lfo_rng_state) * 2.0 - 1.0;
+                }
+            }
 
             // Calculate weights for 4 slots
             let w_a = (1.0 - x_smooth) * (1.0 - y_smooth);
@@ -1171,6 +1284,21 @@ impl TLBX1 {
         track.animate_sequencer_phase.store(sequencer_phase, Ordering::Relaxed);
         track.animate_vector_x_smooth.store(x_smooth.to_bits(), Ordering::Relaxed);
         track.animate_vector_y_smooth.store(y_smooth.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_x_phase
+            .store(lfo_x_phase.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_x_snh
+            .store(lfo_x_snh.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_y_phase
+            .store(lfo_y_phase.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_y_snh
+            .store(lfo_y_snh.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_rng_state
+            .store(lfo_rng_state, Ordering::Relaxed);
         for i in 0..10 {
             track.animate_amp_stage[i].store(amp_stages[i], Ordering::Relaxed);
             track.animate_amp_level[i].store(amp_levels[i].to_bits(), Ordering::Relaxed);
@@ -2808,6 +2936,37 @@ fn wrap_loop_pos(
     pos
 }
 
+fn lfo_division_beats(index: u32) -> f32 {
+    match index {
+        0 => 0.25,        // 1/16
+        1 => 0.5,         // 1/8
+        2 => 1.0,         // 1/4
+        3 => 1.333_333_4, // 1/3
+        4 => 2.0,         // 1/2
+        5 => 4.0,         // 1 bar
+        6 => 8.0,         // 2 bars
+        7 => 16.0,        // 4 bars
+        _ => 4.0,
+    }
+}
+
+fn lfo_waveform_value(waveform: u32, phase: f32, sample_hold: f32) -> f32 {
+    match waveform {
+        0 => (2.0 * PI * phase).sin(),
+        1 => 1.0 - 4.0 * (phase - 0.5).abs(),
+        2 => {
+            if phase < 0.5 {
+                1.0
+            } else {
+                -1.0
+            }
+        }
+        3 => 2.0 * phase - 1.0,
+        4 => sample_hold,
+        _ => 0.0,
+    }
+}
+
 fn next_mosaic_rng(state: &mut u32) -> u32 {
     let mut x = *state;
     x ^= x << 13;
@@ -3739,6 +3898,26 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].animate_vector_x.load(Ordering::Relaxed));
         let animate_vector_y =
             f32::from_bits(self.tracks[track_idx].animate_vector_y.load(Ordering::Relaxed));
+        let animate_lfo_x_waveform =
+            self.tracks[track_idx].animate_lfo_x_waveform.load(Ordering::Relaxed);
+        let animate_lfo_x_sync =
+            self.tracks[track_idx].animate_lfo_x_sync.load(Ordering::Relaxed);
+        let animate_lfo_x_division =
+            self.tracks[track_idx].animate_lfo_x_division.load(Ordering::Relaxed);
+        let animate_lfo_x_rate =
+            f32::from_bits(self.tracks[track_idx].animate_lfo_x_rate.load(Ordering::Relaxed));
+        let animate_lfo_x_amount =
+            f32::from_bits(self.tracks[track_idx].animate_lfo_x_amount.load(Ordering::Relaxed));
+        let animate_lfo_y_waveform =
+            self.tracks[track_idx].animate_lfo_y_waveform.load(Ordering::Relaxed);
+        let animate_lfo_y_sync =
+            self.tracks[track_idx].animate_lfo_y_sync.load(Ordering::Relaxed);
+        let animate_lfo_y_division =
+            self.tracks[track_idx].animate_lfo_y_division.load(Ordering::Relaxed);
+        let animate_lfo_y_rate =
+            f32::from_bits(self.tracks[track_idx].animate_lfo_y_rate.load(Ordering::Relaxed));
+        let animate_lfo_y_amount =
+            f32::from_bits(self.tracks[track_idx].animate_lfo_y_amount.load(Ordering::Relaxed));
         let animate_filter_cutoff =
             f32::from_bits(self.tracks[track_idx].animate_filter_cutoff.load(Ordering::Relaxed));
         let animate_filter_resonance =
@@ -3906,6 +4085,18 @@ impl SlintWindow {
 
         self.ui.set_animate_vector_x(animate_vector_x);
         self.ui.set_animate_vector_y(animate_vector_y);
+        self.ui.set_animate_lfo_x_waveform(animate_lfo_x_waveform as i32);
+        self.ui.set_animate_lfo_x_sync(animate_lfo_x_sync);
+        self.ui
+            .set_animate_lfo_x_division(animate_lfo_x_division as i32);
+        self.ui.set_animate_lfo_x_rate(animate_lfo_x_rate);
+        self.ui.set_animate_lfo_x_amount(animate_lfo_x_amount);
+        self.ui.set_animate_lfo_y_waveform(animate_lfo_y_waveform as i32);
+        self.ui.set_animate_lfo_y_sync(animate_lfo_y_sync);
+        self.ui
+            .set_animate_lfo_y_division(animate_lfo_y_division as i32);
+        self.ui.set_animate_lfo_y_rate(animate_lfo_y_rate);
+        self.ui.set_animate_lfo_y_amount(animate_lfo_y_amount);
 
         self.ui.set_animate_filter_cutoff(animate_filter_cutoff);
         self.ui.set_animate_filter_resonance(animate_filter_resonance);
@@ -4221,6 +4412,23 @@ fn initialize_ui(
         SharedString::from("Lowpass 12dB"),
         SharedString::from("Highpass"),
         SharedString::from("Bandpass"),
+    ])));
+    ui.set_animate_lfo_waveforms(ModelRc::new(VecModel::from(vec![
+        SharedString::from("Sine"),
+        SharedString::from("Triangle"),
+        SharedString::from("Square"),
+        SharedString::from("Saw"),
+        SharedString::from("Sample & Hold"),
+    ])));
+    ui.set_animate_lfo_divisions(ModelRc::new(VecModel::from(vec![
+        SharedString::from("1/16"),
+        SharedString::from("1/8"),
+        SharedString::from("1/4"),
+        SharedString::from("1/3"),
+        SharedString::from("1/2"),
+        SharedString::from("1"),
+        SharedString::from("2"),
+        SharedString::from("4"),
     ])));
 
     // Scan for wavetables and samples
@@ -5674,6 +5882,112 @@ fn initialize_ui(
             tracks_animate[track_idx]
                 .animate_vector_y
                 .store(y.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_x_waveform_changed(move |index| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_x_waveform
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_x_sync_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx].animate_lfo_x_sync.store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_x_division_changed(move |index| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_x_division
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_x_rate_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_x_rate
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_x_amount_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_x_amount
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_y_waveform_changed(move |index| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_y_waveform
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_y_sync_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx].animate_lfo_y_sync.store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_y_division_changed(move |index| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_y_division
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_y_rate_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_y_rate
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_y_amount_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_y_amount
+                .store(value.to_bits(), Ordering::Relaxed);
         }
     });
 
