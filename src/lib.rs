@@ -1625,17 +1625,6 @@ impl Plugin for TLBX1 {
                             .store(loop_start as u32, Ordering::Relaxed);
                     }
 
-                    if !track.debug_logged.swap(true, Ordering::Relaxed) {
-                        let first_sample = samples.get(0).and_then(|ch| ch.get(0)).cloned().unwrap_or(0.0);
-                        nih_log!(
-                            "Playback debug: output_ch={}, buffer_samples={}, sample_len={}, first_sample={}",
-                            output.len(),
-                            num_buffer_samples,
-                            num_samples,
-                            first_sample
-                        );
-                    }
-
                     let mut prev_play_pos;
                     for sample_idx in 0..num_buffer_samples {
                         let mut pos = play_pos as isize;
