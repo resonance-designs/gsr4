@@ -32,6 +32,7 @@ import {
 
 import { TapeEngine } from "./tape_engine.slint";
 import { AnimateEngine } from "./animate_engine.slint";
+import { SimpKickEngine } from "./simpkick_engine.slint";
 
 export component TLBX1UI inherits Window {
     in-out property <int> selected-track: 1;
@@ -120,7 +121,7 @@ export component TLBX1UI inherits Window {
     in property <string> metronome-count-in-label;
     in-out property <bool> show-engine-confirm: false;
     in property <string> engine-confirm-text;
-    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate
+    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate, 3 = Simp Kick
     in property <bool> is-software-renderer: false;
 
     // Animate Engine Properties
@@ -184,6 +185,9 @@ export component TLBX1UI inherits Window {
     in-out property <float> animate-slot-a-sample-start: 0.0;
     in-out property <float> animate-slot-a-loop-start: 0.0;
     in-out property <float> animate-slot-a-loop-end: 1.0;
+    in-out property <int> animate-slot-a-filter-type: 0;
+    in-out property <float> animate-slot-a-filter-cutoff: 0.5;
+    in-out property <float> animate-slot-a-filter-resonance: 0.0;
     in-out property <float> animate-slot-b-sample-start: 0.0;
     in-out property <float> animate-slot-b-loop-start: 0.0;
     in-out property <float> animate-slot-b-loop-end: 1.0;
@@ -224,6 +228,14 @@ export component TLBX1UI inherits Window {
     in property <int> animate-sequencer-steps: 16;
     in property <int> animate-sequencer-rows: 10;
     in property <int> animate-sequencer-current-step: -1;
+
+    // Simp Kick Engine Properties
+    in-out property <float> kick-pitch: 0.5;
+    in-out property <float> kick-decay: 0.5;
+    in-out property <float> kick-drive: 0.0;
+    in-out property <float> kick-level: 1.0;
+    in-out property <[bool]> kick-sequencer-grid;
+    in property <int> kick-sequencer-current-step: -1;
 
     in-out property <bool> show-settings: false;
     in property <[string]> output-devices;
@@ -375,6 +387,9 @@ export component TLBX1UI inherits Window {
     callback animate-slot-a-sample-start-changed(value: float);
     callback animate-slot-a-loop-start-changed(value: float);
     callback animate-slot-a-loop-end-changed(value: float);
+    callback animate-slot-a-filter-type-changed(index: int);
+    callback animate-slot-a-filter-cutoff-changed(value: float);
+    callback animate-slot-a-filter-resonance-changed(value: float);
     callback animate-slot-b-sample-start-changed(value: float);
     callback animate-slot-b-loop-start-changed(value: float);
     callback animate-slot-b-loop-end-changed(value: float);
@@ -408,6 +423,12 @@ export component TLBX1UI inherits Window {
     callback animate-amp-release-changed(value: float);
 
     callback animate-sequencer-grid-toggled(row: int, step: int);
+
+    callback kick-pitch-changed(value: float);
+    callback kick-decay-changed(value: float);
+    callback kick-drive-changed(value: float);
+    callback kick-level-changed(value: float);
+    callback kick-sequencer-grid-toggled(step: int);
 
     background: #0f0f12;
 
@@ -857,6 +878,9 @@ export component TLBX1UI inherits Window {
                             animate-slot-a-sample-start <=> root.animate-slot-a-sample-start;
                             animate-slot-a-loop-start <=> root.animate-slot-a-loop-start;
                             animate-slot-a-loop-end <=> root.animate-slot-a-loop-end;
+                            animate-slot-a-filter-type <=> root.animate-slot-a-filter-type;
+                            animate-slot-a-filter-cutoff <=> root.animate-slot-a-filter-cutoff;
+                            animate-slot-a-filter-resonance <=> root.animate-slot-a-filter-resonance;
                             animate-slot-b-sample-start <=> root.animate-slot-b-sample-start;
                             animate-slot-b-loop-start <=> root.animate-slot-b-loop-start;
                             animate-slot-b-loop-end <=> root.animate-slot-b-loop-end;
@@ -942,6 +966,9 @@ export component TLBX1UI inherits Window {
                             animate-slot-a-sample-start-changed(value) => { root.animate-slot-a-sample-start-changed(value); }
                             animate-slot-a-loop-start-changed(value) => { root.animate-slot-a-loop-start-changed(value); }
                             animate-slot-a-loop-end-changed(value) => { root.animate-slot-a-loop-end-changed(value); }
+                            animate-slot-a-filter-type-changed(index) => { root.animate-slot-a-filter-type-changed(index); }
+                            animate-slot-a-filter-cutoff-changed(value) => { root.animate-slot-a-filter-cutoff-changed(value); }
+                            animate-slot-a-filter-resonance-changed(value) => { root.animate-slot-a-filter-resonance-changed(value); }
                             animate-slot-b-sample-start-changed(value) => { root.animate-slot-b-sample-start-changed(value); }
                             animate-slot-b-loop-start-changed(value) => { root.animate-slot-b-loop-start-changed(value); }
                             animate-slot-b-loop-end-changed(value) => { root.animate-slot-b-loop-end-changed(value); }
@@ -974,9 +1001,35 @@ export component TLBX1UI inherits Window {
                         }
                     }
                 }
+                simpkick-section := Rectangle {
+                    width: parent.width;
+                    height: root.active-engine-type == 3 ? simpkick-content.preferred-height : 0px;
+                    clip: true;
+                    visible: root.active-engine-type == 3;
+
+                    simpkick-content := VerticalLayout {
+                        spacing: 8px;
+                        width: parent.width;
+
+                        SimpKickEngine {
+                            width: parent.width;
+                            kick-pitch <=> root.kick-pitch;
+                            kick-decay <=> root.kick-decay;
+                            kick-drive <=> root.kick-drive;
+                            kick-level <=> root.kick-level;
+                            kick-sequencer-grid <=> root.kick-sequencer-grid;
+                            kick-sequencer-current-step: root.kick-sequencer-current-step;
+                            kick-pitch-changed(value) => { root.kick-pitch-changed(value); }
+                            kick-decay-changed(value) => { root.kick-decay-changed(value); }
+                            kick-drive-changed(value) => { root.kick-drive-changed(value); }
+                            kick-level-changed(value) => { root.kick-level-changed(value); }
+                            kick-sequencer-grid-toggled(step) => { root.kick-sequencer-grid-toggled(step); }
+                        }
+                    }
+                }
+            }
+        }
     }
-}
-}
 
     Rectangle {
         visible: root.show-settings;
