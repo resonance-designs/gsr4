@@ -223,7 +223,7 @@ export component TapeEngine {
             }
 
             Rectangle {
-                width: 300px;
+                width: 286px;
                 height: 200px;
                 background: #121216;
                 border-radius: 6px;
@@ -232,44 +232,9 @@ export component TapeEngine {
 
                 GridLayout {
                     padding: 12px;
-                    spacing: 8px;
+                    spacing-horizontal: 28px;
+                    spacing-vertical: 10px;
                     Row {
-                        VerticalLayout {
-                            spacing: 4px;
-                            Text { text: "Speed"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
-                            RDSKnob {
-                                renderer: "lo-fi";
-                                value: root.tape-speed;
-                                min-value: -4;
-                                max-value: 4;
-                                size: 44px;
-                                indicator-position: 14px;
-                                sensitivity: 0.05;
-                                scroll-sensitivity: 0.05;
-                                value-changed(v) => {
-                                    root.tape-speed = v;
-                                    root.tape-speed-changed(v);
-                                }
-                            }
-                        }
-                        VerticalLayout {
-                            spacing: 4px;
-                            Text { text: "Rotate"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
-                            RDSKnob {
-                                renderer: "lo-fi";
-                                value: root.tape-rotate;
-                                min-value: 0;
-                                max-value: 1;
-                                size: 44px;
-                                indicator-position: 14px;
-                                sensitivity: 0.01;
-                                scroll-sensitivity: 0.01;
-                                value-changed(v) => {
-                                    root.tape-rotate = v;
-                                    root.tape-rotate-changed(v);
-                                }
-                            }
-                        }
                         VerticalLayout {
                             spacing: 4px;
                             Text { text: "T.Start"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
@@ -306,8 +271,6 @@ export component TapeEngine {
                                 }
                             }
                         }
-                    }
-                    Row {
                         VerticalLayout {
                             spacing: 4px;
                             Text { text: "Length"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
@@ -323,6 +286,44 @@ export component TapeEngine {
                                 value-changed(v) => {
                                     root.loop-length = v;
                                     root.loop-length-changed(v);
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Rotate"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.tape-rotate;
+                                min-value: 0;
+                                max-value: 1;
+                                size: 44px;
+                                indicator-position: 14px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.tape-rotate = v;
+                                    root.tape-rotate-changed(v);
+                                }
+                            }
+                        }
+                    }
+                    Row {
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Speed"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.tape-speed;
+                                min-value: -4;
+                                max-value: 4;
+                                size: 44px;
+                                indicator-position: 14px;
+                                sensitivity: 0.05;
+                                scroll-sensitivity: 0.05;
+                                value-changed(v) => {
+                                    root.tape-speed = v;
+                                    root.tape-speed-changed(v);
                                 }
                             }
                         }
@@ -391,6 +392,7 @@ export component TapeEngine {
                                 width: 130px;
                                 Text { text: "Rate Mode"; color: #b9b9bf; font-size: 10px; }
                                 RDSComboBox {
+                                    width: 100px;
                                     height: 24px;
                                     model: root.tape-rate-modes;
                                     current-index: root.tape-rate-mode;
@@ -405,6 +407,7 @@ export component TapeEngine {
                                 width: 130px;
                                 Text { text: "Loop Mode"; color: #b9b9bf; font-size: 10px; }
                                 RDSComboBox {
+                                    width: 100px;
                                     height: 24px;
                                     model: root.loop-modes;
                                     current-index: root.loop-mode;
@@ -714,6 +717,7 @@ export component TapeEngine {
                                 width: 100px;
                                 Text { text: "Decay Mode"; color: #b9b9bf; font-size: 11px; }
                                 RDSComboBox {
+                                    width: 100px;
                                     model: root.ring-decay-modes;
                                     current-index: root.ring-decay-mode;
                                     selected => {

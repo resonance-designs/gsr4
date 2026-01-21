@@ -1845,7 +1845,7 @@ impl Plugin for TLBX1 {
                             }
                         }
                     }
-                    
+
                     track.play_pos.store(play_pos.to_bits(), Ordering::Relaxed);
                     if mosaic_buffer.is_some() && mosaic_len > 0 {
                         track
@@ -4203,7 +4203,7 @@ fn initialize_ui(
         SharedString::from("Minor"),
     ])));
     ui.set_engine_types(ModelRc::new(VecModel::from(vec![
-        SharedString::from("Tape"),
+        SharedString::from("Tape-Deck"),
         SharedString::from("Animate"),
     ])));
     ui.set_engine_index(0);
