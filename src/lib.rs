@@ -130,6 +130,8 @@ struct Track {
     tape_tempo: AtomicU32,
     /// Tape rate mode: 0=Free, 1=Straight, 2=Dotted, 3=Triplet.
     tape_rate_mode: AtomicU32,
+    /// Pending sync request for straight tape playback.
+    tape_sync_requested: AtomicBool,
     /// Tape rotate amount (normalized 0..1).
     tape_rotate: AtomicU32,
     /// Tape glide amount (normalized 0..1).
@@ -469,6 +471,7 @@ impl Default for Track {
             tape_speed_smooth: AtomicU32::new(1.0f32.to_bits()),
             tape_tempo: AtomicU32::new(120.0f32.to_bits()),
             tape_rate_mode: AtomicU32::new(0),
+            tape_sync_requested: AtomicBool::new(false),
             tape_rotate: AtomicU32::new(0.0f32.to_bits()),
             tape_glide: AtomicU32::new(0.0f32.to_bits()),
             tape_sos: AtomicU32::new(0.0f32.to_bits()),
@@ -648,6 +651,7 @@ pub struct TLBX1 {
     metronome_click_remaining: u32,
     master_step_phase: f32,
     master_step_index: i32,
+    master_step_count: i64,
     animate_library: Arc<AnimateLibrary>,
     master_fx: MasterFxState,
     sample_rate: AtomicU32,
@@ -734,6 +738,7 @@ impl Default for TLBX1 {
             metronome_click_remaining: 0,
             master_step_phase: 0.0,
             master_step_index: 0,
+            master_step_count: 0,
             animate_library: Arc::new(AnimateLibrary::load()),
             master_fx: MasterFxState::default(),
             sample_rate: AtomicU32::new(44100),
@@ -886,6 +891,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.tape_speed_smooth.store(1.0f32.to_bits(), Ordering::Relaxed);
     track.tape_tempo.store(120.0f32.to_bits(), Ordering::Relaxed);
     track.tape_rate_mode.store(0, Ordering::Relaxed);
+    track.tape_sync_requested.store(false, Ordering::Relaxed);
     track.tape_rotate.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.tape_glide.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.tape_sos.store(0.0f32.to_bits(), Ordering::Relaxed);
@@ -1832,10 +1838,12 @@ impl Plugin for TLBX1 {
         }
         let mut master_step = self.master_step_index;
         let mut master_phase = self.master_step_phase;
+        let mut master_step_count = self.master_step_count;
         if samples_per_step > 0.0 {
             while master_phase >= samples_per_step {
                 master_phase -= samples_per_step;
                 master_step = (master_step + 1).rem_euclid(16);
+                master_step_count += 1;
             }
         }
 
@@ -2140,7 +2148,7 @@ impl Plugin for TLBX1 {
                         3 => 2.0 / 3.0,
                         _ => 0.0,
                     };
-                    let (tempo_speed, straight_steps_per_loop) = match tape_rate_mode {
+                    let (tempo_speed, straight_bars) = match tape_rate_mode {
                         0 => (tape_speed, None),
                         1 => {
                             let divisions = [
@@ -2153,39 +2161,28 @@ impl Plugin for TLBX1 {
                                 1.0,
                                 2.0,
                                 4.0,
+                                8.0,
+                                16.0,
                             ];
                             let normalized = (tape_speed.abs() / 4.0).clamp(0.0, 1.0);
                             let idx = ((divisions.len() - 1) as f32 * normalized).round() as usize;
                             let bars = divisions[idx];
-                            let steps_per_loop = (bars * 16.0f32).max(1.0f32);
                             let seconds_per_bar = (60.0 / tape_tempo) * 4.0;
                             let target_seconds = (bars * seconds_per_bar).max(0.001);
                             let speed = loop_len as f32
                                 / (target_seconds
                                     * track.sample_rate.load(Ordering::Relaxed).max(1) as f32);
-                            (speed, Some(steps_per_loop))
+                            (speed, Some(bars))
                         }
                         _ => ((tape_tempo / 120.0) * rate_factor, None),
                     };
-                    if let Some(steps_per_loop) = straight_steps_per_loop {
-                        if samples_per_step > 0.0 {
-                            let master_step_f =
-                                master_step as f32 + (master_phase / samples_per_step);
-                            let step_in_loop = master_step_f.rem_euclid(steps_per_loop);
-                            let phase = step_in_loop / steps_per_loop;
-                            play_pos = if direction >= 0 {
-                                loop_start as f32 + phase * loop_len as f32
-                            } else {
-                                loop_end.saturating_sub(1) as f32 - phase * loop_len as f32
-                            };
-                            if keylock_enabled {
-                                keylock_phase = 0.0;
-                                keylock_grain_a = play_pos;
-                                keylock_grain_b =
-                                    play_pos + direction as f32 * KEYLOCK_GRAIN_HOP as f32;
-                            }
-                        }
-                    }
+                    let _sync_requested =
+                        track.tape_sync_requested.swap(false, Ordering::Relaxed);
+                    let use_straight_lock = tape_rate_mode == 1
+                        && straight_bars.is_some()
+                        && samples_per_step > 0.0;
+                    let mut straight_phase = master_phase;
+                    let mut straight_step_count = master_step_count;
                     let target_speed = if tape_freeze { 0.0 } else { tempo_speed };
                     let glide =
                         f32::from_bits(track.tape_glide.load(Ordering::Relaxed)).clamp(0.0, 1.0);
@@ -2240,7 +2237,108 @@ impl Plugin for TLBX1 {
                             }
                         }
 
-                        if keylock_enabled {
+                        if use_straight_lock {
+                            let bars = straight_bars.unwrap_or(1.0f32).max(0.000_01f32);
+                            let step_progress =
+                                straight_step_count as f32 + (straight_phase / samples_per_step);
+                            let total_bars = step_progress / 16.0;
+                            let loop_units = total_bars / bars;
+                            let phase = loop_units.fract();
+                            let locked_pos = if direction >= 0 {
+                                loop_start as f32 + phase * loop_len as f32
+                            } else {
+                                loop_end.saturating_sub(1) as f32 - phase * loop_len as f32
+                            };
+                            let xfade_start = loop_end.saturating_sub(xfade_samples) as f32;
+                            let xfade_len = xfade_samples as f32;
+                            for channel_idx in 0..output.len() {
+                                let src_channel = if num_channels == 1 {
+                                    0
+                                } else if channel_idx < num_channels {
+                                    channel_idx
+                                } else {
+                                    continue;
+                                };
+                                let mut sample_value = sample_at_linear(
+                                    &samples,
+                                    src_channel,
+                                    locked_pos,
+                                    loop_start,
+                                    loop_end,
+                                    loop_active,
+                                    num_samples,
+                                );
+                                if loop_active && xfade_samples > 0 {
+                                    if direction > 0 && locked_pos >= xfade_start {
+                                        let fade_in =
+                                            ((locked_pos - xfade_start) / xfade_len).clamp(0.0, 1.0);
+                                        let head_pos =
+                                            loop_start as f32 + (locked_pos - xfade_start);
+                                        let head_sample = sample_at_linear(
+                                            &samples,
+                                            src_channel,
+                                            head_pos,
+                                            loop_start,
+                                            loop_end,
+                                            loop_active,
+                                            num_samples,
+                                        );
+                                        sample_value = sample_value * (1.0 - fade_in)
+                                            + head_sample * fade_in;
+                                    } else if direction < 0
+                                        && locked_pos <= loop_start as f32 + xfade_len
+                                    {
+                                        let fade_in = ((loop_start as f32 + xfade_len - locked_pos)
+                                            / xfade_len)
+                                            .clamp(0.0, 1.0);
+                                        let head_pos =
+                                            loop_end as f32 - (loop_start as f32 + xfade_len - locked_pos);
+                                        let head_sample = sample_at_linear(
+                                            &samples,
+                                            src_channel,
+                                            head_pos,
+                                            loop_start,
+                                            loop_end,
+                                            loop_active,
+                                            num_samples,
+                                        );
+                                        sample_value = sample_value * (1.0 - fade_in)
+                                            + head_sample * fade_in;
+                                    }
+                                }
+                                let level = smooth_level + level_step * sample_idx as f32;
+                                let out_value = sample_value * level;
+                                output[channel_idx][sample_idx] += out_value;
+                                if let Some(mosaic) = mosaic_buffer.as_mut() {
+                                    if mosaic_len > 0 && channel_idx < mosaic.len() {
+                                        let existing = mosaic[channel_idx][mosaic_write_pos];
+                                        mosaic[channel_idx][mosaic_write_pos] =
+                                            out_value * (1.0 - smooth_mosaic_sos)
+                                                + existing * smooth_mosaic_sos;
+                                    }
+                                }
+                                if channel_idx == 0 {
+                                    let amp = out_value.abs();
+                                    if amp > track_peak_left {
+                                        track_peak_left = amp;
+                                    }
+                                } else if channel_idx == 1 {
+                                    let amp = out_value.abs();
+                                    if amp > track_peak_right {
+                                        track_peak_right = amp;
+                                    }
+                                }
+                            }
+                            if mosaic_buffer.is_some() && mosaic_len > 0 {
+                                mosaic_write_pos = (mosaic_write_pos + 1) % mosaic_len;
+                            }
+                            play_pos = locked_pos;
+                            straight_phase += 1.0;
+                            if straight_phase >= samples_per_step {
+                                straight_phase -= samples_per_step;
+                                straight_step_count += 1;
+                            }
+                        } else if keylock_enabled {
                             let speed = smooth_speed + speed_step * sample_idx as f32;
                             let step = direction as f32 * speed;
                             let hop = KEYLOCK_GRAIN_HOP as f32;
@@ -3368,13 +3466,16 @@ impl Plugin for TLBX1 {
                 while phase >= samples_per_step {
                     phase -= samples_per_step;
                     step = (step + 1).rem_euclid(16);
+                    master_step_count += 1;
                 }
             }
             self.master_step_phase = phase;
             self.master_step_index = step;
+            self.master_step_count = master_step_count;
         } else {
             self.master_step_phase = 0.0;
             self.master_step_index = 0;
+            self.master_step_count = 0;
         }
 
         if keep_alive {
@@ -5725,6 +5826,9 @@ fn initialize_ui(
             tracks_tape[track_idx]
                 .tape_speed
                 .store(value.to_bits(), Ordering::Relaxed);
+            tracks_tape[track_idx]
+                .tape_sync_requested
+                .store(true, Ordering::Relaxed);
         }
     });
 
@@ -5772,6 +5876,9 @@ fn initialize_ui(
             tracks_tape[track_idx]
                 .tape_rate_mode
                 .store(mode, Ordering::Relaxed);
+            tracks_tape[track_idx]
+                .tape_sync_requested
+                .store(true, Ordering::Relaxed);
         }
     });
 
