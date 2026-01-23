@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.12] - 2026-01-22
+
+- Fixed bug where granulator and silk devices were affecting audio processing for all tracks instead of just the track it's loaded on.
+- Attempts to fix no keyboard input issue.
+- Updated win support crate to 0.61.2 and added Win32_UI_Input_KeyboardAndMouse dependency.
+- Moved engine components to their own folder.
+
+## [0.1.11] - 2026-01-21
+
+- Added SimpKick engine UI with a 16-step sequencer
+- Added SimpKick attack control for click smoothing
+- Added project/library browser panel for quick loading
+- Updated docs to reflect current engine lineup and UI component usage
+
 ## [0.1.10] - 2026-01-21
 
 - A little polish to the Tape-Deck UI.

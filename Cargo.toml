@@ -1,6 +1,6 @@
 [package]
 name = "tlbx-1"
-version = "0.1.10"
+version = "0.1.12"
 edition = "2024"
 
 [lib]
@@ -27,10 +27,17 @@ fastrand = "2"
 mime_guess = "2"
 tiny_http = "0.12"
 env_logger = "0.11"
+zip = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 softbuffer = { version = "0.4.6", default-features = false }
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi"] }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse"
+] }
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 softbuffer = { version = "0.4.6", default-features = false, features = ["kms", "x11"] }
