@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.12
+ * Version: 0.1.13
  * Component: UI Definitions
  */
 
@@ -33,6 +33,7 @@ import {
 import { TapeEngine } from "./engines/tape_engine.slint";
 import { AnimateEngine } from "./engines/animate_engine.slint";
 import { SimpKickEngine } from "./engines/simpkick_engine.slint";
+import { VoidSeedEngine } from "./engines/void_seed_engine.slint";
 import { Browser, BrowserEntry } from "./browser.slint";
 
 export component TLBX1UI inherits Window {
@@ -122,7 +123,7 @@ export component TLBX1UI inherits Window {
     in property <string> metronome-count-in-label;
     in-out property <bool> show-engine-confirm: false;
     in property <string> engine-confirm-text;
-    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate, 3 = Simp Kick
+    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate, 3 = Simp Kick, 4 = Void Seed
     in property <bool> is-software-renderer: false;
 
     // Browser Properties
@@ -235,6 +236,15 @@ export component TLBX1UI inherits Window {
     in-out property <float> kick-level: 1.0;
     in-out property <[bool]> kick-sequencer-grid;
     in property <int> kick-sequencer-current-step: -1;
+
+    // Void Seed Engine Properties
+    in-out property <float> void-base-freq: 40.0;
+    in-out property <float> void-chaos-depth: 0.5;
+    in-out property <float> void-entropy: 0.2;
+    in-out property <float> void-feedback: 0.8;
+    in-out property <float> void-diffusion: 0.5;
+    in-out property <float> void-mod-rate: 0.1;
+    in-out property <float> void-level: 0.8;
 
     in-out property <bool> show-settings: false;
     in property <[string]> output-devices;
@@ -425,6 +435,16 @@ export component TLBX1UI inherits Window {
     callback kick-drive-changed(value: float);
     callback kick-level-changed(value: float);
     callback kick-sequencer-grid-toggled(step: int);
+
+    // Void Seed Engine Callbacks
+    callback void-base-freq-changed(value: float);
+    callback void-chaos-depth-changed(value: float);
+    callback void-entropy-changed(value: float);
+    callback void-feedback-changed(value: float);
+    callback void-diffusion-changed(value: float);
+    callback void-mod-rate-changed(value: float);
+    callback void-level-changed(value: float);
+    callback toggle-void();
 
     Rectangle {
         background: #0f0f12;
@@ -1037,6 +1057,38 @@ export component TLBX1UI inherits Window {
                                         kick-drive-changed(value) => { root.kick-drive-changed(value); }
                                         kick-level-changed(value) => { root.kick-level-changed(value); }
                                         kick-sequencer-grid-toggled(step) => { root.kick-sequencer-grid-toggled(step); }
+                                    }
+                                }
+                            }
+                            voidseed-section := Rectangle {
+                                width: parent.width;
+                                height: root.active-engine-type == 4 ? voidseed-content.preferred-height : 0px;
+                                clip: true;
+                                visible: root.active-engine-type == 4;
+
+                                voidseed-content := VerticalLayout {
+                                    spacing: 8px;
+                                    width: parent.width;
+
+                                    VoidSeedEngine {
+                                        width: parent.width;
+                                        void-base-freq <=> root.void-base-freq;
+                                        void-chaos-depth <=> root.void-chaos-depth;
+                                        void-entropy <=> root.void-entropy;
+                                        void-feedback <=> root.void-feedback;
+                                        void-diffusion <=> root.void-diffusion;
+                                        void-mod-rate <=> root.void-mod-rate;
+                                        void-level <=> root.void-level;
+                                        is-muted: root.track-muted;
+                                        spectrum: root.spectrum;
+                                        void-base-freq-changed(value) => { root.void-base-freq-changed(value); }
+                                        void-chaos-depth-changed(value) => { root.void-chaos-depth-changed(value); }
+                                        void-entropy-changed(value) => { root.void-entropy-changed(value); }
+                                        void-feedback-changed(value) => { root.void-feedback-changed(value); }
+                                        void-diffusion-changed(value) => { root.void-diffusion-changed(value); }
+                                        void-mod-rate-changed(value) => { root.void-mod-rate-changed(value); }
+                                        void-level-changed(value) => { root.void-level-changed(value); }
+                                        toggle-void() => { root.toggle-void(); }
                                     }
                                 }
                             }

@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.12
+ * Version: 0.1.13
  * Component: Core Logic
  */
 
@@ -477,7 +477,53 @@ struct Track {
     kick_pitch_env: AtomicU32,
     /// Simp Kick attack remaining samples.
     kick_attack_remaining: AtomicU32,
-    /// Engine type loaded for this track (0 = none, 1 = tape, 2 = animate, 3 = simpkick).
+    /// Void Seed base frequency.
+    void_base_freq: AtomicU32,
+    /// Smoothed void base frequency.
+    void_base_freq_smooth: AtomicU32,
+    /// Void Seed chaos depth (X).
+    void_chaos_depth: AtomicU32,
+    /// Smoothed void chaos depth.
+    void_chaos_depth_smooth: AtomicU32,
+    /// Void Seed entropy (Y).
+    void_entropy: AtomicU32,
+    /// Smoothed void entropy.
+    void_entropy_smooth: AtomicU32,
+    /// Void Seed feedback.
+    void_feedback: AtomicU32,
+    /// Smoothed void feedback.
+    void_feedback_smooth: AtomicU32,
+    /// Void Seed diffusion (wet).
+    void_diffusion: AtomicU32,
+    /// Smoothed void diffusion.
+    void_diffusion_smooth: AtomicU32,
+    /// Void Seed modulation rate.
+    void_mod_rate: AtomicU32,
+    /// Smoothed void modulation rate.
+    void_mod_rate_smooth: AtomicU32,
+    /// Void Seed level.
+    void_level: AtomicU32,
+    /// Smoothed void level.
+    void_level_smooth: AtomicU32,
+    /// Void Seed oscillator phases.
+    void_osc_phases: [AtomicU32; 12],
+    /// Void Seed detune LFO phases.
+    void_lfo_phases: [AtomicU32; 12],
+    /// Void Seed detune LFO frequencies.
+    void_lfo_freqs: [AtomicU32; 12],
+    /// Void Seed chaos LFO phase.
+    void_lfo_chaos_phase: AtomicU32,
+    /// Void Seed filter state v1.
+    void_filter_v1: [AtomicU32; 2],
+    /// Void Seed filter state v2.
+    void_filter_v2: [AtomicU32; 2],
+    /// Void Seed internal gain (for ramping).
+    void_internal_gain: AtomicU32,
+    /// Void Seed delay buffer.
+    void_delay_buffer: Arc<Mutex<[Vec<f32>; 2]>>,
+    /// Void Seed delay write position.
+    void_delay_write_pos: AtomicU32,
+    /// Engine type loaded for this track (0 = none, 1 = tape, 2 = animate, 3 = simpkick, 4 = voidseed).
     engine_type: AtomicU32,
     /// Logs one debug line per playback start to confirm audio thread output.
     debug_logged: AtomicBool,
@@ -678,6 +724,42 @@ impl Default for Track {
             kick_env: AtomicU32::new(0.0f32.to_bits()),
             kick_pitch_env: AtomicU32::new(0.0f32.to_bits()),
             kick_attack_remaining: AtomicU32::new(0),
+            void_base_freq: AtomicU32::new(40.0f32.to_bits()),
+            void_base_freq_smooth: AtomicU32::new(40.0f32.to_bits()),
+            void_chaos_depth: AtomicU32::new(0.5f32.to_bits()),
+            void_chaos_depth_smooth: AtomicU32::new(0.5f32.to_bits()),
+            void_entropy: AtomicU32::new(0.2f32.to_bits()),
+            void_entropy_smooth: AtomicU32::new(0.2f32.to_bits()),
+            void_feedback: AtomicU32::new(0.8f32.to_bits()),
+            void_feedback_smooth: AtomicU32::new(0.8f32.to_bits()),
+            void_diffusion: AtomicU32::new(0.5f32.to_bits()),
+            void_diffusion_smooth: AtomicU32::new(0.5f32.to_bits()),
+            void_mod_rate: AtomicU32::new(0.1f32.to_bits()),
+            void_mod_rate_smooth: AtomicU32::new(0.1f32.to_bits()),
+            void_level: AtomicU32::new(0.8f32.to_bits()),
+            void_level_smooth: AtomicU32::new(0.8f32.to_bits()),
+            void_osc_phases: Default::default(),
+            void_lfo_phases: Default::default(),
+            void_lfo_freqs: [
+                AtomicU32::new(0.05f32.to_bits()),
+                AtomicU32::new(0.12f32.to_bits()),
+                AtomicU32::new(0.07f32.to_bits()),
+                AtomicU32::new(0.15f32.to_bits()),
+                AtomicU32::new(0.03f32.to_bits()),
+                AtomicU32::new(0.18f32.to_bits()),
+                AtomicU32::new(0.09f32.to_bits()),
+                AtomicU32::new(0.11f32.to_bits()),
+                AtomicU32::new(0.04f32.to_bits()),
+                AtomicU32::new(0.14f32.to_bits()),
+                AtomicU32::new(0.06f32.to_bits()),
+                AtomicU32::new(0.17f32.to_bits()),
+            ],
+            void_lfo_chaos_phase: AtomicU32::new(0),
+            void_filter_v1: Default::default(),
+            void_filter_v2: Default::default(),
+            void_internal_gain: AtomicU32::new(0.0f32.to_bits()),
+            void_delay_buffer: Arc::new(Mutex::new([vec![0.0; 65536], vec![0.0; 65536]])),
+            void_delay_write_pos: AtomicU32::new(0),
             engine_type: AtomicU32::new(0),
             debug_logged: AtomicBool::new(false),
             sample_rate: AtomicU32::new(44_100),
@@ -1159,6 +1241,29 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.kick_env.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.kick_pitch_env.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.kick_attack_remaining.store(0, Ordering::Relaxed);
+
+    track.void_base_freq.store(40.0f32.to_bits(), Ordering::Relaxed);
+    track.void_chaos_depth.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.void_entropy.store(0.2f32.to_bits(), Ordering::Relaxed);
+    track.void_feedback.store(0.8f32.to_bits(), Ordering::Relaxed);
+    track.void_diffusion.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.void_mod_rate.store(0.1f32.to_bits(), Ordering::Relaxed);
+    track.void_level.store(0.8f32.to_bits(), Ordering::Relaxed);
+    track.void_internal_gain.store(0.0f32.to_bits(), Ordering::Relaxed);
+    for i in 0..12 {
+        track.void_osc_phases[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.void_lfo_phases[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+    }
+    track.void_lfo_chaos_phase.store(0, Ordering::Relaxed);
+    track.void_filter_v1[0].store(0, Ordering::Relaxed);
+    track.void_filter_v1[1].store(0, Ordering::Relaxed);
+    track.void_filter_v2[0].store(0, Ordering::Relaxed);
+    track.void_filter_v2[1].store(0, Ordering::Relaxed);
+    if let Some(mut buffer) = track.void_delay_buffer.try_lock() {
+        buffer[0].fill(0.0);
+        buffer[1].fill(0.0);
+    }
+    track.void_delay_write_pos.store(0, Ordering::Relaxed);
 
     track.sample_rate.store(44_100, Ordering::Relaxed);
     track.debug_logged.store(false, Ordering::Relaxed);
@@ -1805,6 +1910,143 @@ impl TLBX1 {
         track
             .kick_attack_remaining
             .store(attack_remaining, Ordering::Relaxed);
+    }
+
+    fn process_voidseed(
+        track: &Track,
+        track_output: &mut [Vec<f32>],
+        num_buffer_samples: usize,
+        _global_tempo: &AtomicU32,
+        _master_step: i32,
+        _master_phase: f32,
+        _samples_per_step: f32,
+        sample_rate: f32,
+    ) {
+        let sr = sample_rate.max(1.0);
+        let base_freq = f32::from_bits(track.void_base_freq.load(Ordering::Relaxed));
+        let chaos_depth = f32::from_bits(track.void_chaos_depth.load(Ordering::Relaxed));
+        let entropy = f32::from_bits(track.void_entropy.load(Ordering::Relaxed));
+        let feedback = f32::from_bits(track.void_feedback.load(Ordering::Relaxed));
+        let diffusion = f32::from_bits(track.void_diffusion.load(Ordering::Relaxed));
+        let mod_rate = f32::from_bits(track.void_mod_rate.load(Ordering::Relaxed));
+        let void_level = f32::from_bits(track.void_level.load(Ordering::Relaxed));
+
+        let mut osc_phases = [0.0f32; 12];
+        let mut lfo_phases = [0.0f32; 12];
+        let mut lfo_freqs = [0.0f32; 12];
+        for i in 0..12 {
+            osc_phases[i] = f32::from_bits(track.void_osc_phases[i].load(Ordering::Relaxed));
+            lfo_phases[i] = f32::from_bits(track.void_lfo_phases[i].load(Ordering::Relaxed));
+            lfo_freqs[i] = f32::from_bits(track.void_lfo_freqs[i].load(Ordering::Relaxed));
+        }
+        let mut chaos_phase = f32::from_bits(track.void_lfo_chaos_phase.load(Ordering::Relaxed));
+        let mut filter_v1 = [
+            f32::from_bits(track.void_filter_v1[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.void_filter_v1[1].load(Ordering::Relaxed)),
+        ];
+        let mut filter_v2 = [
+            f32::from_bits(track.void_filter_v2[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.void_filter_v2[1].load(Ordering::Relaxed)),
+        ];
+        let mut internal_gain = f32::from_bits(track.void_internal_gain.load(Ordering::Relaxed));
+
+        // Targeting 0.8 gain when enabled, 0.0 when disabled (ramping)
+        // Since we don't have an explicit 'void_enabled' flag in Track yet (wait, did I add it? No, I used engine_type)
+        // In DroneSYN.vue, it's a toggle. I'll use track.is_muted to decide? 
+        // No, DroneSYN has a separate toggle. I'll use the 'is_playing' flag for now or just assume it's on if engine is loaded.
+        // Actually, let's use track.is_muted as the "void closed" state.
+        let target_gain = if track.is_muted.load(Ordering::Relaxed) { 0.0 } else { 0.8 };
+        let gain_step = (target_gain - internal_gain) / (4.0 * sr); // 4 second ramp
+
+        let output = track_output;
+        let num_channels = output.len();
+
+        if let Some(mut delay_buf) = track.void_delay_buffer.try_lock() {
+            let mut write_pos = track.void_delay_write_pos.load(Ordering::Relaxed) as usize;
+            let delay_len = delay_buf[0].len();
+            // 8n delay at 120bpm = 0.25s. 
+            let delay_samples = (0.25 * sr) as usize;
+
+            for sample_idx in 0..num_buffer_samples {
+                internal_gain = (internal_gain + gain_step).clamp(0.0, 0.8);
+
+                // Chaos LFO (affects filter frequency)
+                chaos_phase += 0.02 / sr;
+                if chaos_phase >= 1.0 { chaos_phase -= 1.0; }
+                let chaos_lfo = (chaos_phase * 2.0 * PI).sin() * 0.5 + 0.5;
+                let filter_mod = 0.2 + chaos_lfo * chaos_depth * 5.0;
+
+                let mut swarm_sample = 0.0f32;
+                let types = [0, 1, 2, 3]; // sine, sawtooth, square, triangle
+
+                for i in 0..12 {
+                    // Detune LFO
+                    lfo_phases[i] += lfo_freqs[i] / sr;
+                    if lfo_phases[i] >= 1.0 { lfo_phases[i] -= 1.0; }
+                    let detune_cents = (lfo_phases[i] * 2.0 * PI).sin() * 20.0;
+                    let detune_ratio = 2.0f32.powf(detune_cents / 1200.0);
+
+                    // Frequency with entropy
+                    let entropy_offset = ((i as f32 * 1.618).fract() - 0.5) * entropy;
+                    let freq = base_freq * (i as f32 * 0.5 + 1.0) * (1.0 + entropy_offset) * detune_ratio;
+
+                    osc_phases[i] += freq / sr;
+                    if osc_phases[i] >= 1.0 { osc_phases[i] -= 1.0; }
+
+                    let phase = osc_phases[i];
+                    let val = match types[i % 4] {
+                        0 => (phase * 2.0 * PI).sin(),
+                        1 => phase * 2.0 - 1.0,
+                        2 => if phase < 0.5 { 1.0 } else { -1.0 },
+                        3 => if phase < 0.5 { phase * 4.0 - 1.0 } else { 3.0 - phase * 4.0 },
+                        _ => 0.0,
+                    };
+                    swarm_sample += val * 0.04;
+                }
+
+                // Filter
+                let cutoff_hz = (150.0 + mod_rate * 500.0 * filter_mod).clamp(20.0, 20000.0);
+                let filter_f = (2.0 * (PI * cutoff_hz / sr).sin()).clamp(0.0, 0.99);
+                let filter_q = 0.5;
+
+                for ch in 0..num_channels.min(2) {
+                    let low = filter_v2[ch] + filter_f * filter_v1[ch];
+                    let high = swarm_sample - low - filter_q * filter_v1[ch];
+                    let band = filter_f * high + filter_v1[ch];
+                    
+                    let filtered = low;
+                    
+                    filter_v1[ch] = band;
+                    filter_v2[ch] = low;
+
+                    // Delay (Diffusion & Feedback)
+                    let read_pos = (write_pos + delay_len - delay_samples) % delay_len;
+                    let delayed_sample = delay_buf[ch][read_pos];
+                    
+                    // Diffusion is "wet" in DroneSYN
+                    let output_sample = filtered * (1.0 - diffusion) + delayed_sample * diffusion;
+                    
+                    // Write back to delay buffer with feedback
+                    delay_buf[ch][write_pos] = filtered + delayed_sample * feedback;
+                    
+                    output[ch][sample_idx] += output_sample * internal_gain * void_level;
+                }
+                write_pos = (write_pos + 1) % delay_len;
+            }
+            track.void_delay_write_pos.store(write_pos as u32, Ordering::Relaxed);
+        }
+
+        // Store back
+        for i in 0..12 {
+            track.void_osc_phases[i].store(osc_phases[i].to_bits(), Ordering::Relaxed);
+            track.void_lfo_phases[i].store(lfo_phases[i].to_bits(), Ordering::Relaxed);
+        }
+        track.void_lfo_chaos_phase.store(chaos_phase.to_bits(), Ordering::Relaxed);
+        track.void_filter_v1[0].store(filter_v1[0].to_bits(), Ordering::Relaxed);
+        track.void_filter_v1[1].store(filter_v1[1].to_bits(), Ordering::Relaxed);
+        track.void_filter_v2[0].store(filter_v2[0].to_bits(), Ordering::Relaxed);
+        track.void_filter_v2[1].store(filter_v2[1].to_bits(), Ordering::Relaxed);
+        track.void_internal_gain.store(internal_gain.to_bits(), Ordering::Relaxed);
     }
 
     fn process_track_mosaic(
@@ -2789,6 +3031,17 @@ impl Plugin for TLBX1 {
                     );
                 } else if engine_type == 3 {
                     Self::process_simpkick(
+                        track,
+                        &mut self.track_buffer,
+                        buffer.samples(),
+                        &self.global_tempo,
+                        master_step,
+                        master_phase,
+                        samples_per_step,
+                        master_sr,
+                    );
+                } else if engine_type == 4 {
+                    Self::process_voidseed(
                         track,
                         &mut self.track_buffer,
                         buffer.samples(),
@@ -4115,6 +4368,14 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("kick_attack".to_string(), f(&track.kick_attack));
     params.insert("kick_drive".to_string(), f(&track.kick_drive));
     params.insert("kick_level".to_string(), f(&track.kick_level));
+
+    params.insert("void_base_freq".to_string(), f(&track.void_base_freq));
+    params.insert("void_chaos_depth".to_string(), f(&track.void_chaos_depth));
+    params.insert("void_entropy".to_string(), f(&track.void_entropy));
+    params.insert("void_feedback".to_string(), f(&track.void_feedback));
+    params.insert("void_diffusion".to_string(), f(&track.void_diffusion));
+    params.insert("void_mod_rate".to_string(), f(&track.void_mod_rate));
+    params.insert("void_level".to_string(), f(&track.void_level));
 }
 
 fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
@@ -4226,6 +4487,14 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.kick_attack, "kick_attack");
     sf(&track.kick_drive, "kick_drive");
     sf(&track.kick_level, "kick_level");
+
+    sf(&track.void_base_freq, "void_base_freq");
+    sf(&track.void_chaos_depth, "void_chaos_depth");
+    sf(&track.void_entropy, "void_entropy");
+    sf(&track.void_feedback, "void_feedback");
+    sf(&track.void_diffusion, "void_diffusion");
+    sf(&track.void_mod_rate, "void_mod_rate");
+    sf(&track.void_level, "void_level");
 }
 
 fn save_project(
@@ -5211,6 +5480,14 @@ impl SlintWindow {
                 .push(self.tracks[track_idx].kick_sequencer_grid[i].load(Ordering::Relaxed));
         }
 
+        let void_base_freq = f32::from_bits(self.tracks[track_idx].void_base_freq.load(Ordering::Relaxed));
+        let void_chaos_depth = f32::from_bits(self.tracks[track_idx].void_chaos_depth.load(Ordering::Relaxed));
+        let void_entropy = f32::from_bits(self.tracks[track_idx].void_entropy.load(Ordering::Relaxed));
+        let void_feedback = f32::from_bits(self.tracks[track_idx].void_feedback.load(Ordering::Relaxed));
+        let void_diffusion = f32::from_bits(self.tracks[track_idx].void_diffusion.load(Ordering::Relaxed));
+        let void_mod_rate = f32::from_bits(self.tracks[track_idx].void_mod_rate.load(Ordering::Relaxed));
+        let void_level = f32::from_bits(self.tracks[track_idx].void_level.load(Ordering::Relaxed));
+
         let play_pos = f32::from_bits(self.tracks[track_idx].play_pos.load(Ordering::Relaxed));
         let total_samples = if let Some(samples) = self.tracks[track_idx].samples.try_lock() {
             samples.get(0).map(|ch| ch.len()).unwrap_or(0)
@@ -5456,6 +5733,14 @@ impl SlintWindow {
             .set_kick_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
                 kick_sequencer_grid,
             ))));
+
+        self.ui.set_void_base_freq(void_base_freq);
+        self.ui.set_void_chaos_depth(void_chaos_depth);
+        self.ui.set_void_entropy(void_entropy);
+        self.ui.set_void_feedback(void_feedback);
+        self.ui.set_void_diffusion(void_diffusion);
+        self.ui.set_void_mod_rate(void_mod_rate);
+        self.ui.set_void_level(void_level);
 
         self.ui.set_metronome_enabled(metronome_enabled);
         self.ui
@@ -5864,6 +6149,7 @@ fn initialize_ui(
         SharedString::from("Tape-Deck"),
         SharedString::from("Animate"),
         SharedString::from("Simp Kick"),
+        SharedString::from("Void Seed"),
     ])));
     ui.set_engine_index(0);
     ui.set_engine_confirm_text(SharedString::from(
@@ -6101,6 +6387,7 @@ fn initialize_ui(
                 0 => 1,
                 1 => 2,
                 2 => 3,
+                3 => 4,
                 _ => 0,
             };
             if engine_type == 0 {
@@ -7996,6 +8283,93 @@ fn initialize_ui(
                 let current = tracks_kick[track_idx].kick_sequencer_grid[index].load(Ordering::Relaxed);
                 tracks_kick[track_idx].kick_sequencer_grid[index].store(!current, Ordering::Relaxed);
             }
+        }
+    });
+
+    let tracks_void = Arc::clone(tracks);
+    let params_void = Arc::clone(params);
+    ui.on_void_base_freq_changed(move |value| {
+        let track_idx = params_void.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_void[track_idx]
+                .void_base_freq
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_void = Arc::clone(tracks);
+    let params_void = Arc::clone(params);
+    ui.on_void_chaos_depth_changed(move |value| {
+        let track_idx = params_void.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_void[track_idx]
+                .void_chaos_depth
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_void = Arc::clone(tracks);
+    let params_void = Arc::clone(params);
+    ui.on_void_entropy_changed(move |value| {
+        let track_idx = params_void.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_void[track_idx]
+                .void_entropy
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_void = Arc::clone(tracks);
+    let params_void = Arc::clone(params);
+    ui.on_void_feedback_changed(move |value| {
+        let track_idx = params_void.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_void[track_idx]
+                .void_feedback
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_void = Arc::clone(tracks);
+    let params_void = Arc::clone(params);
+    ui.on_void_diffusion_changed(move |value| {
+        let track_idx = params_void.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_void[track_idx]
+                .void_diffusion
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_void = Arc::clone(tracks);
+    let params_void = Arc::clone(params);
+    ui.on_void_mod_rate_changed(move |value| {
+        let track_idx = params_void.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_void[track_idx]
+                .void_mod_rate
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_void = Arc::clone(tracks);
+    let params_void = Arc::clone(params);
+    ui.on_void_level_changed(move |value| {
+        let track_idx = params_void.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_void[track_idx]
+                .void_level
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_void = Arc::clone(tracks);
+    let params_void = Arc::clone(params);
+    ui.on_toggle_void(move || {
+        let track_idx = params_void.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let current = tracks_void[track_idx].is_muted.load(Ordering::Relaxed);
+            tracks_void[track_idx].is_muted.store(!current, Ordering::Relaxed);
         }
     });
 

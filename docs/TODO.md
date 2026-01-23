@@ -167,7 +167,7 @@
 
 ### Engine 4: Void Seed
 
-- [ ] Replicate the generative drone synth referenced in /ref/animmi
+- [x] Replicate the generative drone synth referenced in /ref/animmi
 
 ## Ongoing: Tooling + Docs
 
@@ -176,6 +176,6 @@
 - [x] Add developer onboarding docs
 - [x] Add cross-platform packaging scripts (NSIS/pkgbuild/Linux staging)
 - [x] Bundle docs site with installers and expose in-app Docs link
-- [ ] Refine documentation
+- [x] Refine documentation
 - [x] Document modal settings, keyboard shortcuts, and lo-fi knob rendering
 - [x] Document use of the Resonance Designs Slint UI Component Kit
