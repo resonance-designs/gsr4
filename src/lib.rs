@@ -489,6 +489,8 @@ struct Track {
     void_entropy: AtomicU32,
     /// Smoothed void entropy.
     void_entropy_smooth: AtomicU32,
+    /// Whether the void seed engine is enabled and active.
+    void_enabled: AtomicBool,
     /// Void Seed feedback.
     void_feedback: AtomicU32,
     /// Smoothed void feedback.
@@ -726,6 +728,7 @@ impl Default for Track {
             kick_attack_remaining: AtomicU32::new(0),
             void_base_freq: AtomicU32::new(40.0f32.to_bits()),
             void_base_freq_smooth: AtomicU32::new(40.0f32.to_bits()),
+            void_enabled: AtomicBool::new(false),
             void_chaos_depth: AtomicU32::new(0.5f32.to_bits()),
             void_chaos_depth_smooth: AtomicU32::new(0.5f32.to_bits()),
             void_entropy: AtomicU32::new(0.2f32.to_bits()),
@@ -1951,11 +1954,7 @@ impl TLBX1 {
         let mut internal_gain = f32::from_bits(track.void_internal_gain.load(Ordering::Relaxed));
 
         // Targeting 0.8 gain when enabled, 0.0 when disabled (ramping)
-        // Since we don't have an explicit 'void_enabled' flag in Track yet (wait, did I add it? No, I used engine_type)
-        // In DroneSYN.vue, it's a toggle. I'll use track.is_muted to decide? 
-        // No, DroneSYN has a separate toggle. I'll use the 'is_playing' flag for now or just assume it's on if engine is loaded.
-        // Actually, let's use track.is_muted as the "void closed" state.
-        let target_gain = if track.is_muted.load(Ordering::Relaxed) { 0.0 } else { 0.8 };
+        let target_gain = if track.void_enabled.load(Ordering::Relaxed) { 0.8 } else { 0.0 };
         let gain_step = (target_gain - internal_gain) / (4.0 * sr); // 4 second ramp
 
         let output = track_output;
@@ -4376,6 +4375,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("void_diffusion".to_string(), f(&track.void_diffusion));
     params.insert("void_mod_rate".to_string(), f(&track.void_mod_rate));
     params.insert("void_level".to_string(), f(&track.void_level));
+    params.insert("void_enabled".to_string(), b(&track.void_enabled));
 }
 
 fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
@@ -4495,6 +4495,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.void_diffusion, "void_diffusion");
     sf(&track.void_mod_rate, "void_mod_rate");
     sf(&track.void_level, "void_level");
+    sb(&track.void_enabled, "void_enabled");
 }
 
 fn save_project(
@@ -5487,6 +5488,7 @@ impl SlintWindow {
         let void_diffusion = f32::from_bits(self.tracks[track_idx].void_diffusion.load(Ordering::Relaxed));
         let void_mod_rate = f32::from_bits(self.tracks[track_idx].void_mod_rate.load(Ordering::Relaxed));
         let void_level = f32::from_bits(self.tracks[track_idx].void_level.load(Ordering::Relaxed));
+        let void_enabled = self.tracks[track_idx].void_enabled.load(Ordering::Relaxed);
 
         let play_pos = f32::from_bits(self.tracks[track_idx].play_pos.load(Ordering::Relaxed));
         let total_samples = if let Some(samples) = self.tracks[track_idx].samples.try_lock() {
@@ -5741,6 +5743,7 @@ impl SlintWindow {
         self.ui.set_void_diffusion(void_diffusion);
         self.ui.set_void_mod_rate(void_mod_rate);
         self.ui.set_void_level(void_level);
+        self.ui.set_void_enabled(void_enabled);
 
         self.ui.set_metronome_enabled(metronome_enabled);
         self.ui
@@ -8368,8 +8371,8 @@ fn initialize_ui(
     ui.on_toggle_void(move || {
         let track_idx = params_void.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
-            let current = tracks_void[track_idx].is_muted.load(Ordering::Relaxed);
-            tracks_void[track_idx].is_muted.store(!current, Ordering::Relaxed);
+            let current = tracks_void[track_idx].void_enabled.load(Ordering::Relaxed);
+            tracks_void[track_idx].void_enabled.store(!current, Ordering::Relaxed);
         }
     });
 

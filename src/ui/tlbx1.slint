@@ -245,6 +245,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> void-diffusion: 0.5;
     in-out property <float> void-mod-rate: 0.1;
     in-out property <float> void-level: 0.8;
+    in property <bool> void-enabled: false;
 
     in-out property <bool> show-settings: false;
     in property <[string]> output-devices;
@@ -1079,7 +1080,7 @@ export component TLBX1UI inherits Window {
                                         void-diffusion <=> root.void-diffusion;
                                         void-mod-rate <=> root.void-mod-rate;
                                         void-level <=> root.void-level;
-                                        is-muted: root.track-muted;
+                                        void-enabled: root.void-enabled;
                                         spectrum: root.spectrum;
                                         void-base-freq-changed(value) => { root.void-base-freq-changed(value); }
                                         void-chaos-depth-changed(value) => { root.void-chaos-depth-changed(value); }

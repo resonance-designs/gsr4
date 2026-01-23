@@ -15,7 +15,7 @@ export component VoidSeedEngine {
     in-out property <float> void-mod-rate: 0.1;
     in-out property <float> void-level: 0.8;
     
-    in property <bool> is-muted: false;
+    in property <bool> void-enabled: false;
     in property <[float]> spectrum;
 
     callback void-base-freq-changed(float);
@@ -132,14 +132,14 @@ export component VoidSeedEngine {
             
             Rectangle {
                 height: 40px;
-                background: !root.is-muted ? #f06292 : #1e1e26;
+                background: root.void-enabled ? #f06292 : #1e1e26;
                 border-radius: 4px;
                 border-color: #f0629266;
                 border-width: 1px;
                 
                 Text {
-                    text: !root.is-muted ? "CLOSE_VOID" : "OPEN_VOID";
-                    color: !root.is-muted ? #ffffff : #f0629266;
+                    text: root.void-enabled ? "CLOSE_VOID" : "OPEN_VOID";
+                    color: root.void-enabled ? #ffffff : #f0629266;
                     font-size: 12px;
                     font-weight: 900;
                     letter-spacing: 2px;
