@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.13] - 2026-01-23
+
+- Added Void Seed engine: a 12-oscillator generative drone swarm with chaotic LFO modulation, integrated feedback/diffusion delay, and "Chaos/Entropy" XY pad.
+- Updated user manual and developer onboarding documentation
+
 ## [0.1.12] - 2026-01-22
 
 - Fixed bug where granulator and silk devices were affecting audio processing for all tracks instead of just the track it's loaded on.

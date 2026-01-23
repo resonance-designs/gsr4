@@ -39,6 +39,17 @@ This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
 - The kick synth includes Pitch, Decay, Attack, Drive, and Level controls.
 - Use the 16-step sequencer row to toggle steps on/off per track.
 
+## Void Seed Engine
+
+- Load the Void Seed engine per track via the Engine selector + Load Engine.
+- **Chaos / Entropy Map**: An X-Y pad that controls **Chaos Depth** (X-axis) and **Entropy** (Y-axis) for the generative swarm.
+- **Gain**: A vertical slider to control the final output level of the drone.
+- **Open/Close Void**: A large toggle button to activate or deactivate the engine output.
+- **Base Freq**: Sets the fundamental frequency of the oscillator swarm.
+- **Mod Rate**: Adjusts the rate of the internal chaotic LFOs.
+- **Feedback & Diffusion**: Controls the feedback and wetness of the integrated delay and diffusion network.
+- **Spectrum Viz**: Provides a real-time frequency analysis of the engine's output.
+
 ## Mosaic Device
 
 - Mosaic runs after Tape and draws from a 4‑second buffer.

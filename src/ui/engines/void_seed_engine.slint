@@ -1,0 +1,231 @@
+import {
+    RDSHeaderLabel,
+    RDSKnob,
+    RDSToggle,
+    RDSSpectrumViz,
+    RDSSlider
+} from "../components/index.slint";
+
+export component VoidSeedEngine {
+    in-out property <float> void-base-freq: 40.0;
+    in-out property <float> void-chaos-depth: 0.5;
+    in-out property <float> void-entropy: 0.2;
+    in-out property <float> void-feedback: 0.8;
+    in-out property <float> void-diffusion: 0.5;
+    in-out property <float> void-mod-rate: 0.1;
+    in-out property <float> void-level: 0.8;
+    
+    in property <bool> is-muted: false;
+    in property <[float]> spectrum;
+
+    callback void-base-freq-changed(float);
+    callback void-chaos-depth-changed(float);
+    callback void-entropy-changed(float);
+    callback void-feedback-changed(float);
+    callback void-diffusion-changed(float);
+    callback void-mod-rate-changed(float);
+    callback void-level-changed(float);
+    callback toggle-void();
+
+    HorizontalLayout {
+        spacing: 20px;
+        
+        // Left Side: Gain Slider + Chaos Pad
+        VerticalLayout {
+            spacing: 8px;
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+
+                // Gain Slider
+                VerticalLayout {
+                    spacing: 4px;
+                    alignment: end;
+                    Text {
+                        text: "GAIN";
+                        color: #f06292;
+                        font-size: 9px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+                    RDSSlider {
+                        value: root.void-level;
+                        min-value: 0.0;
+                        max-value: 1.0;
+                        size: "small";
+                        height-override: 200px;
+                        value-changed(v) => { root.void-level = v; root.void-level-changed(v); }
+                    }
+                }
+
+                // Chaos Pad (XY Pad)
+                VerticalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: "Chaos / Entropy Map";
+                        color: #f06292;
+                        font-size: 11px;
+                        font-weight: 700;
+                        letter-spacing: 0.5px;
+                    }
+                    
+                    Rectangle {
+                        width: 200px;
+                        height: 200px;
+                        background: #000000;
+                        border-radius: 8px;
+                        border-color: #f0629233;
+                        border-width: 1px;
+                        clip: true;
+
+                        // Grid lines
+                        for i in 4 : Rectangle {
+                            x: parent.width * (i + 1) / 5;
+                            width: 1px;
+                            height: parent.height;
+                            background: #f0629211;
+                        }
+                        for i in 4 : Rectangle {
+                            y: parent.height * (i + 1) / 5;
+                            width: parent.width;
+                            height: 1px;
+                            background: #f0629211;
+                        }
+
+                        // Handle
+                        Rectangle {
+                            width: 14px;
+                            height: 14px;
+                            background: #f06292;
+                            border-radius: 7px;
+                            x: root.void-chaos-depth * (parent.width - 14px);
+                            y: (1.0 - root.void-entropy) * (parent.height - 14px);
+                            
+                            // Glow
+                            Rectangle {
+                                width: 30px;
+                                height: 30px;
+                                background: #f0629233;
+                                border-radius: 15px;
+                                x: -8px;
+                                y: -8px;
+                            }
+                        }
+
+                        TouchArea {
+                            moved => {
+                                root.void-chaos-depth = Math.max(0.0, Math.min(1.0, self.mouse-x / parent.width));
+                                root.void-entropy = 1.0 - Math.max(0.0, Math.min(1.0, self.mouse-y / parent.height));
+                                root.void-chaos-depth-changed(root.void-chaos-depth);
+                                root.void-entropy-changed(root.void-entropy);
+                            }
+                            clicked => {
+                                root.void-chaos-depth = Math.max(0.0, Math.min(1.0, self.mouse-x / parent.width));
+                                root.void-entropy = 1.0 - Math.max(0.0, Math.min(1.0, self.mouse-y / parent.height));
+                                root.void-chaos-depth-changed(root.void-chaos-depth);
+                                root.void-entropy-changed(root.void-entropy);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            Rectangle {
+                height: 40px;
+                background: !root.is-muted ? #f06292 : #1e1e26;
+                border-radius: 4px;
+                border-color: #f0629266;
+                border-width: 1px;
+                
+                Text {
+                    text: !root.is-muted ? "CLOSE_VOID" : "OPEN_VOID";
+                    color: !root.is-muted ? #ffffff : #f0629266;
+                    font-size: 12px;
+                    font-weight: 900;
+                    letter-spacing: 2px;
+                }
+                
+                TouchArea {
+                    clicked => {
+                        root.toggle-void();
+                    }
+                }
+                
+                animate background { duration: 250ms; }
+            }
+        }
+
+        // Parameters
+        VerticalLayout {
+            spacing: 16px;
+            Text {
+                text: "Void Parameters";
+                color: #00e5ff;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+
+            GridLayout {
+                spacing: 20px;
+                Row {
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Base Freq"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-base-freq;
+                            min-value: 20; max-value: 200;
+                            size: 50px;
+                            value-changed(v) => { root.void-base-freq = v; root.void-base-freq-changed(v); }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Mod Rate"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-mod-rate;
+                            min-value: 0.01; max-value: 10.0;
+                            size: 50px;
+                            value-changed(v) => { root.void-mod-rate = v; root.void-mod-rate-changed(v); }
+                        }
+                    }
+                }
+                Row {
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Feedback"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-feedback;
+                            min-value: 0.0; max-value: 0.98;
+                            size: 50px;
+                            value-changed(v) => { root.void-feedback = v; root.void-feedback-changed(v); }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Diffusion"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-diffusion;
+                            min-value: 0.0; max-value: 1.0;
+                            size: 50px;
+                            value-changed(v) => { root.void-diffusion = v; root.void-diffusion-changed(v); }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 60px;
+                background: #000000;
+                border-radius: 4px;
+                border-color: #333333;
+                border-width: 1px;
+                RDSSpectrumViz {
+                    width: parent.width - 4px;
+                    height: parent.height - 4px;
+                    spectrum: root.spectrum;
+                }
+            }
+        }
+    }
+}
