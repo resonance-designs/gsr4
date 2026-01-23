@@ -3,7 +3,8 @@ import {
     RDSKnob,
     RDSSequencerCell,
     RDSComboBox,
-    RDSCircleToggle
+    RDSCircleToggle,
+    RDSKeybed
 } from "../components/index.slint";
 
 export component AnimateEngine {
@@ -1102,15 +1103,30 @@ export component AnimateEngine {
             }
         }
 
-        VerticalLayout {
-            spacing: 4px;
-            Text { text: "Sequencer"; color: #e4e4ea; font-size: 14px; }
-            for r in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] : HorizontalLayout {
-                spacing: 2px;
-                for s in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : RDSSequencerCell {
-                    active: root.animate-sequencer-grid[r * 16 + s];
-                    current: s == root.animate-sequencer-current-step;
-                    clicked => { root.animate-sequencer-grid-toggled(r, s); }
+        HorizontalLayout {
+            spacing: 16px;
+
+            VerticalLayout {
+                spacing: 4px;
+                Text { text: "Sequencer"; color: #e4e4ea; font-size: 14px; }
+                for r in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] : HorizontalLayout {
+                    spacing: 2px;
+                    for s in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : RDSSequencerCell {
+                        active: root.animate-sequencer-grid[r * 16 + s];
+                        current: s == root.animate-sequencer-current-step;
+                        clicked => { root.animate-sequencer-grid-toggled(r, s); }
+                    }
+                }
+            }
+
+            // Keybed (UI only for isolation)
+            VerticalLayout {
+                spacing: 4px;
+                Text { text: "Keybed"; color: #e4e4ea; font-size: 14px; }
+                RDSKeybed {
+                    octaves: 2;
+                    scale: "chromatic";
+                    size: 16px;
                 }
             }
         }

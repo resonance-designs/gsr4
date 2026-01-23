@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.1.14] - 2026-01-23
+
 ## [0.1.13] - 2026-01-23
 
 - Added Void Seed engine: a 12-oscillator generative drone swarm with chaotic LFO modulation, integrated feedback/diffusion delay, and "Chaos/Entropy" XY pad.

@@ -167,7 +167,7 @@
 
 ### Engine 4: Void Seed
 
-- [x] Replicate the generative drone synth referenced in /ref/animmi
+- [x] Replicate the generative drone synth built with Tone.js from my MMIBox project.
 
 ## Ongoing: Tooling + Docs
 
