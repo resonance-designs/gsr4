@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.10
+ * Version: 0.1.12
  * Component: Core Logic
  */
 
@@ -25,7 +25,36 @@ use keyboard_types::{Key, KeyState};
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use raw_window_handle_06 as raw_window_handle_06;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::io::Write;
+use std::fs;
+
+#[derive(Serialize, Deserialize, Default)]
+struct TrackData {
+    engine_type: u32,
+    params: HashMap<String, f32>,
+    sequence: Vec<bool>,
+    sample_path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct ProjectData {
+    title: String,
+    description: String,
+    bpm: f32,
+    master_gain: f32,
+    master_filter: f32,
+    master_comp: f32,
+    tracks: Vec<String>, // Paths to .trk files relative to project root
+}
+
+#[derive(Clone, Copy, Default)]
+struct PendingProjectParams {
+    gain: f32,
+    master_filter: f32,
+    master_comp: f32,
+}
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -130,6 +159,8 @@ struct Track {
     tape_tempo: AtomicU32,
     /// Tape rate mode: 0=Free, 1=Straight, 2=Dotted, 3=Triplet.
     tape_rate_mode: AtomicU32,
+    /// Pending sync request for straight tape playback.
+    tape_sync_requested: AtomicBool,
     /// Tape rotate amount (normalized 0..1).
     tape_rotate: AtomicU32,
     /// Tape glide amount (normalized 0..1).
@@ -336,6 +367,40 @@ struct Track {
     animate_slot_pan: [AtomicU32; 4],
     /// Smoothed animate slot pan.
     animate_slot_pan_smooth: [AtomicU32; 4],
+    /// Animate wavetable LFO amount.
+    animate_slot_wt_lfo_amount: [AtomicU32; 4],
+    /// Animate wavetable LFO shape.
+    animate_slot_wt_lfo_shape: [AtomicU32; 4],
+    /// Animate wavetable LFO rate.
+    animate_slot_wt_lfo_rate: [AtomicU32; 4],
+    /// Animate wavetable LFO sync.
+    animate_slot_wt_lfo_sync: [AtomicBool; 4],
+    /// Animate wavetable LFO division.
+    animate_slot_wt_lfo_division: [AtomicU32; 4],
+    /// Animate wavetable LFO phase.
+    animate_slot_wt_lfo_phase: [AtomicU32; 4],
+    /// Animate wavetable LFO sample-and-hold value.
+    animate_slot_wt_lfo_snh: [AtomicU32; 4],
+    /// Animate sample start (normalized 0..1).
+    animate_slot_sample_start: [AtomicU32; 4],
+    /// Animate sample loop start (normalized 0..1).
+    animate_slot_loop_start: [AtomicU32; 4],
+    /// Animate sample loop end (normalized 0..1).
+    animate_slot_loop_end: [AtomicU32; 4],
+    /// Animate slot filter type (0 = lp24, 1 = lp12, 2 = hp, 3 = bp).
+    animate_slot_filter_type: [AtomicU32; 4],
+    /// Animate slot filter cutoff (normalized 0..1).
+    animate_slot_filter_cutoff: [AtomicU32; 4],
+    /// Animate slot filter resonance (normalized 0..1).
+    animate_slot_filter_resonance: [AtomicU32; 4],
+    /// Animate slot filter state v1 (per voice).
+    animate_slot_filter_v1: [[AtomicU32; 4]; 10],
+    /// Animate slot filter state v2 (per voice).
+    animate_slot_filter_v2: [[AtomicU32; 4]; 10],
+    /// Animate slot filter state v1 stage 2 (per voice).
+    animate_slot_filter_v1_stage2: [[AtomicU32; 4]; 10],
+    /// Animate slot filter state v2 stage 2 (per voice).
+    animate_slot_filter_v2_stage2: [[AtomicU32; 4]; 10],
     /// Animate vector position X (0..1).
     animate_vector_x: AtomicU32,
     /// Animate vector position Y (0..1).
@@ -344,26 +409,36 @@ struct Track {
     animate_vector_x_smooth: AtomicU32,
     /// Smoothed animate vector position Y.
     animate_vector_y_smooth: AtomicU32,
-    /// Animate filter cutoff.
-    animate_filter_cutoff: AtomicU32,
-    /// Smoothed animate filter cutoff.
-    animate_filter_cutoff_smooth: AtomicU32,
-    /// Animate filter resonance.
-    animate_filter_resonance: AtomicU32,
-    /// Smoothed animate filter resonance.
-    animate_filter_resonance_smooth: AtomicU32,
-    /// Animate filter drive.
-    animate_filter_drive: AtomicU32,
-    /// Animate filter type.
-    animate_filter_type: AtomicU32,
-    /// Animate amp envelope attack.
-    animate_amp_attack: AtomicU32,
-    /// Animate amp envelope decay.
-    animate_amp_decay: AtomicU32,
-    /// Animate amp envelope sustain.
-    animate_amp_sustain: AtomicU32,
-    /// Animate amp envelope release.
-    animate_amp_release: AtomicU32,
+    /// Animate vector LFO X waveform (0 = sine, 1 = triangle, 2 = square, 3 = saw, 4 = sample&hold).
+    animate_lfo_x_waveform: AtomicU32,
+    /// Animate vector LFO X sync to BPM.
+    animate_lfo_x_sync: AtomicBool,
+    /// Animate vector LFO X tempo division index.
+    animate_lfo_x_division: AtomicU32,
+    /// Animate vector LFO X rate (normalized 0..1, free mode).
+    animate_lfo_x_rate: AtomicU32,
+    /// Animate vector LFO X amount (normalized 0..1).
+    animate_lfo_x_amount: AtomicU32,
+    /// Animate vector LFO X phase (0..1).
+    animate_lfo_x_phase: AtomicU32,
+    /// Animate vector LFO X sample-and-hold value (-1..1).
+    animate_lfo_x_snh: AtomicU32,
+    /// Animate vector LFO Y waveform (0 = sine, 1 = triangle, 2 = square, 3 = saw, 4 = sample&hold).
+    animate_lfo_y_waveform: AtomicU32,
+    /// Animate vector LFO Y sync to BPM.
+    animate_lfo_y_sync: AtomicBool,
+    /// Animate vector LFO Y tempo division index.
+    animate_lfo_y_division: AtomicU32,
+    /// Animate vector LFO Y rate (normalized 0..1, free mode).
+    animate_lfo_y_rate: AtomicU32,
+    /// Animate vector LFO Y amount (normalized 0..1).
+    animate_lfo_y_amount: AtomicU32,
+    /// Animate vector LFO Y phase (0..1).
+    animate_lfo_y_phase: AtomicU32,
+    /// Animate vector LFO Y sample-and-hold value (-1..1).
+    animate_lfo_y_snh: AtomicU32,
+    /// Animate LFO RNG state.
+    animate_lfo_rng_state: AtomicU32,
     /// Animate sequencer grid (10 rows * 16 steps).
     animate_sequencer_grid: Arc<[AtomicBool; 160]>,
     /// Animate sequencer current step.
@@ -378,10 +453,31 @@ struct Track {
     animate_amp_stage: [AtomicU32; 10],
     /// Animate amp envelope level (0..1) for each voice.
     animate_amp_level: [AtomicU32; 10],
-    /// Animate filter state (history for each channel).
-    animate_filter_v1: [AtomicU32; 2],
-    animate_filter_v2: [AtomicU32; 2],
-    /// Engine type loaded for this track (0 = none, 1 = tape, 2 = animate).
+    /// Simp Kick pitch (normalized 0..1).
+    kick_pitch: AtomicU32,
+    /// Simp Kick decay (normalized 0..1).
+    kick_decay: AtomicU32,
+    /// Simp Kick attack (normalized 0..1).
+    kick_attack: AtomicU32,
+    /// Simp Kick drive (normalized 0..1).
+    kick_drive: AtomicU32,
+    /// Simp Kick output level (normalized 0..1).
+    kick_level: AtomicU32,
+    /// Simp Kick sequencer grid (16 steps).
+    kick_sequencer_grid: Arc<[AtomicBool; 16]>,
+    /// Simp Kick sequencer current step.
+    kick_sequencer_step: AtomicI32,
+    /// Simp Kick sequencer phase in samples.
+    kick_sequencer_phase: AtomicU32,
+    /// Simp Kick oscillator phase (0..1).
+    kick_phase: AtomicU32,
+    /// Simp Kick amplitude envelope (0..1).
+    kick_env: AtomicU32,
+    /// Simp Kick pitch envelope (0..1).
+    kick_pitch_env: AtomicU32,
+    /// Simp Kick attack remaining samples.
+    kick_attack_remaining: AtomicU32,
+    /// Engine type loaded for this track (0 = none, 1 = tape, 2 = animate, 3 = simpkick).
     engine_type: AtomicU32,
     /// Logs one debug line per playback start to confirm audio thread output.
     debug_logged: AtomicBool,
@@ -412,6 +508,7 @@ impl Default for Track {
             tape_speed_smooth: AtomicU32::new(1.0f32.to_bits()),
             tape_tempo: AtomicU32::new(120.0f32.to_bits()),
             tape_rate_mode: AtomicU32::new(0),
+            tape_sync_requested: AtomicBool::new(false),
             tape_rotate: AtomicU32::new(0.0f32.to_bits()),
             tape_glide: AtomicU32::new(0.0f32.to_bits()),
             tape_sos: AtomicU32::new(0.0f32.to_bits()),
@@ -518,20 +615,50 @@ impl Default for Track {
             animate_slot_level_smooth: std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits())),
             animate_slot_pan: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
             animate_slot_pan_smooth: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_slot_wt_lfo_amount: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_slot_wt_lfo_shape: std::array::from_fn(|_| AtomicU32::new(0)),
+            animate_slot_wt_lfo_rate: std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits())),
+            animate_slot_wt_lfo_sync: std::array::from_fn(|_| AtomicBool::new(false)),
+            animate_slot_wt_lfo_division: std::array::from_fn(|_| AtomicU32::new(0)),
+            animate_slot_wt_lfo_phase: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_slot_wt_lfo_snh: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_slot_sample_start: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_slot_loop_start: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_slot_loop_end: std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits())),
+            animate_slot_filter_type: std::array::from_fn(|_| AtomicU32::new(0)),
+            animate_slot_filter_cutoff: std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits())),
+            animate_slot_filter_resonance: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_slot_filter_v1: std::array::from_fn(|_| {
+                std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))
+            }),
+            animate_slot_filter_v2: std::array::from_fn(|_| {
+                std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))
+            }),
+            animate_slot_filter_v1_stage2: std::array::from_fn(|_| {
+                std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))
+            }),
+            animate_slot_filter_v2_stage2: std::array::from_fn(|_| {
+                std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))
+            }),
             animate_vector_x: AtomicU32::new(0.5f32.to_bits()),
             animate_vector_y: AtomicU32::new(0.5f32.to_bits()),
             animate_vector_x_smooth: AtomicU32::new(0.5f32.to_bits()),
             animate_vector_y_smooth: AtomicU32::new(0.5f32.to_bits()),
-            animate_filter_cutoff: AtomicU32::new(0.5f32.to_bits()),
-            animate_filter_cutoff_smooth: AtomicU32::new(0.5f32.to_bits()),
-            animate_filter_resonance: AtomicU32::new(0.5f32.to_bits()),
-            animate_filter_resonance_smooth: AtomicU32::new(0.5f32.to_bits()),
-            animate_filter_drive: AtomicU32::new(0.0f32.to_bits()),
-            animate_filter_type: AtomicU32::new(0),
-            animate_amp_attack: AtomicU32::new(0.01f32.to_bits()),
-            animate_amp_decay: AtomicU32::new(0.1f32.to_bits()),
-            animate_amp_sustain: AtomicU32::new(0.8f32.to_bits()),
-            animate_amp_release: AtomicU32::new(0.3f32.to_bits()),
+            animate_lfo_x_waveform: AtomicU32::new(0),
+            animate_lfo_x_sync: AtomicBool::new(false),
+            animate_lfo_x_division: AtomicU32::new(0),
+            animate_lfo_x_rate: AtomicU32::new(0.5f32.to_bits()),
+            animate_lfo_x_amount: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_x_phase: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_x_snh: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_y_waveform: AtomicU32::new(0),
+            animate_lfo_y_sync: AtomicBool::new(false),
+            animate_lfo_y_division: AtomicU32::new(0),
+            animate_lfo_y_rate: AtomicU32::new(0.5f32.to_bits()),
+            animate_lfo_y_amount: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_y_phase: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_y_snh: AtomicU32::new(0.0f32.to_bits()),
+            animate_lfo_rng_state: AtomicU32::new(0x2468_ace1),
             animate_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             animate_sequencer_step: AtomicI32::new(-1),
             animate_sequencer_phase: AtomicU32::new(0),
@@ -539,8 +666,18 @@ impl Default for Track {
             animate_slot_sample_pos: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
             animate_amp_stage: std::array::from_fn(|_| AtomicU32::new(0)),
             animate_amp_level: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
-            animate_filter_v1: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
-            animate_filter_v2: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            kick_pitch: AtomicU32::new(0.5f32.to_bits()),
+            kick_decay: AtomicU32::new(0.5f32.to_bits()),
+            kick_attack: AtomicU32::new(0.0f32.to_bits()),
+            kick_drive: AtomicU32::new(0.0f32.to_bits()),
+            kick_level: AtomicU32::new(1.0f32.to_bits()),
+            kick_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            kick_sequencer_step: AtomicI32::new(-1),
+            kick_sequencer_phase: AtomicU32::new(0),
+            kick_phase: AtomicU32::new(0.0f32.to_bits()),
+            kick_env: AtomicU32::new(0.0f32.to_bits()),
+            kick_pitch_env: AtomicU32::new(0.0f32.to_bits()),
+            kick_attack_remaining: AtomicU32::new(0),
             engine_type: AtomicU32::new(0),
             debug_logged: AtomicBool::new(false),
             sample_rate: AtomicU32::new(44_100),
@@ -561,9 +698,14 @@ pub struct TLBX1 {
     metronome_count_in_record: Arc<AtomicBool>,
     metronome_phase_samples: u32,
     metronome_click_remaining: u32,
+    master_step_phase: f32,
+    master_step_index: i32,
+    master_step_count: i64,
     animate_library: Arc<AnimateLibrary>,
     master_fx: MasterFxState,
     sample_rate: AtomicU32,
+    pending_project_params: Arc<Mutex<Option<PendingProjectParams>>>,
+    track_buffer: Vec<Vec<f32>>,
 }
 
 struct AnimateLibrary {
@@ -645,9 +787,14 @@ impl Default for TLBX1 {
             metronome_count_in_record: Arc::new(AtomicBool::new(false)),
             metronome_phase_samples: 0,
             metronome_click_remaining: 0,
+            master_step_phase: 0.0,
+            master_step_index: 0,
+            master_step_count: 0,
             animate_library: Arc::new(AnimateLibrary::load()),
             master_fx: MasterFxState::default(),
             sample_rate: AtomicU32::new(44100),
+            pending_project_params: Arc::new(Mutex::new(None)),
+            track_buffer: vec![vec![0.0; 1024]; 2],
         }
     }
 }
@@ -740,8 +887,17 @@ impl Default for TLBX1Params {
 
 pub enum TLBX1Task {
     LoadSample(usize, PathBuf),
-    SaveProject(PathBuf),
+    SaveProject {
+        path: PathBuf,
+        title: String,
+        description: String,
+    },
     LoadProject(PathBuf),
+    ExportProjectZip {
+        path: PathBuf,
+        title: String,
+        description: String,
+    },
 }
 
 struct PendingEngineLoad {
@@ -797,6 +953,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.tape_speed_smooth.store(1.0f32.to_bits(), Ordering::Relaxed);
     track.tape_tempo.store(120.0f32.to_bits(), Ordering::Relaxed);
     track.tape_rate_mode.store(0, Ordering::Relaxed);
+    track.tape_sync_requested.store(false, Ordering::Relaxed);
     track.tape_rotate.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.tape_glide.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.tape_sos.store(0.0f32.to_bits(), Ordering::Relaxed);
@@ -908,21 +1065,65 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
         track.animate_slot_level_smooth[i].store(1.0f32.to_bits(), Ordering::Relaxed);
         track.animate_slot_pan[i].store(0.0f32.to_bits(), Ordering::Relaxed);
         track.animate_slot_pan_smooth[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_slot_wt_lfo_amount[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_slot_wt_lfo_shape[i]
+            .store(0, Ordering::Relaxed);
+        track
+            .animate_slot_wt_lfo_rate[i]
+            .store(0.5f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_slot_wt_lfo_sync[i]
+            .store(false, Ordering::Relaxed);
+        track
+            .animate_slot_wt_lfo_division[i]
+            .store(0, Ordering::Relaxed);
+        track
+            .animate_slot_wt_lfo_phase[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_slot_wt_lfo_snh[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_slot_sample_start[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_slot_loop_start[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_slot_loop_end[i]
+            .store(1.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_slot_filter_type[i]
+            .store(0, Ordering::Relaxed);
+        track
+            .animate_slot_filter_cutoff[i]
+            .store(0.5f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_slot_filter_resonance[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
     }
     track.animate_vector_x.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.animate_vector_y.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.animate_vector_x_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.animate_vector_y_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
-    track.animate_filter_cutoff.store(0.5f32.to_bits(), Ordering::Relaxed);
-    track.animate_filter_cutoff_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
-    track.animate_filter_resonance.store(0.5f32.to_bits(), Ordering::Relaxed);
-    track.animate_filter_resonance_smooth.store(0.5f32.to_bits(), Ordering::Relaxed);
-    track.animate_filter_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
-    track.animate_filter_type.store(0, Ordering::Relaxed);
-    track.animate_amp_attack.store(0.01f32.to_bits(), Ordering::Relaxed);
-    track.animate_amp_decay.store(0.1f32.to_bits(), Ordering::Relaxed);
-    track.animate_amp_sustain.store(0.8f32.to_bits(), Ordering::Relaxed);
-    track.animate_amp_release.store(0.3f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_x_waveform.store(0, Ordering::Relaxed);
+    track.animate_lfo_x_sync.store(false, Ordering::Relaxed);
+    track.animate_lfo_x_division.store(0, Ordering::Relaxed);
+    track.animate_lfo_x_rate.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_x_amount.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_x_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_x_snh.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_y_waveform.store(0, Ordering::Relaxed);
+    track.animate_lfo_y_sync.store(false, Ordering::Relaxed);
+    track.animate_lfo_y_division.store(0, Ordering::Relaxed);
+    track.animate_lfo_y_rate.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_y_amount.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_y_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_y_snh.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.animate_lfo_rng_state.store(0x2468_ace1, Ordering::Relaxed);
     for i in 0..160 {
         track.animate_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -932,14 +1133,32 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
         for slot in 0..4 {
             track.animate_slot_phases[voice][slot].store(0.0f32.to_bits(), Ordering::Relaxed);
             track.animate_slot_sample_pos[voice][slot].store(0.0f32.to_bits(), Ordering::Relaxed);
+            track.animate_slot_filter_v1[voice][slot].store(0.0f32.to_bits(), Ordering::Relaxed);
+            track.animate_slot_filter_v2[voice][slot].store(0.0f32.to_bits(), Ordering::Relaxed);
+            track
+                .animate_slot_filter_v1_stage2[voice][slot]
+                .store(0.0f32.to_bits(), Ordering::Relaxed);
+            track
+                .animate_slot_filter_v2_stage2[voice][slot]
+                .store(0.0f32.to_bits(), Ordering::Relaxed);
         }
         track.animate_amp_stage[voice].store(0, Ordering::Relaxed);
         track.animate_amp_level[voice].store(0.0f32.to_bits(), Ordering::Relaxed);
     }
-    for i in 0..2 {
-        track.animate_filter_v1[i].store(0.0f32.to_bits(), Ordering::Relaxed);
-        track.animate_filter_v2[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.kick_pitch.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.kick_decay.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.kick_attack.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.kick_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.kick_level.store(1.0f32.to_bits(), Ordering::Relaxed);
+    for i in 0..16 {
+        track.kick_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
+    track.kick_sequencer_step.store(-1, Ordering::Relaxed);
+    track.kick_sequencer_phase.store(0, Ordering::Relaxed);
+    track.kick_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.kick_env.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.kick_pitch_env.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.kick_attack_remaining.store(0, Ordering::Relaxed);
 
     track.sample_rate.store(44_100, Ordering::Relaxed);
     track.debug_logged.store(false, Ordering::Relaxed);
@@ -958,29 +1177,188 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
 impl TLBX1 {
     fn process_animate(
         track: &Track,
-        buffer: &mut Buffer,
+        track_output: &mut [Vec<f32>],
+        num_buffer_samples: usize,
         global_tempo: &AtomicU32,
         animate_library: &AnimateLibrary,
+        master_step: i32,
+        master_phase: f32,
+        samples_per_step: f32,
     ) {
-        let num_buffer_samples = buffer.samples();
         let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as f32;
-        let tempo = f32::from_bits(global_tempo.load(Ordering::Relaxed)).clamp(20.0, 240.0);
+        let tempo_bits = global_tempo.load(Ordering::Relaxed);
+        let tempo_raw = f32::from_bits(tempo_bits);
+        let tempo = if tempo_raw.is_finite() {
+            tempo_raw.clamp(20.0, 240.0)
+        } else {
+            120.0
+        };
 
         // Sequencer timing
-        let samples_per_step = (sr * 60.0) / (tempo * 4.0); // 16th notes
-        let mut sequencer_phase = track.animate_sequencer_phase.load(Ordering::Relaxed);
-        let mut current_step = track.animate_sequencer_step.load(Ordering::Relaxed);
+        let mut sequencer_phase = master_phase;
+        let mut current_step = master_step;
+        track
+            .animate_sequencer_step
+            .store(current_step, Ordering::Relaxed);
 
         // Animate Parameters
         let target_x = f32::from_bits(track.animate_vector_x.load(Ordering::Relaxed));
         let target_y = f32::from_bits(track.animate_vector_y.load(Ordering::Relaxed));
         let mut x_smooth = f32::from_bits(track.animate_vector_x_smooth.load(Ordering::Relaxed));
         let mut y_smooth = f32::from_bits(track.animate_vector_y_smooth.load(Ordering::Relaxed));
+        let lfo_x_waveform = track.animate_lfo_x_waveform.load(Ordering::Relaxed);
+        let lfo_x_sync = track.animate_lfo_x_sync.load(Ordering::Relaxed);
+        let lfo_x_division = track.animate_lfo_x_division.load(Ordering::Relaxed);
+        let lfo_x_rate =
+            f32::from_bits(track.animate_lfo_x_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let lfo_x_amount =
+            f32::from_bits(track.animate_lfo_x_amount.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut lfo_x_phase =
+            f32::from_bits(track.animate_lfo_x_phase.load(Ordering::Relaxed));
+        let mut lfo_x_snh = f32::from_bits(track.animate_lfo_x_snh.load(Ordering::Relaxed));
+        let lfo_y_waveform = track.animate_lfo_y_waveform.load(Ordering::Relaxed);
+        let lfo_y_sync = track.animate_lfo_y_sync.load(Ordering::Relaxed);
+        let lfo_y_division = track.animate_lfo_y_division.load(Ordering::Relaxed);
+        let lfo_y_rate =
+            f32::from_bits(track.animate_lfo_y_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let lfo_y_amount =
+            f32::from_bits(track.animate_lfo_y_amount.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut lfo_y_phase =
+            f32::from_bits(track.animate_lfo_y_phase.load(Ordering::Relaxed));
+        let mut lfo_y_snh = f32::from_bits(track.animate_lfo_y_snh.load(Ordering::Relaxed));
+        let mut lfo_rng_state = track.animate_lfo_rng_state.load(Ordering::Relaxed);
 
-        let attack = f32::from_bits(track.animate_amp_attack.load(Ordering::Relaxed)).max(0.001);
-        let decay = f32::from_bits(track.animate_amp_decay.load(Ordering::Relaxed)).max(0.001);
-        let sustain = f32::from_bits(track.animate_amp_sustain.load(Ordering::Relaxed));
-        let release = f32::from_bits(track.animate_amp_release.load(Ordering::Relaxed)).max(0.001);
+        let lfo_x_rate_hz = if lfo_x_sync {
+            let beats = lfo_division_beats(lfo_x_division);
+            (tempo / 60.0) / beats
+        } else {
+            0.05 + lfo_x_rate * 10.0
+        };
+        let lfo_y_rate_hz = if lfo_y_sync {
+            let beats = lfo_division_beats(lfo_y_division);
+            (tempo / 60.0) / beats
+        } else {
+            0.05 + lfo_y_rate * 10.0
+        };
+        let wt_lfo_amount = [
+            f32::from_bits(
+                track.animate_slot_wt_lfo_amount[0].load(Ordering::Relaxed),
+            )
+            .clamp(0.0, 1.0),
+            f32::from_bits(
+                track.animate_slot_wt_lfo_amount[1].load(Ordering::Relaxed),
+            )
+            .clamp(0.0, 1.0),
+            f32::from_bits(
+                track.animate_slot_wt_lfo_amount[2].load(Ordering::Relaxed),
+            )
+            .clamp(0.0, 1.0),
+            f32::from_bits(
+                track.animate_slot_wt_lfo_amount[3].load(Ordering::Relaxed),
+            )
+            .clamp(0.0, 1.0),
+        ];
+        let wt_lfo_shape = [
+            track.animate_slot_wt_lfo_shape[0].load(Ordering::Relaxed),
+            track.animate_slot_wt_lfo_shape[1].load(Ordering::Relaxed),
+            track.animate_slot_wt_lfo_shape[2].load(Ordering::Relaxed),
+            track.animate_slot_wt_lfo_shape[3].load(Ordering::Relaxed),
+        ];
+        let wt_lfo_rate = [
+            f32::from_bits(track.animate_slot_wt_lfo_rate[0].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_wt_lfo_rate[1].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_wt_lfo_rate[2].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_wt_lfo_rate[3].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+        ];
+        let wt_lfo_sync = [
+            track.animate_slot_wt_lfo_sync[0].load(Ordering::Relaxed),
+            track.animate_slot_wt_lfo_sync[1].load(Ordering::Relaxed),
+            track.animate_slot_wt_lfo_sync[2].load(Ordering::Relaxed),
+            track.animate_slot_wt_lfo_sync[3].load(Ordering::Relaxed),
+        ];
+        let wt_lfo_division = [
+            track.animate_slot_wt_lfo_division[0].load(Ordering::Relaxed),
+            track.animate_slot_wt_lfo_division[1].load(Ordering::Relaxed),
+            track.animate_slot_wt_lfo_division[2].load(Ordering::Relaxed),
+            track.animate_slot_wt_lfo_division[3].load(Ordering::Relaxed),
+        ];
+        let mut wt_lfo_phase = [
+            f32::from_bits(track.animate_slot_wt_lfo_phase[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_slot_wt_lfo_phase[1].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_slot_wt_lfo_phase[2].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_slot_wt_lfo_phase[3].load(Ordering::Relaxed)),
+        ];
+        let mut wt_lfo_snh = [
+            f32::from_bits(track.animate_slot_wt_lfo_snh[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_slot_wt_lfo_snh[1].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_slot_wt_lfo_snh[2].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_slot_wt_lfo_snh[3].load(Ordering::Relaxed)),
+        ];
+        let wt_lfo_rate_hz = [
+            if wt_lfo_sync[0] {
+                let beats = lfo_division_beats(wt_lfo_division[0]);
+                (tempo / 60.0) / beats
+            } else {
+                0.05 + wt_lfo_rate[0] * 10.0
+            },
+            if wt_lfo_sync[1] {
+                let beats = lfo_division_beats(wt_lfo_division[1]);
+                (tempo / 60.0) / beats
+            } else {
+                0.05 + wt_lfo_rate[1] * 10.0
+            },
+            if wt_lfo_sync[2] {
+                let beats = lfo_division_beats(wt_lfo_division[2]);
+                (tempo / 60.0) / beats
+            } else {
+                0.05 + wt_lfo_rate[2] * 10.0
+            },
+            if wt_lfo_sync[3] {
+                let beats = lfo_division_beats(wt_lfo_division[3]);
+                (tempo / 60.0) / beats
+            } else {
+                0.05 + wt_lfo_rate[3] * 10.0
+            },
+        ];
+        let sample_start = [
+            f32::from_bits(track.animate_slot_sample_start[0].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_sample_start[1].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_sample_start[2].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_sample_start[3].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+        ];
+        let loop_start = [
+            f32::from_bits(track.animate_slot_loop_start[0].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_loop_start[1].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_loop_start[2].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_loop_start[3].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+        ];
+        let loop_end = [
+            f32::from_bits(track.animate_slot_loop_end[0].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_loop_end[1].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_loop_end[2].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+            f32::from_bits(track.animate_slot_loop_end[3].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0),
+        ];
+
+        let attack = 0.01f32;
+        let decay = 0.1f32;
+        let sustain = 0.8f32;
+        let release = 0.3f32;
 
         let mut amp_levels = [0.0f32; 10];
         let mut amp_stages = [0u32; 10];
@@ -989,8 +1367,6 @@ impl TLBX1 {
             amp_stages[i] = track.animate_amp_stage[i].load(Ordering::Relaxed);
         }
 
-        let cutoff = f32::from_bits(track.animate_filter_cutoff.load(Ordering::Relaxed));
-        let resonance = f32::from_bits(track.animate_filter_resonance.load(Ordering::Relaxed));
         
         // Pre-calculate envelope coefficients
         let calc_coef = |time_secs: f32| -> f32 {
@@ -1007,15 +1383,18 @@ impl TLBX1 {
             130.81, 146.83, 164.81, 196.00, 220.00, // C3, D3, E3, G3, A3
         ];
 
-        let num_channels = buffer.channels();
-        let output = buffer.as_slice();
+        let num_channels = track_output.len();
+        let output = track_output;
 
         for sample_idx in 0..num_buffer_samples {
-            // Step sequencer
-            if sequencer_phase >= samples_per_step as u32 {
-                sequencer_phase = 0;
-                current_step = (current_step + 1) % 16;
-                track.animate_sequencer_step.store(current_step, Ordering::Relaxed);
+            // Step sequencer (master-synced)
+            sequencer_phase += 1.0;
+            if sequencer_phase >= samples_per_step {
+                sequencer_phase -= samples_per_step;
+                current_step = (current_step + 1).rem_euclid(16);
+                track
+                    .animate_sequencer_step
+                    .store(current_step, Ordering::Relaxed);
 
                 // Update envelope stages for all voices based on grid
                 for row in 0..10 {
@@ -1023,15 +1402,41 @@ impl TLBX1 {
                     if note_active {
                         if amp_stages[row] == 0 || amp_stages[row] == 4 {
                             amp_stages[row] = 1; // Attack
+                            for slot in 0..4 {
+                                if track.animate_slot_types[slot].load(Ordering::Relaxed) == 1 {
+                                    let smp_idx = track.animate_slot_samples[slot].load(Ordering::Relaxed) as usize;
+                                    if let Some(smp) = animate_library.samples.get(smp_idx) {
+                                        let len = smp.get(0).map(|ch| ch.len()).unwrap_or(0);
+                                        if len > 0 {
+                                            let start = (sample_start[slot] * (len.saturating_sub(1) as f32))
+                                                .round()
+                                                .clamp(0.0, (len.saturating_sub(1)) as f32);
+                                            track.animate_slot_sample_pos[row][slot]
+                                                .store(start.to_bits(), Ordering::Relaxed);
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    } else {
-                        if amp_stages[row] != 0 && amp_stages[row] != 4 {
-                            amp_stages[row] = 4; // Release
-                        }
+                    } else if amp_stages[row] != 0 && amp_stages[row] != 4 {
+                        amp_stages[row] = 4; // Release
                     }
                 }
             }
-            sequencer_phase += 1;
+
+            let mut wt_lfo_values = [0.0f32; 4];
+            for slot in 0..4 {
+                wt_lfo_values[slot] =
+                    lfo_waveform_value(wt_lfo_shape[slot], wt_lfo_phase[slot], wt_lfo_snh[slot]);
+                wt_lfo_phase[slot] += wt_lfo_rate_hz[slot] / sr;
+                if wt_lfo_phase[slot] >= 1.0 {
+                    wt_lfo_phase[slot] -= 1.0;
+                    if wt_lfo_shape[slot] == 4 {
+                        wt_lfo_snh[slot] =
+                            next_mosaic_rand_unit(&mut lfo_rng_state) * 2.0 - 1.0;
+                    }
+                }
+            }
 
             // Process Envelopes for all voices
             for i in 0..10 {
@@ -1067,8 +1472,27 @@ impl TLBX1 {
             }
 
             // Smooth vector position
-            x_smooth = x_smooth * 0.999 + target_x * 0.001;
-            y_smooth = y_smooth * 0.999 + target_y * 0.001;
+            let lfo_x_value = lfo_waveform_value(lfo_x_waveform, lfo_x_phase, lfo_x_snh);
+            let lfo_y_value = lfo_waveform_value(lfo_y_waveform, lfo_y_phase, lfo_y_snh);
+            let target_x_mod = (target_x + lfo_x_value * lfo_x_amount).clamp(0.0, 1.0);
+            let target_y_mod = (target_y + lfo_y_value * lfo_y_amount).clamp(0.0, 1.0);
+            x_smooth = x_smooth * 0.999 + target_x_mod * 0.001;
+            y_smooth = y_smooth * 0.999 + target_y_mod * 0.001;
+
+            lfo_x_phase += lfo_x_rate_hz / sr;
+            if lfo_x_phase >= 1.0 {
+                lfo_x_phase -= 1.0;
+                if lfo_x_waveform == 4 {
+                    lfo_x_snh = next_mosaic_rand_unit(&mut lfo_rng_state) * 2.0 - 1.0;
+                }
+            }
+            lfo_y_phase += lfo_y_rate_hz / sr;
+            if lfo_y_phase >= 1.0 {
+                lfo_y_phase -= 1.0;
+                if lfo_y_waveform == 4 {
+                    lfo_y_snh = next_mosaic_rand_unit(&mut lfo_rng_state) * 2.0 - 1.0;
+                }
+            }
 
             // Calculate weights for 4 slots
             let w_a = (1.0 - x_smooth) * (1.0 - y_smooth);
@@ -1103,12 +1527,23 @@ impl TLBX1 {
                                 let phase = f32::from_bits(track.animate_slot_phases[row][slot].load(Ordering::Relaxed));
                                 // Use first cycle (2048 samples)
                                 let cycle_len = wt.len().min(2048);
-                                let pos = phase * (cycle_len - 1) as f32;
-                                let idx = pos as usize;
-                                let frac = pos - idx as f32;
-                                let s1 = wt[idx];
-                                let s2 = wt[(idx + 1) % cycle_len];
-                                slot_sample = s1 + (s2 - s1) * frac;
+                                if cycle_len > 0 {
+                                    let num_cycles = wt.len() / cycle_len;
+                                    let cycle_offset = if num_cycles > 1 && wt_lfo_amount[slot] > 0.0 {
+                                        let lfo_pos = (wt_lfo_values[slot] * 0.5 + 0.5).clamp(0.0, 1.0);
+                                        let max_idx = (num_cycles - 1) as f32;
+                                        (lfo_pos * wt_lfo_amount[slot] * max_idx).round() as usize
+                                    } else {
+                                        0
+                                    };
+                                    let base = cycle_offset * cycle_len;
+                                    let pos = phase * (cycle_len - 1) as f32;
+                                    let idx = pos as usize;
+                                    let frac = pos - idx as f32;
+                                    let s1 = wt[base + idx];
+                                    let s2 = wt[base + ((idx + 1) % cycle_len)];
+                                    slot_sample = s1 + (s2 - s1) * frac;
+                                }
 
                                 let new_phase = (phase + freq / sr) % 1.0;
                                 track.animate_slot_phases[row][slot].store(new_phase.to_bits(), Ordering::Relaxed);
@@ -1118,19 +1553,107 @@ impl TLBX1 {
                         let smp_idx = track.animate_slot_samples[slot].load(Ordering::Relaxed) as usize;
                         if let Some(smp) = animate_library.samples.get(smp_idx) {
                             if !smp.is_empty() && !smp[0].is_empty() {
-                                let pos = f32::from_bits(track.animate_slot_sample_pos[row][slot].load(Ordering::Relaxed));
-                                let idx = pos as usize;
-                                if idx < smp[0].len() {
-                                    slot_sample = smp[0][idx];
-                                    let new_pos = pos + (freq / 440.0); // Rough sample playback
-                                    track.animate_slot_sample_pos[row][slot].store(new_pos.to_bits(), Ordering::Relaxed);
-                                } else {
-                                    // Loop sample for now to avoid clicks at end if envelope still open
-                                    track.animate_slot_sample_pos[row][slot].store(0.0f32.to_bits(), Ordering::Relaxed);
+                                let len = smp[0].len();
+                                if len > 0 {
+                                    let mut pos =
+                                        f32::from_bits(track.animate_slot_sample_pos[row][slot].load(Ordering::Relaxed));
+                                    let start_idx = (sample_start[slot] * (len.saturating_sub(1) as f32))
+                                        .round()
+                                        .clamp(0.0, (len.saturating_sub(1)) as f32) as usize;
+                                    let mut loop_start_idx =
+                                        (loop_start[slot] * (len.saturating_sub(1) as f32))
+                                            .round()
+                                            .clamp(0.0, (len.saturating_sub(1)) as f32) as usize;
+                                    let mut loop_end_idx =
+                                        (loop_end[slot] * (len.saturating_sub(1) as f32))
+                                            .round()
+                                            .clamp(0.0, (len.saturating_sub(1)) as f32) as usize;
+                                    if loop_end_idx <= loop_start_idx {
+                                        loop_start_idx = start_idx.min(len.saturating_sub(1));
+                                        loop_end_idx = len.saturating_sub(1);
+                                    }
+                                    let mut idx = pos as usize;
+                                    if idx >= loop_end_idx {
+                                        pos = loop_start_idx as f32;
+                                        idx = loop_start_idx;
+                                    }
+                                    if idx < len {
+                                        slot_sample = smp[0][idx];
+                                        let mut new_pos = pos + (freq / 440.0); // Rough sample playback
+                                        if new_pos >= loop_end_idx as f32 {
+                                            new_pos = loop_start_idx as f32;
+                                        }
+                                        track.animate_slot_sample_pos[row][slot]
+                                            .store(new_pos.to_bits(), Ordering::Relaxed);
+                                    }
                                 }
                             }
                         }
                     }
+
+                    let filter_type =
+                        track.animate_slot_filter_type[slot].load(Ordering::Relaxed) as u32;
+                    let filter_cutoff = f32::from_bits(
+                        track.animate_slot_filter_cutoff[slot].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.001, 1.0);
+                    let filter_resonance = f32::from_bits(
+                        track.animate_slot_filter_resonance[slot].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 0.95);
+                    let cutoff_hz = 20.0 + filter_cutoff.powf(2.0) * (20_000.0 - 20.0);
+                    let filter_f =
+                        (2.0 * (std::f32::consts::PI * cutoff_hz / sr).sin()).clamp(0.0, 0.99);
+                    let filter_q = 1.0 - filter_resonance;
+                    let mut filter_v1 = f32::from_bits(
+                        track.animate_slot_filter_v1[row][slot].load(Ordering::Relaxed),
+                    );
+                    let mut filter_v2 = f32::from_bits(
+                        track.animate_slot_filter_v2[row][slot].load(Ordering::Relaxed),
+                    );
+                    let mut filter_v1_stage2 = f32::from_bits(
+                        track
+                            .animate_slot_filter_v1_stage2[row][slot]
+                            .load(Ordering::Relaxed),
+                    );
+                    let mut filter_v2_stage2 = f32::from_bits(
+                        track
+                            .animate_slot_filter_v2_stage2[row][slot]
+                            .load(Ordering::Relaxed),
+                    );
+                    let filter_low = filter_v2 + filter_f * filter_v1;
+                    let filter_high = slot_sample - filter_low - filter_q * filter_v1;
+                    let filter_band = filter_f * filter_high + filter_v1;
+                    let filter_low_stage2 = filter_v2_stage2 + filter_f * filter_v1_stage2;
+                    let filter_high_stage2 = filter_low - filter_low_stage2 - filter_q * filter_v1_stage2;
+                    let filter_band_stage2 = filter_f * filter_high_stage2 + filter_v1_stage2;
+                    let mut filtered_sample = match filter_type {
+                        0 => filter_low_stage2,
+                        1 => filter_low,
+                        2 => filter_high,
+                        3 => filter_band,
+                        _ => filter_low,
+                    };
+                    if !filtered_sample.is_finite() {
+                        filtered_sample = slot_sample;
+                        filter_v1 = 0.0;
+                        filter_v2 = 0.0;
+                        filter_v1_stage2 = 0.0;
+                        filter_v2_stage2 = 0.0;
+                    }
+                    filter_v1 = filter_band;
+                    filter_v2 = filter_low;
+                    filter_v1_stage2 = filter_band_stage2;
+                    filter_v2_stage2 = filter_low_stage2;
+                    track.animate_slot_filter_v1[row][slot]
+                        .store(filter_v1.to_bits(), Ordering::Relaxed);
+                    track.animate_slot_filter_v2[row][slot]
+                        .store(filter_v2.to_bits(), Ordering::Relaxed);
+                    track.animate_slot_filter_v1_stage2[row][slot]
+                        .store(filter_v1_stage2.to_bits(), Ordering::Relaxed);
+                    track.animate_slot_filter_v2_stage2[row][slot]
+                        .store(filter_v2_stage2.to_bits(), Ordering::Relaxed);
+                    slot_sample = filtered_sample;
 
                     let level = f32::from_bits(track.animate_slot_level[slot].load(Ordering::Relaxed)) * weights[slot] * amp_levels[row];
                     let pan = f32::from_bits(track.animate_slot_pan[slot].load(Ordering::Relaxed)).clamp(-1.0, 1.0);
@@ -1143,37 +1666,756 @@ impl TLBX1 {
                 }
             }
 
-            // SVF Filter (State Variable Filter)
-            let f = 2.0 * (std::f32::consts::PI * cutoff.powf(2.0) * 20000.0 / sr).sin();
-            let q = 1.0 - resonance;
-            
             for ch in 0..num_channels.min(2) {
                 let input = if ch == 0 { mixed_sample_l } else { mixed_sample_r };
-                let mut v1 = f32::from_bits(track.animate_filter_v1[ch].load(Ordering::Relaxed));
-                let mut v2 = f32::from_bits(track.animate_filter_v2[ch].load(Ordering::Relaxed));
-                
-                let low = v2 + f * v1;
-                let high = input - low - q * v1;
-                let band = f * high + v1;
-                
-                let filtered = low; // Lowpass
-                
-                v1 = band;
-                v2 = low;
-                
-                track.animate_filter_v1[ch].store(v1.to_bits(), Ordering::Relaxed);
-                track.animate_filter_v2[ch].store(v2.to_bits(), Ordering::Relaxed);
-                
-                output[ch][sample_idx] += filtered;
+                output[ch][sample_idx] += input;
             }
         }
 
-        track.animate_sequencer_phase.store(sequencer_phase, Ordering::Relaxed);
+        track
+            .animate_sequencer_phase
+            .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
         track.animate_vector_x_smooth.store(x_smooth.to_bits(), Ordering::Relaxed);
         track.animate_vector_y_smooth.store(y_smooth.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_x_phase
+            .store(lfo_x_phase.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_x_snh
+            .store(lfo_x_snh.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_y_phase
+            .store(lfo_y_phase.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_y_snh
+            .store(lfo_y_snh.to_bits(), Ordering::Relaxed);
+        track
+            .animate_lfo_rng_state
+            .store(lfo_rng_state, Ordering::Relaxed);
+        for slot in 0..4 {
+            track.animate_slot_wt_lfo_phase[slot]
+                .store(wt_lfo_phase[slot].to_bits(), Ordering::Relaxed);
+            track.animate_slot_wt_lfo_snh[slot]
+                .store(wt_lfo_snh[slot].to_bits(), Ordering::Relaxed);
+        }
         for i in 0..10 {
             track.animate_amp_stage[i].store(amp_stages[i], Ordering::Relaxed);
             track.animate_amp_level[i].store(amp_levels[i].to_bits(), Ordering::Relaxed);
+        }
+    }
+
+    fn process_simpkick(
+        track: &Track,
+        track_output: &mut [Vec<f32>],
+        num_buffer_samples: usize,
+        _global_tempo: &AtomicU32,
+        master_step: i32,
+        master_phase: f32,
+        samples_per_step: f32,
+        sample_rate: f32,
+    ) {
+        let sr = sample_rate.max(1.0);
+        let mut sequencer_phase = master_phase;
+        let mut current_step = master_step;
+        track.kick_sequencer_step.store(current_step, Ordering::Relaxed);
+
+        let kick_pitch = f32::from_bits(track.kick_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let kick_decay = f32::from_bits(track.kick_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let kick_attack = f32::from_bits(track.kick_attack.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let kick_drive = f32::from_bits(track.kick_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let track_muted = track.is_muted.load(Ordering::Relaxed);
+        let kick_level = if track_muted {
+            0.0
+        } else {
+            f32::from_bits(track.kick_level.load(Ordering::Relaxed)).clamp(0.0, 1.0)
+        };
+        let mut env = f32::from_bits(track.kick_env.load(Ordering::Relaxed));
+        let mut pitch_env = f32::from_bits(track.kick_pitch_env.load(Ordering::Relaxed));
+        let mut phase = f32::from_bits(track.kick_phase.load(Ordering::Relaxed));
+        let mut attack_remaining =
+            track.kick_attack_remaining.load(Ordering::Relaxed);
+
+        let decay_time = 0.05 + kick_decay * 1.5;
+        let pitch_decay_time = 0.01 + kick_decay * 0.25;
+        let env_coeff = (-1.0 / (decay_time * sr)).exp();
+        let attack_time = kick_attack * 0.01;
+        let attack_samples = (attack_time * sr).round().max(0.0) as u32;
+        let attack_step = if attack_samples > 0 {
+            1.0 / attack_samples as f32
+        } else {
+            1.0
+        };
+        let pitch_coeff = (-1.0 / (pitch_decay_time * sr)).exp();
+        let base_freq = 40.0 + kick_pitch * 120.0;
+        let sweep = base_freq * 2.5;
+        let drive = 1.0 + kick_drive * 8.0;
+
+        let output = track_output;
+
+        for sample_idx in 0..num_buffer_samples {
+            sequencer_phase += 1.0;
+            if sequencer_phase >= samples_per_step {
+                sequencer_phase -= samples_per_step;
+                current_step = (current_step + 1).rem_euclid(16);
+                track.kick_sequencer_step.store(current_step, Ordering::Relaxed);
+                let step_idx = current_step as usize;
+                if track.kick_sequencer_grid[step_idx].load(Ordering::Relaxed) {
+                    pitch_env = 1.0;
+                    if attack_samples > 0 {
+                        attack_remaining = attack_samples;
+                    } else {
+                        env = 1.0;
+                    }
+                }
+            }
+
+            if attack_remaining > 0 {
+                env = (env + (1.0 - env) * attack_step).min(1.0);
+                attack_remaining = attack_remaining.saturating_sub(1);
+            } else {
+                env *= env_coeff;
+            }
+            pitch_env *= pitch_coeff;
+
+            let freq = base_freq + pitch_env * sweep;
+            phase += freq / sr;
+            if phase >= 1.0 {
+                phase -= 1.0;
+            }
+
+            let mut sample = (phase * 2.0 * PI).sin() * env;
+            if kick_drive > 0.0 {
+                sample = (sample * drive).tanh();
+            }
+            sample *= kick_level;
+
+            for channel in output.iter_mut() {
+                channel[sample_idx] += sample;
+            }
+        }
+
+        track
+            .kick_sequencer_phase
+            .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
+        track.kick_phase.store(phase.to_bits(), Ordering::Relaxed);
+        track.kick_env.store(env.to_bits(), Ordering::Relaxed);
+        track
+            .kick_pitch_env
+            .store(pitch_env.to_bits(), Ordering::Relaxed);
+        track
+            .kick_attack_remaining
+            .store(attack_remaining, Ordering::Relaxed);
+    }
+
+    fn process_track_mosaic(
+        track: &Track,
+        track_output: &mut [Vec<f32>],
+        num_buffer_samples: usize,
+    ) {
+        if track.granular_type.load(Ordering::Relaxed) != 1 {
+            return;
+        }
+        if !track.mosaic_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        let mosaic_buffer = match track.mosaic_buffer.try_lock() {
+            Some(buffer) => buffer,
+            None => return,
+        };
+        if mosaic_buffer.is_empty() || num_buffer_samples == 0 {
+            return;
+        }
+        let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as usize;
+        let mosaic_len = (sr * MOSAIC_BUFFER_SECONDS)
+            .min(MOSAIC_BUFFER_SAMPLES)
+            .max(1);
+        let target_pitch =
+            f32::from_bits(track.mosaic_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_rate =
+            f32::from_bits(track.mosaic_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_size =
+            f32::from_bits(track.mosaic_size.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_contour =
+            f32::from_bits(track.mosaic_contour.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_warp =
+            f32::from_bits(track.mosaic_warp.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_spray =
+            f32::from_bits(track.mosaic_spray.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_pattern =
+            f32::from_bits(track.mosaic_pattern.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_wet =
+            f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_spatial =
+            f32::from_bits(track.mosaic_spatial.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_detune =
+            f32::from_bits(track.mosaic_detune.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_rand_rate =
+            f32::from_bits(track.mosaic_rand_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_rand_size =
+            f32::from_bits(track.mosaic_rand_size.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mosaic_pitch = smooth_param(
+            f32::from_bits(track.mosaic_pitch_smooth.load(Ordering::Relaxed)),
+            target_pitch,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_rate = smooth_param(
+            f32::from_bits(track.mosaic_rate_smooth.load(Ordering::Relaxed)),
+            target_rate,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_size = smooth_param(
+            f32::from_bits(track.mosaic_size_smooth.load(Ordering::Relaxed)),
+            target_size,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_contour = smooth_param(
+            f32::from_bits(track.mosaic_contour_smooth.load(Ordering::Relaxed)),
+            target_contour,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_warp = smooth_param(
+            f32::from_bits(track.mosaic_warp_smooth.load(Ordering::Relaxed)),
+            target_warp,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_spray = smooth_param(
+            f32::from_bits(track.mosaic_spray_smooth.load(Ordering::Relaxed)),
+            target_spray,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_pattern = smooth_param(
+            f32::from_bits(track.mosaic_pattern_smooth.load(Ordering::Relaxed)),
+            target_pattern,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_wet = smooth_param(
+            f32::from_bits(track.mosaic_wet_smooth.load(Ordering::Relaxed)),
+            target_wet,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_spatial = smooth_param(
+            f32::from_bits(track.mosaic_spatial_smooth.load(Ordering::Relaxed)),
+            target_spatial,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_detune = smooth_param(
+            f32::from_bits(track.mosaic_detune_smooth.load(Ordering::Relaxed)),
+            target_detune,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_rand_rate = smooth_param(
+            f32::from_bits(track.mosaic_rand_rate_smooth.load(Ordering::Relaxed)),
+            target_rand_rate,
+            num_buffer_samples,
+            sr as f32,
+        );
+        let mosaic_rand_size = smooth_param(
+            f32::from_bits(track.mosaic_rand_size_smooth.load(Ordering::Relaxed)),
+            target_rand_size,
+            num_buffer_samples,
+            sr as f32,
+        );
+        track
+            .mosaic_pitch_smooth
+            .store(mosaic_pitch.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_rate_smooth
+            .store(mosaic_rate.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_size_smooth
+            .store(mosaic_size.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_contour_smooth
+            .store(mosaic_contour.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_warp_smooth
+            .store(mosaic_warp.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_spray_smooth
+            .store(mosaic_spray.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_pattern_smooth
+            .store(mosaic_pattern.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_wet_smooth
+            .store(mosaic_wet.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_spatial_smooth
+            .store(mosaic_spatial.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_detune_smooth
+            .store(mosaic_detune.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_rand_rate_smooth
+            .store(mosaic_rand_rate.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_rand_size_smooth
+            .store(mosaic_rand_size.to_bits(), Ordering::Relaxed);
+        let pitch_bipolar = mosaic_cc_bipolar(mosaic_pitch);
+        let contour_bipolar = mosaic_cc_bipolar(mosaic_contour);
+        let base_rate = MOSAIC_RATE_MIN + (MOSAIC_RATE_MAX - MOSAIC_RATE_MIN) * mosaic_rate;
+        let base_size_ms =
+            MOSAIC_SIZE_MIN_MS + (MOSAIC_SIZE_MAX_MS - MOSAIC_SIZE_MIN_MS) * mosaic_size;
+        let semitones = pitch_bipolar * MOSAIC_PITCH_SEMITONES;
+        let base_pitch_ratio = 2.0f32.powf(semitones / 12.0);
+        let recent_write_pos =
+            (track.mosaic_write_pos.load(Ordering::Relaxed) as usize) % mosaic_len;
+
+        let mut grain_pos =
+            f32::from_bits(track.mosaic_grain_pos.load(Ordering::Relaxed));
+        let mut grain_len = track.mosaic_grain_len.load(Ordering::Relaxed) as usize;
+        let mut grain_wait = track.mosaic_grain_wait.load(Ordering::Relaxed) as usize;
+        let mut grain_start =
+            (track.mosaic_grain_start.load(Ordering::Relaxed) as usize) % mosaic_len;
+        let mut grain_pitch =
+            f32::from_bits(track.mosaic_grain_pitch.load(Ordering::Relaxed));
+        let mut grain_pan =
+            f32::from_bits(track.mosaic_grain_pan.load(Ordering::Relaxed));
+        let mut rng_state = track.mosaic_rng_state.load(Ordering::Relaxed);
+
+        let num_channels = track_output.len();
+        let output = track_output;
+
+        for channel_idx in 0..num_channels {
+            for sample_idx in 0..num_buffer_samples {
+                output[channel_idx][sample_idx] *= 1.0 - mosaic_wet;
+            }
+        }
+
+        for sample_idx in 0..num_buffer_samples {
+            if grain_pos >= grain_len as f32 {
+                if grain_wait > 0 {
+                    grain_wait = grain_wait.saturating_sub(1);
+                    continue;
+                }
+                let rand_rate = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
+                let rand_size = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
+                let mut rate = base_rate * (1.0 + mosaic_rand_rate * rand_rate * 0.5);
+                rate = rate.clamp(MOSAIC_RATE_MIN, MOSAIC_RATE_MAX);
+                let mut size_ms = base_size_ms * (1.0 + mosaic_rand_size * rand_size * 0.5);
+                size_ms = size_ms.clamp(MOSAIC_SIZE_MIN_MS, MOSAIC_SIZE_MAX_MS);
+                grain_len = ((size_ms / 1000.0) * sr as f32).round() as usize;
+                grain_len = grain_len.clamp(1, mosaic_len);
+                let interval = (sr as f32 / rate).max(1.0);
+                let wait = (interval - grain_len as f32).max(0.0);
+                grain_wait = wait as usize;
+
+                let rand_pos = next_mosaic_rand_unit(&mut rng_state);
+                let recent_pos = recent_write_pos as f32 / mosaic_len as f32;
+                let mut pos = recent_pos * (1.0 - mosaic_pattern) + rand_pos * mosaic_pattern;
+                if mosaic_warp > 0.0 {
+                    pos = pos.powf(1.0 + mosaic_warp * 2.0);
+                }
+                let spray = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
+                pos = (pos + spray * mosaic_spray * 0.25).clamp(0.0, 0.999999);
+                grain_start = (pos * mosaic_len as f32) as usize;
+
+                let detune = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
+                let detune_cents = detune * mosaic_detune * MOSAIC_DETUNE_CENTS;
+                grain_pitch =
+                    base_pitch_ratio * 2.0f32.powf(detune_cents / 1200.0);
+                let pan_rand = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
+                grain_pan = (pan_rand * mosaic_spatial).clamp(-1.0, 1.0);
+
+                grain_pos = 0.0;
+            }
+            let read_pos = grain_start as f32 + grain_pos * grain_pitch;
+            let t = (grain_pos / grain_len as f32).clamp(0.0, 1.0);
+            let base_env = if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 };
+            let curve = if contour_bipolar >= 0.0 {
+                1.0 + contour_bipolar * 4.0
+            } else {
+                1.0 / (1.0 + (-contour_bipolar) * 4.0)
+            };
+            let env = base_env.powf(curve);
+            let (left_gain, right_gain, other_gain) = if num_channels >= 2 {
+                let pan = grain_pan.clamp(-1.0, 1.0);
+                let angle = (pan + 1.0) * 0.25 * PI;
+                let left = angle.cos();
+                let right = angle.sin();
+                (left, right, 0.5 * (left + right))
+            } else {
+                (1.0, 1.0, 1.0)
+            };
+            for channel_idx in 0..num_channels {
+                let src_channel = if channel_idx < mosaic_buffer.len() {
+                    channel_idx
+                } else {
+                    0
+                };
+                let sample_value = sample_at_linear_ring(
+                    &mosaic_buffer,
+                    src_channel,
+                    read_pos,
+                );
+                let wet = mosaic_wet;
+                let pan_gain = if channel_idx == 0 {
+                    left_gain
+                } else if channel_idx == 1 {
+                    right_gain
+                } else {
+                    other_gain
+                };
+                output[channel_idx][sample_idx] +=
+                    sample_value * env * MOSAIC_OUTPUT_GAIN * wet * pan_gain;
+            }
+            grain_pos += 1.0;
+        }
+
+        track
+            .mosaic_grain_pos
+            .store(grain_pos.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_grain_len
+            .store(grain_len as u32, Ordering::Relaxed);
+        track
+            .mosaic_grain_wait
+            .store(grain_wait as u32, Ordering::Relaxed);
+        track
+            .mosaic_grain_start
+            .store(grain_start as u32, Ordering::Relaxed);
+        track
+            .mosaic_grain_pitch
+            .store(grain_pitch.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_grain_pan
+            .store(grain_pan.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_rng_state
+            .store(rng_state, Ordering::Relaxed);
+    }
+
+    fn process_track_ring(
+        track: &Track,
+        track_output: &mut [Vec<f32>],
+        num_buffer_samples: usize,
+        global_tempo: f32,
+    ) {
+        if !track.ring_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        if num_buffer_samples == 0 {
+            return;
+        }
+        let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as f32;
+        let target_cutoff =
+            f32::from_bits(track.ring_cutoff.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_resonance =
+            f32::from_bits(track.ring_resonance.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_decay =
+            f32::from_bits(track.ring_decay.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_pitch =
+            f32::from_bits(track.ring_pitch.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_tone =
+            f32::from_bits(track.ring_tone.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_tilt =
+            f32::from_bits(track.ring_tilt.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_slope =
+            f32::from_bits(track.ring_slope.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_wet =
+            f32::from_bits(track.ring_wet.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_detune =
+            f32::from_bits(track.ring_detune.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_waves =
+            f32::from_bits(track.ring_waves.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_waves_rate =
+            f32::from_bits(track.ring_waves_rate.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_waves_mode =
+            track.ring_waves_rate_mode.load(Ordering::Relaxed);
+        let target_noise =
+            f32::from_bits(track.ring_noise.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_noise_rate =
+            f32::from_bits(track.ring_noise_rate.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let target_noise_mode =
+            track.ring_noise_rate_mode.load(Ordering::Relaxed);
+        let ring_scale = track.ring_scale.load(Ordering::Relaxed);
+
+        let ring_cutoff = smooth_param(
+            f32::from_bits(track.ring_cutoff_smooth.load(Ordering::Relaxed)),
+            target_cutoff,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_resonance = smooth_param(
+            f32::from_bits(track.ring_resonance_smooth.load(Ordering::Relaxed)),
+            target_resonance,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_decay = smooth_param(
+            f32::from_bits(track.ring_decay_smooth.load(Ordering::Relaxed)),
+            target_decay,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_pitch = smooth_param(
+            f32::from_bits(track.ring_pitch_smooth.load(Ordering::Relaxed)),
+            target_pitch,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_tone = smooth_param(
+            f32::from_bits(track.ring_tone_smooth.load(Ordering::Relaxed)),
+            target_tone,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_tilt = smooth_param(
+            f32::from_bits(track.ring_tilt_smooth.load(Ordering::Relaxed)),
+            target_tilt,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_slope = smooth_param(
+            f32::from_bits(track.ring_slope_smooth.load(Ordering::Relaxed)),
+            target_slope,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_wet = smooth_param(
+            f32::from_bits(track.ring_wet_smooth.load(Ordering::Relaxed)),
+            target_wet,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+        let ring_detune = smooth_param(
+            f32::from_bits(track.ring_detune_smooth.load(Ordering::Relaxed)),
+            target_detune,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_waves = smooth_param(
+            f32::from_bits(track.ring_waves_smooth.load(Ordering::Relaxed)),
+            target_waves,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_waves_rate = smooth_param(
+            f32::from_bits(track.ring_waves_rate_smooth.load(Ordering::Relaxed)),
+            target_waves_rate,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_noise = smooth_param(
+            f32::from_bits(track.ring_noise_smooth.load(Ordering::Relaxed)),
+            target_noise,
+            num_buffer_samples,
+            sr,
+        );
+        let ring_noise_rate = smooth_param(
+            f32::from_bits(track.ring_noise_rate_smooth.load(Ordering::Relaxed)),
+            target_noise_rate,
+            num_buffer_samples,
+            sr,
+        );
+
+        track
+            .ring_cutoff_smooth
+            .store(ring_cutoff.to_bits(), Ordering::Relaxed);
+        track
+            .ring_resonance_smooth
+            .store(ring_resonance.to_bits(), Ordering::Relaxed);
+        track
+            .ring_decay_smooth
+            .store(ring_decay.to_bits(), Ordering::Relaxed);
+        track
+            .ring_pitch_smooth
+            .store(ring_pitch.to_bits(), Ordering::Relaxed);
+        track
+            .ring_tone_smooth
+            .store(ring_tone.to_bits(), Ordering::Relaxed);
+        track
+            .ring_tilt_smooth
+            .store(ring_tilt.to_bits(), Ordering::Relaxed);
+        track
+            .ring_slope_smooth
+            .store(ring_slope.to_bits(), Ordering::Relaxed);
+        track
+            .ring_wet_smooth
+            .store(ring_wet.to_bits(), Ordering::Relaxed);
+        track
+            .ring_detune_smooth
+            .store(ring_detune.to_bits(), Ordering::Relaxed);
+        track
+            .ring_waves_smooth
+            .store(ring_waves.to_bits(), Ordering::Relaxed);
+        track
+            .ring_waves_rate_smooth
+            .store(ring_waves_rate.to_bits(), Ordering::Relaxed);
+        track
+            .ring_noise_smooth
+            .store(ring_noise.to_bits(), Ordering::Relaxed);
+        track
+            .ring_noise_rate_smooth
+            .store(ring_noise_rate.to_bits(), Ordering::Relaxed);
+
+        if ring_wet > 0.0 {
+            let decay_mode = track.ring_decay_mode.load(Ordering::Relaxed);
+            let decay_sec = 0.05 + ring_decay.clamp(0.0, 1.0) * 3.95;
+            let decay_factor = (-1.0 / (decay_sec * sr)).exp();
+            let pitch_bipolar = ring_pitch * 2.0 - 1.0;
+            let tone_bipolar = ring_tone * 2.0 - 1.0;
+            let tilt_bipolar = ring_tilt * 2.0 - 1.0;
+            let pitch_ratio =
+                2.0f32.powf((pitch_bipolar * RING_PITCH_SEMITONES) / 12.0);
+            let cutoff_hz = RING_CUTOFF_MIN_HZ
+                * (RING_CUTOFF_MAX_HZ / RING_CUTOFF_MIN_HZ).powf(ring_cutoff);
+            let cutoff_hz =
+                (cutoff_hz * pitch_ratio).clamp(20.0, sr * 0.45);
+            let cutoff_hz = ring_quantize_freq(cutoff_hz, ring_scale);
+            let q = 0.5 + ring_resonance * 12.0;
+            let r = 1.0 / (2.0 * q.max(0.001));
+            let slope = ring_slope.clamp(0.0, 1.0);
+
+            let num_channels = track_output.len();
+            let output = track_output;
+            let detune_phase =
+                f32::from_bits(track.ring_detune_phase.load(Ordering::Relaxed));
+            let waves_mode = target_waves_mode;
+            let noise_mode = target_noise_mode;
+            let waves_rate_hz = ring_rate_hz(ring_waves_rate, waves_mode, global_tempo);
+            let noise_rate_hz = ring_rate_hz(ring_noise_rate, noise_mode, global_tempo);
+            let waves_step = (waves_rate_hz / sr).min(1.0);
+            let noise_step = (noise_rate_hz / sr).min(1.0);
+            let mut waves_phase =
+                f32::from_bits(track.ring_waves_phase.load(Ordering::Relaxed));
+            let mut noise_phase =
+                f32::from_bits(track.ring_noise_phase.load(Ordering::Relaxed));
+            let mut noise_value =
+                f32::from_bits(track.ring_noise_value.load(Ordering::Relaxed));
+            let mut noise_rng = track.ring_noise_rng.load(Ordering::Relaxed);
+            let mut phase = detune_phase;
+            let detune_rate = RING_DETUNE_RATE_HZ / sr;
+            let detune_depth = ring_detune.clamp(0.0, 1.0) * RING_DETUNE_CENTS;
+            for channel_idx in 0..num_channels {
+                let mut low =
+                    f32::from_bits(track.ring_low[channel_idx].load(Ordering::Relaxed));
+                let mut band =
+                    f32::from_bits(track.ring_band[channel_idx].load(Ordering::Relaxed));
+                for sample_idx in 0..num_buffer_samples {
+                    if decay_mode == 1 {
+                        let tilt = tilt_bipolar;
+                        let low_decay = (decay_factor * (1.0 - tilt * 0.35)).clamp(0.0, 1.0);
+                        let band_decay = (decay_factor * (1.0 + tilt * 0.35)).clamp(0.0, 1.0);
+                        low *= low_decay;
+                        band *= band_decay;
+                    }
+                    let input = output[channel_idx][sample_idx];
+                    let lfo = (phase * 2.0 * PI).sin();
+                    let detune_cents =
+                        detune_depth * lfo * if channel_idx == 0 { -1.0 } else { 1.0 };
+                    let detune_ratio = 2.0f32.powf(detune_cents / 1200.0);
+                    let detuned_hz =
+                        (cutoff_hz * detune_ratio).clamp(20.0, sr * 0.45);
+                    let mut g_detune = (PI * detuned_hz / sr).tan();
+                    if !g_detune.is_finite() {
+                        g_detune = 0.0;
+                    } else if g_detune > 10.0 {
+                        g_detune = 10.0;
+                    }
+                    let v1 = (input - low - r * band) * g_detune;
+                    let v2 = band + v1;
+                    low += v2;
+                    band = v2;
+                    low = low.clamp(-8.0, 8.0);
+                    band = band.clamp(-8.0, 8.0);
+                    let high = input - low - r * band;
+                    let filtered = if slope < 0.5 {
+                        let t = slope / 0.5;
+                        low + (band - low) * t
+                    } else {
+                        let t = (slope - 0.5) / 0.5;
+                        band + (high - band) * t
+                    };
+                    if decay_mode == 0 {
+                        let tilt = tilt_bipolar;
+                        let low_decay = (decay_factor * (1.0 - tilt * 0.35)).clamp(0.0, 1.0);
+                        let band_decay = (decay_factor * (1.0 + tilt * 0.35)).clamp(0.0, 1.0);
+                        low *= low_decay;
+                        band *= band_decay;
+                    }
+                    let tone_mix = filtered + tone_bipolar * (high - low) * 0.5;
+                    let waves_lfo = (waves_phase * 2.0 * PI).sin();
+                    let waves_mod =
+                        (1.0 - ring_waves) + ring_waves * (0.5 + 0.5 * waves_lfo);
+                    let noise_mod =
+                        (1.0 - ring_noise) + ring_noise * (0.5 + 0.5 * noise_value);
+                    output[channel_idx][sample_idx] =
+                        input * (1.0 - ring_wet)
+                            + tone_mix * ring_wet * waves_mod * noise_mod;
+                    if !low.is_finite() || !band.is_finite() || !output[channel_idx][sample_idx].is_finite() {
+                        low = 0.0;
+                        band = 0.0;
+                        output[channel_idx][sample_idx] = input;
+                    }
+                    if channel_idx == 0 {
+                        phase += detune_rate;
+                        if phase >= 1.0 {
+                            phase -= 1.0;
+                        }
+                        waves_phase += waves_step;
+                        if waves_phase >= 1.0 {
+                            waves_phase -= 1.0;
+                        }
+                        noise_phase += noise_step;
+                        if noise_phase >= 1.0 {
+                            noise_phase -= 1.0;
+                            noise_rng = noise_rng
+                                .wrapping_mul(1664525)
+                                .wrapping_add(1013904223);
+                            let noise = (noise_rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                            if noise.is_finite() {
+                                noise_value = noise;
+                            } else {
+                                noise_value = 0.0;
+                            }
+                        }
+                    }
+                }
+                track.ring_low[channel_idx]
+                    .store(low.to_bits(), Ordering::Relaxed);
+                track.ring_band[channel_idx]
+                    .store(band.to_bits(), Ordering::Relaxed);
+            }
+            track
+                .ring_detune_phase
+                .store(phase.to_bits(), Ordering::Relaxed);
+            track
+                .ring_waves_phase
+                .store(waves_phase.to_bits(), Ordering::Relaxed);
+            track
+                .ring_noise_phase
+                .store(noise_phase.to_bits(), Ordering::Relaxed);
+            track
+                .ring_noise_value
+                .store(noise_value.to_bits(), Ordering::Relaxed);
+            track
+                .ring_noise_rng
+                .store(noise_rng, Ordering::Relaxed);
         }
     }
 }
@@ -1216,6 +2458,7 @@ impl Plugin for TLBX1 {
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         self.sample_rate.store(buffer_config.sample_rate as u32, Ordering::Relaxed);
+        self.track_buffer = vec![vec![0.0; buffer_config.max_buffer_size as usize]; 2];
         true
     }
 
@@ -1236,12 +2479,15 @@ impl Plugin for TLBX1 {
             metronome_count_in_playback: self.metronome_count_in_playback.clone(),
             metronome_count_in_record: self.metronome_count_in_record.clone(),
             async_executor,
+            pending_project_params: self.pending_project_params.clone(),
         }))
     }
 
     fn task_executor(&mut self) -> TaskExecutor<Self> {
         let tracks = self.tracks.clone();
         let global_tempo = self.global_tempo.clone();
+        let params = self.params.clone();
+        let pending_project_params = self.pending_project_params.clone();
         Box::new(move |task| match task {
             TLBX1Task::LoadSample(track_idx, path) => {
                 if track_idx >= NUM_TRACKS {
@@ -1272,20 +2518,43 @@ impl Plugin for TLBX1 {
                     }
                 }
             }
-            TLBX1Task::SaveProject(path) => {
-                let tempo =
-                    f32::from_bits(global_tempo.load(Ordering::Relaxed));
-                if let Err(err) = save_project(&tracks, tempo, &path) {
+            TLBX1Task::SaveProject {
+                path,
+                title,
+                description,
+            } => {
+                let tempo = f32::from_bits(global_tempo.load(Ordering::Relaxed));
+                if let Err(err) = save_project(&tracks, tempo, &params, &title, &description, &path) {
                     nih_log!("Failed to save project: {:?}", err);
                 } else {
                     nih_log!("Saved project: {:?}", path);
                 }
             }
             TLBX1Task::LoadProject(path) => {
-                if let Err(err) = load_project(&tracks, &global_tempo, &path) {
+                if let Err(err) = load_project(
+                    &tracks,
+                    &global_tempo,
+                    &params,
+                    &pending_project_params,
+                    &path,
+                ) {
                     nih_log!("Failed to load project: {:?}", err);
                 } else {
                     nih_log!("Loaded project: {:?}", path);
+                }
+            }
+            TLBX1Task::ExportProjectZip {
+                path,
+                title,
+                description,
+            } => {
+                let tempo = f32::from_bits(global_tempo.load(Ordering::Relaxed));
+                if let Err(err) =
+                    export_project_as_zip(&tracks, tempo, &params, &title, &description, &path)
+                {
+                    nih_log!("Failed to export project: {:?}", err);
+                } else {
+                    nih_log!("Exported project zip: {:?}", path);
                 }
             }
         })
@@ -1300,6 +2569,11 @@ impl Plugin for TLBX1 {
         let mut keep_alive = false;
         let mut global_tempo =
             f32::from_bits(self.global_tempo.load(Ordering::Relaxed)).clamp(20.0, 240.0);
+        if !global_tempo.is_finite() {
+            global_tempo = 120.0;
+            self.global_tempo
+                .store(global_tempo.to_bits(), Ordering::Relaxed);
+        }
         if self.follow_host_tempo.load(Ordering::Relaxed) {
             if let Some(tempo) = context.transport().tempo {
                 let tempo = tempo as f32;
@@ -1310,6 +2584,26 @@ impl Plugin for TLBX1 {
                 }
             }
         }
+        let mut master_sr = context.transport().sample_rate;
+        if !master_sr.is_finite() || master_sr <= 0.0 {
+            master_sr = self.sample_rate.load(Ordering::Relaxed).max(1) as f32;
+        }
+        self.sample_rate.store(master_sr as u32, Ordering::Relaxed);
+        let mut samples_per_step = (master_sr * 60.0) / (global_tempo * 4.0);
+        if !samples_per_step.is_finite() || samples_per_step <= 0.0 {
+            samples_per_step = (master_sr * 60.0) / (120.0 * 4.0);
+        }
+        let mut master_step = self.master_step_index;
+        let mut master_phase = self.master_step_phase;
+        let mut master_step_count = self.master_step_count;
+        if samples_per_step > 0.0 {
+            while master_phase >= samples_per_step {
+                master_phase -= samples_per_step;
+                master_step = (master_step + 1).rem_euclid(16);
+                master_step_count += 1;
+            }
+        }
+
 
         let buffer_samples = buffer.samples() as u32;
         let mut any_pending = false;
@@ -1466,23 +2760,45 @@ impl Plugin for TLBX1 {
 
         // Handle playback for all tracks
         for track in self.tracks.iter() {
-            if track.is_recording.load(Ordering::Relaxed) { continue; } // Don't play if recording
+            if track.is_recording.load(Ordering::Relaxed) {
+                continue;
+            }
 
             if track.is_playing.load(Ordering::Relaxed) {
                 keep_alive = true;
+
+                // Clear track buffer
+                for channel in self.track_buffer.iter_mut() {
+                    channel.fill(0.0);
+                }
+
+                let mut track_peak_left = 0.0f32;
+                let mut track_peak_right = 0.0f32;
 
                 let engine_type = track.engine_type.load(Ordering::Relaxed);
                 if engine_type == 2 {
                     Self::process_animate(
                         track,
-                        buffer,
+                        &mut self.track_buffer,
+                        buffer.samples(),
                         &self.global_tempo,
                         &self.animate_library,
+                        master_step,
+                        master_phase,
+                        samples_per_step,
                     );
-                    continue;
-                }
-
-                if let Some(samples) = track.samples.try_lock() {
+                } else if engine_type == 3 {
+                    Self::process_simpkick(
+                        track,
+                        &mut self.track_buffer,
+                        buffer.samples(),
+                        &self.global_tempo,
+                        master_step,
+                        master_phase,
+                        samples_per_step,
+                        master_sr,
+                    );
+                } else if let Some(samples) = track.samples.try_lock() {
                     if samples.is_empty() || samples[0].is_empty() {
                         track.is_playing.store(false, Ordering::Relaxed);
                         continue;
@@ -1521,14 +2837,12 @@ impl Plugin for TLBX1 {
                     track
                         .mosaic_sos_smooth
                         .store(smooth_mosaic_sos.to_bits(), Ordering::Relaxed);
-                    let mut track_peak_left = 0.0f32;
-                    let mut track_peak_right = 0.0f32;
                     let track_level =
                         f32::from_bits(track.level.load(Ordering::Relaxed));
                     let track_muted = track.is_muted.load(Ordering::Relaxed);
                     let tape_speed =
                         f32::from_bits(track.tape_speed.load(Ordering::Relaxed)).clamp(-4.0, 4.0);
-                    let tape_tempo = global_tempo;
+                    let tape_tempo = global_tempo.max(1.0);
                     let tape_rate_mode = track.tape_rate_mode.load(Ordering::Relaxed);
                     let tape_freeze = track.tape_freeze.load(Ordering::Relaxed);
                     let tape_reverse = track.tape_reverse.load(Ordering::Relaxed);
@@ -1540,27 +2854,6 @@ impl Plugin for TLBX1 {
                         f32::from_bits(track.level_smooth.load(Ordering::Relaxed));
                     let level_step = if num_buffer_samples > 0 {
                         (target_level - smooth_level) / num_buffer_samples as f32
-                    } else {
-                        0.0
-                    };
-                    let rate_factor = match tape_rate_mode {
-                        1 => 1.0,
-                        2 => 1.5,
-                        3 => 2.0 / 3.0,
-                        _ => 0.0,
-                    };
-                    let tempo_speed = if tape_rate_mode == 0 {
-                        tape_speed
-                    } else {
-                        (tape_tempo / 120.0) * rate_factor
-                    };
-                    let target_speed = if tape_freeze { 0.0 } else { tempo_speed };
-                    let glide =
-                        f32::from_bits(track.tape_glide.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                    let glide_factor = 1.0 + glide * 20.0;
-                    let speed_step = if num_buffer_samples > 0 {
-                        (target_speed - smooth_speed)
-                            / (num_buffer_samples as f32 * glide_factor)
                     } else {
                         0.0
                     };
@@ -1588,9 +2881,21 @@ impl Plugin for TLBX1 {
 
                     let rotate_norm =
                         f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                    let base_start = (loop_start_norm * num_samples as f32) as usize;
+                    let reverse_active = tape_reverse || loop_mode == 3;
                     let rotate_offset = (rotate_norm * num_samples as f32) as usize;
-                    let loop_start = (base_start + rotate_offset) % num_samples.max(1);
+                    let loop_start = if reverse_active {
+                        let base_end =
+                            ((1.0 - loop_start_norm) * num_samples as f32) as usize;
+                        let loop_end = (base_end + rotate_offset).min(num_samples);
+                        let mut loop_len = (loop_length_norm * num_samples as f32) as usize;
+                        if loop_len == 0 {
+                            loop_len = loop_end.max(1);
+                        }
+                        loop_end.saturating_sub(loop_len)
+                    } else {
+                        let base_start = (loop_start_norm * num_samples as f32) as usize;
+                        (base_start + rotate_offset) % num_samples.max(1)
+                    };
                     let mut loop_len = (loop_length_norm * num_samples as f32) as usize;
                     if loop_len == 0 {
                         loop_len = num_samples.saturating_sub(loop_start).max(1);
@@ -1609,6 +2914,74 @@ impl Plugin for TLBX1 {
                     if tape_reverse {
                         direction *= -1;
                     }
+                    if tape_rate_mode == 1 && tape_speed < 0.0 {
+                        direction *= -1;
+                    }
+                    let rate_factor = match tape_rate_mode {
+                        1 => 1.0,
+                        2 => 1.5,
+                        3 => 2.0 / 3.0,
+                        _ => 0.0,
+                    };
+                    let (tempo_speed, straight_bars) = match tape_rate_mode {
+                        0 => (tape_speed, None),
+                        1 => {
+                            let divisions = [
+                                1.0 / 64.0,
+                                1.0 / 32.0,
+                                1.0 / 16.0,
+                                1.0 / 8.0,
+                                1.0 / 4.0,
+                                1.0 / 2.0,
+                                1.0,
+                                2.0,
+                                4.0,
+                                8.0,
+                                16.0,
+                            ];
+                            let normalized = (tape_speed.abs() / 4.0).clamp(0.0, 1.0);
+                            let idx = ((divisions.len() - 1) as f32 * normalized).round() as usize;
+                            let bars = divisions[idx];
+                            let seconds_per_bar = (60.0 / tape_tempo) * 4.0;
+                            let target_seconds = (bars * seconds_per_bar).max(0.001);
+                            let speed = loop_len as f32
+                                / (target_seconds
+                                    * track.sample_rate.load(Ordering::Relaxed).max(1) as f32);
+                            (speed, Some(bars))
+                        }
+                        _ => ((tape_tempo / 120.0) * rate_factor, None),
+                    };
+                    let sync_requested =
+                        track.tape_sync_requested.swap(false, Ordering::Relaxed);
+                    let use_straight_lock = tape_rate_mode == 1
+                        && straight_bars.is_some()
+                        && samples_per_step > 0.0;
+                    let mut straight_phase = master_phase;
+                    let mut straight_step_count = master_step_count;
+                    if sync_requested && use_straight_lock && loop_len > 0 {
+                        let bars = straight_bars.unwrap_or(1.0f32).max(0.000_01f32);
+                        let step_progress =
+                            straight_step_count as f32 + (straight_phase / samples_per_step);
+                        let total_bars = step_progress / 16.0;
+                        let loop_units = total_bars / bars;
+                        let phase = loop_units.fract();
+                        let locked_pos = if direction >= 0 {
+                            loop_start as f32 + phase * loop_len as f32
+                        } else {
+                            loop_end.saturating_sub(1) as f32 - phase * loop_len as f32
+                        };
+                        play_pos = locked_pos;
+                    }
+                    let target_speed = if tape_freeze { 0.0 } else { tempo_speed };
+                    let glide =
+                        f32::from_bits(track.tape_glide.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+                    let glide_factor = 1.0 + glide * 20.0;
+                    let speed_step = if num_buffer_samples > 0 {
+                        (target_speed - smooth_speed)
+                            / (num_buffer_samples as f32 * glide_factor)
+                    } else {
+                        0.0
+                    };
                     if loop_mode == 5 && loop_active {
                         let last_start = track.loop_start_last.load(Ordering::Relaxed) as usize;
                         if last_start != loop_start {
@@ -1653,7 +3026,97 @@ impl Plugin for TLBX1 {
                             }
                         }
 
-                        if keylock_enabled {
+                        if use_straight_lock {
+                            let bars = straight_bars.unwrap_or(1.0f32).max(0.000_01f32);
+                            let step_progress =
+                                straight_step_count as f32 + (straight_phase / samples_per_step);
+                            let total_bars = step_progress / 16.0;
+                            let loop_units = total_bars / bars;
+                            let phase = loop_units.fract();
+                            let locked_pos = if direction >= 0 {
+                                loop_start as f32 + phase * loop_len as f32
+                            } else {
+                                loop_end.saturating_sub(1) as f32 - phase * loop_len as f32
+                            };
+                            let xfade_start = loop_end.saturating_sub(xfade_samples) as f32;
+                            let xfade_len = xfade_samples as f32;
+                            for channel_idx in 0..output.len() {
+                                let src_channel = if num_channels == 1 {
+                                    0
+                                } else if channel_idx < num_channels {
+                                    channel_idx
+                                } else {
+                                    continue;
+                                };
+                                let mut sample_value = sample_at_linear(
+                                    &samples,
+                                    src_channel,
+                                    locked_pos,
+                                    loop_start,
+                                    loop_end,
+                                    loop_active,
+                                    num_samples,
+                                );
+                                if loop_active && xfade_samples > 0 {
+                                    if direction > 0 && locked_pos >= xfade_start {
+                                        let fade_in =
+                                            ((locked_pos - xfade_start) / xfade_len).clamp(0.0, 1.0);
+                                        let head_pos =
+                                            loop_start as f32 + (locked_pos - xfade_start);
+                                        let head_sample = sample_at_linear(
+                                            &samples,
+                                            src_channel,
+                                            head_pos,
+                                            loop_start,
+                                            loop_end,
+                                            loop_active,
+                                            num_samples,
+                                        );
+                                        sample_value = sample_value * (1.0 - fade_in)
+                                            + head_sample * fade_in;
+                                    } else if direction < 0
+                                        && locked_pos <= loop_start as f32 + xfade_len
+                                    {
+                                        let fade_in = ((loop_start as f32 + xfade_len - locked_pos)
+                                            / xfade_len)
+                                            .clamp(0.0, 1.0);
+                                        let head_pos =
+                                            loop_end as f32 - (loop_start as f32 + xfade_len - locked_pos);
+                                        let head_sample = sample_at_linear(
+                                            &samples,
+                                            src_channel,
+                                            head_pos,
+                                            loop_start,
+                                            loop_end,
+                                            loop_active,
+                                            num_samples,
+                                        );
+                                        sample_value = sample_value * (1.0 - fade_in)
+                                            + head_sample * fade_in;
+                                    }
+                                }
+                                    let level = smooth_level + level_step * sample_idx as f32;
+                                    let out_value = sample_value * level;
+                                    self.track_buffer[channel_idx][sample_idx] += out_value;
+                                    if let Some(mosaic) = mosaic_buffer.as_mut() {
+                                        if mosaic_len > 0 && channel_idx < mosaic.len() {
+                                            let existing = mosaic[channel_idx][mosaic_write_pos];
+                                            mosaic[channel_idx][mosaic_write_pos] =
+                                                out_value * (1.0 - smooth_mosaic_sos)
+                                                    + existing * smooth_mosaic_sos;
+                                        }
+                                    }
+                                }
+                            if mosaic_buffer.is_some() && mosaic_len > 0 {
+                                mosaic_write_pos = (mosaic_write_pos + 1) % mosaic_len;
+                            }
+                            play_pos = locked_pos;
+                            straight_phase += 1.0;
+                            if straight_phase >= samples_per_step {
+                                straight_phase -= samples_per_step;
+                                straight_step_count += 1;
+                            }
+                        } else if keylock_enabled {
                             let speed = smooth_speed + speed_step * sample_idx as f32;
                             let step = direction as f32 * speed;
                             let hop = KEYLOCK_GRAIN_HOP as f32;
@@ -1688,29 +3151,18 @@ impl Plugin for TLBX1 {
                                     num_samples,
                                 );
                                 let sample_value = sample_a * (1.0 - fade) + sample_b * fade;
-                                let level = smooth_level + level_step * sample_idx as f32;
-                                let out_value = sample_value * level;
-                                output[channel_idx][sample_idx] += out_value;
-                                if let Some(mosaic) = mosaic_buffer.as_mut() {
-                                    if mosaic_len > 0 && channel_idx < mosaic.len() {
-                                        let existing = mosaic[channel_idx][mosaic_write_pos];
-                                        mosaic[channel_idx][mosaic_write_pos] =
-                                            out_value * (1.0 - smooth_mosaic_sos)
-                                                + existing * smooth_mosaic_sos;
+                                    let level = smooth_level + level_step * sample_idx as f32;
+                                    let out_value = sample_value * level;
+                                    self.track_buffer[channel_idx][sample_idx] += out_value;
+                                    if let Some(mosaic) = mosaic_buffer.as_mut() {
+                                        if mosaic_len > 0 && channel_idx < mosaic.len() {
+                                            let existing = mosaic[channel_idx][mosaic_write_pos];
+                                            mosaic[channel_idx][mosaic_write_pos] =
+                                                out_value * (1.0 - smooth_mosaic_sos)
+                                                    + existing * smooth_mosaic_sos;
+                                        }
                                     }
                                 }
-                                if channel_idx == 0 {
-                                    let amp = out_value.abs();
-                                    if amp > track_peak_left {
-                                        track_peak_left = amp;
-                                    }
-                                } else if channel_idx == 1 {
-                                    let amp = out_value.abs();
-                                    if amp > track_peak_right {
-                                        track_peak_right = amp;
-                                    }
-                                }
-                            }
 
                             if mosaic_buffer.is_some() && mosaic_len > 0 {
                                 mosaic_write_pos = (mosaic_write_pos + 1) % mosaic_len;
@@ -1799,24 +3251,13 @@ impl Plugin for TLBX1 {
                                 }
                             let level = smooth_level + level_step * sample_idx as f32;
                             let out_value = sample_value * level;
-                            output[channel_idx][sample_idx] += out_value;
+                            self.track_buffer[channel_idx][sample_idx] += out_value;
                             if let Some(mosaic) = mosaic_buffer.as_mut() {
                                 if mosaic_len > 0 && channel_idx < mosaic.len() {
                                     let existing = mosaic[channel_idx][mosaic_write_pos];
                                     mosaic[channel_idx][mosaic_write_pos] =
                                         out_value * (1.0 - smooth_mosaic_sos)
                                             + existing * smooth_mosaic_sos;
-                                }
-                            }
-                            if channel_idx == 0 {
-                                let amp = out_value.abs();
-                                if amp > track_peak_left {
-                                    track_peak_left = amp;
-                                }
-                            } else if channel_idx == 1 {
-                                let amp = out_value.abs();
-                                if amp > track_peak_right {
-                                    track_peak_right = amp;
                                 }
                             }
                         }
@@ -1874,23 +3315,38 @@ impl Plugin for TLBX1 {
                     track
                         .level_smooth
                         .store(smooth_level.to_bits(), Ordering::Relaxed);
-
-                    if num_channels == 1 && buffer.channels() > 1 {
-                        track_peak_right = track_peak_left;
-                    }
-                    let prev_left =
-                        f32::from_bits(track.meter_left.load(Ordering::Relaxed));
-                    let prev_right =
-                        f32::from_bits(track.meter_right.load(Ordering::Relaxed));
-                    let next_left = smooth_meter(prev_left, track_peak_left);
-                    let next_right = smooth_meter(prev_right, track_peak_right);
-                    track
-                        .meter_left
-                        .store(next_left.to_bits(), Ordering::Relaxed);
-                    track
-                        .meter_right
-                        .store(next_right.to_bits(), Ordering::Relaxed);
                 }
+
+                // Apply track effects
+                Self::process_track_mosaic(track, &mut self.track_buffer, buffer.samples());
+                Self::process_track_ring(track, &mut self.track_buffer, buffer.samples(), global_tempo);
+
+                // Sum track buffer to master output and calculate final peaks
+                let num_buffer_samples = buffer.samples();
+                let output = buffer.as_slice();
+                for sample_idx in 0..num_buffer_samples {
+                    for channel_idx in 0..output.len() {
+                        let val = self.track_buffer[channel_idx][sample_idx];
+                        output[channel_idx][sample_idx] += val;
+
+                        if channel_idx == 0 {
+                            track_peak_left = track_peak_left.max(val.abs());
+                        } else if channel_idx == 1 {
+                            track_peak_right = track_peak_right.max(val.abs());
+                        }
+                    }
+                }
+
+                // Update meters with final peaks
+                if output.len() == 1 && buffer.channels() > 1 {
+                    track_peak_right = track_peak_left;
+                }
+                let prev_left = f32::from_bits(track.meter_left.load(Ordering::Relaxed));
+                let prev_right = f32::from_bits(track.meter_right.load(Ordering::Relaxed));
+                let next_left = smooth_meter(prev_left, track_peak_left);
+                let next_right = smooth_meter(prev_right, track_peak_right);
+                track.meter_left.store(next_left.to_bits(), Ordering::Relaxed);
+                track.meter_right.store(next_right.to_bits(), Ordering::Relaxed);
             } else {
                 let prev_left =
                     f32::from_bits(track.meter_left.load(Ordering::Relaxed));
@@ -1911,650 +3367,6 @@ impl Plugin for TLBX1 {
             keep_alive = true;
         }
 
-        let any_mosaic = self.tracks.iter().any(|track| {
-            track.is_playing.load(Ordering::Relaxed)
-                && track.granular_type.load(Ordering::Relaxed) == 1
-                && track.mosaic_enabled.load(Ordering::Relaxed)
-        });
-        if any_mosaic {
-            let num_buffer_samples = buffer.samples();
-            let num_channels = buffer.channels();
-            let mut global_wet = 0.0f32;
-            for track in self.tracks.iter() {
-                if track.is_playing.load(Ordering::Relaxed)
-                    && track.granular_type.load(Ordering::Relaxed) == 1
-                    && track.mosaic_enabled.load(Ordering::Relaxed)
-                {
-                    let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as f32;
-                    let target_wet =
-                        f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed))
-                            .clamp(0.0, 1.0);
-                    let smooth_wet = smooth_param(
-                        f32::from_bits(track.mosaic_wet_smooth.load(Ordering::Relaxed)),
-                        target_wet,
-                        num_buffer_samples,
-                        sr,
-                    );
-                    track
-                        .mosaic_wet_smooth
-                        .store(smooth_wet.to_bits(), Ordering::Relaxed);
-                    let wet = smooth_wet.clamp(0.0, 1.0);
-                    if wet > global_wet {
-                        global_wet = wet;
-                    }
-                }
-            }
-            if global_wet > 0.0 {
-                let dry_gain = 1.0 - global_wet;
-                for channel_samples in buffer.iter_samples() {
-                    for sample in channel_samples {
-                        *sample *= dry_gain;
-                    }
-                }
-            }
-
-            for track in self.tracks.iter() {
-                if !track.is_playing.load(Ordering::Relaxed) {
-                    continue;
-                }
-                if track.granular_type.load(Ordering::Relaxed) != 1 {
-                    continue;
-                }
-                if !track.mosaic_enabled.load(Ordering::Relaxed) {
-                    continue;
-                }
-                let output = buffer.as_slice();
-                let mosaic_buffer = match track.mosaic_buffer.try_lock() {
-                    Some(buffer) => buffer,
-                    None => continue,
-                };
-                if mosaic_buffer.is_empty() || num_buffer_samples == 0 {
-                    continue;
-                }
-                let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as usize;
-                let mosaic_len = (sr * MOSAIC_BUFFER_SECONDS)
-                    .min(MOSAIC_BUFFER_SAMPLES)
-                    .max(1);
-                let target_pitch =
-                    f32::from_bits(track.mosaic_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_rate =
-                    f32::from_bits(track.mosaic_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_size =
-                    f32::from_bits(track.mosaic_size.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_contour =
-                    f32::from_bits(track.mosaic_contour.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_warp =
-                    f32::from_bits(track.mosaic_warp.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_spray =
-                    f32::from_bits(track.mosaic_spray.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_pattern =
-                    f32::from_bits(track.mosaic_pattern.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_wet =
-                    f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_spatial =
-                    f32::from_bits(track.mosaic_spatial.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_detune =
-                    f32::from_bits(track.mosaic_detune.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_rand_rate =
-                    f32::from_bits(track.mosaic_rand_rate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let target_rand_size =
-                    f32::from_bits(track.mosaic_rand_size.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-                let mosaic_pitch = smooth_param(
-                    f32::from_bits(track.mosaic_pitch_smooth.load(Ordering::Relaxed)),
-                    target_pitch,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_rate = smooth_param(
-                    f32::from_bits(track.mosaic_rate_smooth.load(Ordering::Relaxed)),
-                    target_rate,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_size = smooth_param(
-                    f32::from_bits(track.mosaic_size_smooth.load(Ordering::Relaxed)),
-                    target_size,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_contour = smooth_param(
-                    f32::from_bits(track.mosaic_contour_smooth.load(Ordering::Relaxed)),
-                    target_contour,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_warp = smooth_param(
-                    f32::from_bits(track.mosaic_warp_smooth.load(Ordering::Relaxed)),
-                    target_warp,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_spray = smooth_param(
-                    f32::from_bits(track.mosaic_spray_smooth.load(Ordering::Relaxed)),
-                    target_spray,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_pattern = smooth_param(
-                    f32::from_bits(track.mosaic_pattern_smooth.load(Ordering::Relaxed)),
-                    target_pattern,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_wet = smooth_param(
-                    f32::from_bits(track.mosaic_wet_smooth.load(Ordering::Relaxed)),
-                    target_wet,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_spatial = smooth_param(
-                    f32::from_bits(track.mosaic_spatial_smooth.load(Ordering::Relaxed)),
-                    target_spatial,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_detune = smooth_param(
-                    f32::from_bits(track.mosaic_detune_smooth.load(Ordering::Relaxed)),
-                    target_detune,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_rand_rate = smooth_param(
-                    f32::from_bits(track.mosaic_rand_rate_smooth.load(Ordering::Relaxed)),
-                    target_rand_rate,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                let mosaic_rand_size = smooth_param(
-                    f32::from_bits(track.mosaic_rand_size_smooth.load(Ordering::Relaxed)),
-                    target_rand_size,
-                    num_buffer_samples,
-                    sr as f32,
-                );
-                track
-                    .mosaic_pitch_smooth
-                    .store(mosaic_pitch.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_rate_smooth
-                    .store(mosaic_rate.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_size_smooth
-                    .store(mosaic_size.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_contour_smooth
-                    .store(mosaic_contour.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_warp_smooth
-                    .store(mosaic_warp.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_spray_smooth
-                    .store(mosaic_spray.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_pattern_smooth
-                    .store(mosaic_pattern.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_wet_smooth
-                    .store(mosaic_wet.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_spatial_smooth
-                    .store(mosaic_spatial.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_detune_smooth
-                    .store(mosaic_detune.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_rand_rate_smooth
-                    .store(mosaic_rand_rate.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_rand_size_smooth
-                    .store(mosaic_rand_size.to_bits(), Ordering::Relaxed);
-                let pitch_bipolar = mosaic_cc_bipolar(mosaic_pitch);
-                let contour_bipolar = mosaic_cc_bipolar(mosaic_contour);
-                let base_rate = MOSAIC_RATE_MIN + (MOSAIC_RATE_MAX - MOSAIC_RATE_MIN) * mosaic_rate;
-                let base_size_ms =
-                    MOSAIC_SIZE_MIN_MS + (MOSAIC_SIZE_MAX_MS - MOSAIC_SIZE_MIN_MS) * mosaic_size;
-                let semitones = pitch_bipolar * MOSAIC_PITCH_SEMITONES;
-                let base_pitch_ratio = 2.0f32.powf(semitones / 12.0);
-                let recent_write_pos =
-                    (track.mosaic_write_pos.load(Ordering::Relaxed) as usize) % mosaic_len;
-
-                let mut grain_pos =
-                    f32::from_bits(track.mosaic_grain_pos.load(Ordering::Relaxed));
-                let mut grain_len = track.mosaic_grain_len.load(Ordering::Relaxed) as usize;
-                let mut grain_wait = track.mosaic_grain_wait.load(Ordering::Relaxed) as usize;
-                let mut grain_start =
-                    (track.mosaic_grain_start.load(Ordering::Relaxed) as usize) % mosaic_len;
-                let mut grain_pitch =
-                    f32::from_bits(track.mosaic_grain_pitch.load(Ordering::Relaxed));
-                let mut grain_pan =
-                    f32::from_bits(track.mosaic_grain_pan.load(Ordering::Relaxed));
-                let mut rng_state = track.mosaic_rng_state.load(Ordering::Relaxed);
-
-                for sample_idx in 0..num_buffer_samples {
-                    if grain_pos >= grain_len as f32 {
-                        if grain_wait > 0 {
-                            grain_wait = grain_wait.saturating_sub(1);
-                            continue;
-                        }
-                        let rand_rate = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
-                        let rand_size = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
-                        let mut rate = base_rate * (1.0 + mosaic_rand_rate * rand_rate * 0.5);
-                        rate = rate.clamp(MOSAIC_RATE_MIN, MOSAIC_RATE_MAX);
-                        let mut size_ms = base_size_ms * (1.0 + mosaic_rand_size * rand_size * 0.5);
-                        size_ms = size_ms.clamp(MOSAIC_SIZE_MIN_MS, MOSAIC_SIZE_MAX_MS);
-                        grain_len = ((size_ms / 1000.0) * sr as f32).round() as usize;
-                        grain_len = grain_len.clamp(1, mosaic_len);
-                        let interval = (sr as f32 / rate).max(1.0);
-                        let wait = (interval - grain_len as f32).max(0.0);
-                        grain_wait = wait as usize;
-
-                        let rand_pos = next_mosaic_rand_unit(&mut rng_state);
-                        let recent_pos = recent_write_pos as f32 / mosaic_len as f32;
-                        let mut pos = recent_pos * (1.0 - mosaic_pattern) + rand_pos * mosaic_pattern;
-                        if mosaic_warp > 0.0 {
-                            pos = pos.powf(1.0 + mosaic_warp * 2.0);
-                        }
-                        let spray = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
-                        pos = (pos + spray * mosaic_spray * 0.25).clamp(0.0, 0.999999);
-                        grain_start = (pos * mosaic_len as f32) as usize;
-
-                        let detune = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
-                        let detune_cents = detune * mosaic_detune * MOSAIC_DETUNE_CENTS;
-                        grain_pitch =
-                            base_pitch_ratio * 2.0f32.powf(detune_cents / 1200.0);
-                        let pan_rand = next_mosaic_rand_unit(&mut rng_state) * 2.0 - 1.0;
-                        grain_pan = (pan_rand * mosaic_spatial).clamp(-1.0, 1.0);
-
-                        grain_pos = 0.0;
-                    }
-                    let read_pos = grain_start as f32 + grain_pos * grain_pitch;
-                    let t = (grain_pos / grain_len as f32).clamp(0.0, 1.0);
-                    let base_env = if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 };
-                    let curve = if contour_bipolar >= 0.0 {
-                        1.0 + contour_bipolar * 4.0
-                    } else {
-                        1.0 / (1.0 + (-contour_bipolar) * 4.0)
-                    };
-                    let env = base_env.powf(curve);
-                    let (left_gain, right_gain, other_gain) = if num_channels >= 2 {
-                        let pan = grain_pan.clamp(-1.0, 1.0);
-                        let angle = (pan + 1.0) * 0.25 * PI;
-                        let left = angle.cos();
-                        let right = angle.sin();
-                        (left, right, 0.5 * (left + right))
-                    } else {
-                        (1.0, 1.0, 1.0)
-                    };
-                    for channel_idx in 0..num_channels {
-                        let src_channel = if channel_idx < mosaic_buffer.len() {
-                            channel_idx
-                        } else {
-                            0
-                        };
-                        let sample_value = sample_at_linear_ring(
-                            &mosaic_buffer,
-                            src_channel,
-                            read_pos,
-                        );
-                        let wet = mosaic_wet;
-                        let pan_gain = if channel_idx == 0 {
-                            left_gain
-                        } else if channel_idx == 1 {
-                            right_gain
-                        } else {
-                            other_gain
-                        };
-                        output[channel_idx][sample_idx] +=
-                            sample_value * env * MOSAIC_OUTPUT_GAIN * wet * pan_gain;
-                    }
-                    grain_pos += 1.0;
-                }
-
-                track
-                    .mosaic_grain_pos
-                    .store(grain_pos.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_grain_len
-                    .store(grain_len as u32, Ordering::Relaxed);
-                track
-                    .mosaic_grain_wait
-                    .store(grain_wait as u32, Ordering::Relaxed);
-                track
-                    .mosaic_grain_start
-                    .store(grain_start as u32, Ordering::Relaxed);
-                track
-                    .mosaic_grain_pitch
-                    .store(grain_pitch.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_grain_pan
-                    .store(grain_pan.to_bits(), Ordering::Relaxed);
-                track
-                    .mosaic_rng_state
-                    .store(rng_state, Ordering::Relaxed);
-            }
-        }
-
-        let ring_track_idx = self
-            .params
-            .selected_track
-            .value()
-            .saturating_sub(1) as usize;
-        let ring_track_idx = ring_track_idx.min(NUM_TRACKS - 1);
-        let ring_track = &self.tracks[ring_track_idx];
-        if ring_track.ring_enabled.load(Ordering::Relaxed) {
-            let num_buffer_samples = buffer.samples();
-            if num_buffer_samples > 0 {
-                let sr = ring_track.sample_rate.load(Ordering::Relaxed).max(1) as f32;
-                let target_cutoff =
-                    f32::from_bits(ring_track.ring_cutoff.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_resonance =
-                    f32::from_bits(ring_track.ring_resonance.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_decay =
-                    f32::from_bits(ring_track.ring_decay.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_pitch =
-                    f32::from_bits(ring_track.ring_pitch.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_tone =
-                    f32::from_bits(ring_track.ring_tone.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_tilt =
-                    f32::from_bits(ring_track.ring_tilt.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_slope =
-                    f32::from_bits(ring_track.ring_slope.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_wet =
-                    f32::from_bits(ring_track.ring_wet.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_detune =
-                    f32::from_bits(ring_track.ring_detune.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_waves =
-                    f32::from_bits(ring_track.ring_waves.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_waves_rate =
-                    f32::from_bits(ring_track.ring_waves_rate.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_waves_mode =
-                    ring_track.ring_waves_rate_mode.load(Ordering::Relaxed);
-                let target_noise =
-                    f32::from_bits(ring_track.ring_noise.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_noise_rate =
-                    f32::from_bits(ring_track.ring_noise_rate.load(Ordering::Relaxed))
-                        .clamp(0.0, 1.0);
-                let target_noise_mode =
-                    ring_track.ring_noise_rate_mode.load(Ordering::Relaxed);
-                let ring_scale = ring_track.ring_scale.load(Ordering::Relaxed);
-
-                let ring_cutoff = smooth_param(
-                    f32::from_bits(ring_track.ring_cutoff_smooth.load(Ordering::Relaxed)),
-                    target_cutoff,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_resonance = smooth_param(
-                    f32::from_bits(ring_track.ring_resonance_smooth.load(Ordering::Relaxed)),
-                    target_resonance,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_decay = smooth_param(
-                    f32::from_bits(ring_track.ring_decay_smooth.load(Ordering::Relaxed)),
-                    target_decay,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_pitch = smooth_param(
-                    f32::from_bits(ring_track.ring_pitch_smooth.load(Ordering::Relaxed)),
-                    target_pitch,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_tone = smooth_param(
-                    f32::from_bits(ring_track.ring_tone_smooth.load(Ordering::Relaxed)),
-                    target_tone,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_tilt = smooth_param(
-                    f32::from_bits(ring_track.ring_tilt_smooth.load(Ordering::Relaxed)),
-                    target_tilt,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_slope = smooth_param(
-                    f32::from_bits(ring_track.ring_slope_smooth.load(Ordering::Relaxed)),
-                    target_slope,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_wet = smooth_param(
-                    f32::from_bits(ring_track.ring_wet_smooth.load(Ordering::Relaxed)),
-                    target_wet,
-                    num_buffer_samples,
-                    sr,
-                )
-                .clamp(0.0, 1.0);
-                let ring_detune = smooth_param(
-                    f32::from_bits(ring_track.ring_detune_smooth.load(Ordering::Relaxed)),
-                    target_detune,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_waves = smooth_param(
-                    f32::from_bits(ring_track.ring_waves_smooth.load(Ordering::Relaxed)),
-                    target_waves,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_waves_rate = smooth_param(
-                    f32::from_bits(ring_track.ring_waves_rate_smooth.load(Ordering::Relaxed)),
-                    target_waves_rate,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_noise = smooth_param(
-                    f32::from_bits(ring_track.ring_noise_smooth.load(Ordering::Relaxed)),
-                    target_noise,
-                    num_buffer_samples,
-                    sr,
-                );
-                let ring_noise_rate = smooth_param(
-                    f32::from_bits(ring_track.ring_noise_rate_smooth.load(Ordering::Relaxed)),
-                    target_noise_rate,
-                    num_buffer_samples,
-                    sr,
-                );
-
-                ring_track
-                    .ring_cutoff_smooth
-                    .store(ring_cutoff.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_resonance_smooth
-                    .store(ring_resonance.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_decay_smooth
-                    .store(ring_decay.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_pitch_smooth
-                    .store(ring_pitch.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_tone_smooth
-                    .store(ring_tone.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_tilt_smooth
-                    .store(ring_tilt.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_slope_smooth
-                    .store(ring_slope.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_wet_smooth
-                    .store(ring_wet.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_detune_smooth
-                    .store(ring_detune.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_waves_smooth
-                    .store(ring_waves.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_waves_rate_smooth
-                    .store(ring_waves_rate.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_noise_smooth
-                    .store(ring_noise.to_bits(), Ordering::Relaxed);
-                ring_track
-                    .ring_noise_rate_smooth
-                    .store(ring_noise_rate.to_bits(), Ordering::Relaxed);
-
-                if ring_wet > 0.0 {
-                    let decay_mode = ring_track.ring_decay_mode.load(Ordering::Relaxed);
-                    let decay_sec = 0.05 + ring_decay.clamp(0.0, 1.0) * 3.95;
-                    let decay_factor = (-1.0 / (decay_sec * sr)).exp();
-                    let pitch_bipolar = ring_pitch * 2.0 - 1.0;
-                    let tone_bipolar = ring_tone * 2.0 - 1.0;
-                    let tilt_bipolar = ring_tilt * 2.0 - 1.0;
-                    let pitch_ratio =
-                        2.0f32.powf((pitch_bipolar * RING_PITCH_SEMITONES) / 12.0);
-                    let cutoff_hz = RING_CUTOFF_MIN_HZ
-                        * (RING_CUTOFF_MAX_HZ / RING_CUTOFF_MIN_HZ).powf(ring_cutoff);
-                    let cutoff_hz =
-                        (cutoff_hz * pitch_ratio).clamp(20.0, sr * 0.45);
-                    let cutoff_hz = ring_quantize_freq(cutoff_hz, ring_scale);
-                    let q = 0.5 + ring_resonance * 12.0;
-                    let r = 1.0 / (2.0 * q.max(0.001));
-                    let slope = ring_slope.clamp(0.0, 1.0);
-
-                    let num_channels = buffer.channels();
-                    let output = buffer.as_slice();
-                    let detune_phase =
-                        f32::from_bits(ring_track.ring_detune_phase.load(Ordering::Relaxed));
-                    let waves_mode = target_waves_mode;
-                    let noise_mode = target_noise_mode;
-                    let waves_rate_hz = ring_rate_hz(ring_waves_rate, waves_mode, global_tempo);
-                    let noise_rate_hz = ring_rate_hz(ring_noise_rate, noise_mode, global_tempo);
-                    let waves_step = (waves_rate_hz / sr).min(1.0);
-                    let noise_step = (noise_rate_hz / sr).min(1.0);
-                    let mut waves_phase =
-                        f32::from_bits(ring_track.ring_waves_phase.load(Ordering::Relaxed));
-                    let mut noise_phase =
-                        f32::from_bits(ring_track.ring_noise_phase.load(Ordering::Relaxed));
-                    let mut noise_value =
-                        f32::from_bits(ring_track.ring_noise_value.load(Ordering::Relaxed));
-                    let mut noise_rng = ring_track.ring_noise_rng.load(Ordering::Relaxed);
-                    let mut phase = detune_phase;
-                    let detune_rate = RING_DETUNE_RATE_HZ / sr;
-                    let detune_depth = ring_detune.clamp(0.0, 1.0) * RING_DETUNE_CENTS;
-                    for channel_idx in 0..num_channels {
-                        let mut low =
-                            f32::from_bits(ring_track.ring_low[channel_idx].load(Ordering::Relaxed));
-                        let mut band =
-                            f32::from_bits(ring_track.ring_band[channel_idx].load(Ordering::Relaxed));
-                        for sample_idx in 0..num_buffer_samples {
-                            if decay_mode == 1 {
-                                let tilt = tilt_bipolar;
-                                let low_decay = (decay_factor * (1.0 - tilt * 0.35)).clamp(0.0, 1.0);
-                                let band_decay = (decay_factor * (1.0 + tilt * 0.35)).clamp(0.0, 1.0);
-                                low *= low_decay;
-                                band *= band_decay;
-                            }
-                            let input = output[channel_idx][sample_idx];
-                            let lfo = (phase * 2.0 * PI).sin();
-                            let detune_cents =
-                                detune_depth * lfo * if channel_idx == 0 { -1.0 } else { 1.0 };
-                            let detune_ratio = 2.0f32.powf(detune_cents / 1200.0);
-                            let detuned_hz =
-                                (cutoff_hz * detune_ratio).clamp(20.0, sr * 0.45);
-                            let mut g_detune = (PI * detuned_hz / sr).tan();
-                            if !g_detune.is_finite() {
-                                g_detune = 0.0;
-                            } else if g_detune > 10.0 {
-                                g_detune = 10.0;
-                            }
-                            let v1 = (input - low - r * band) * g_detune;
-                            let v2 = band + v1;
-                            low += v2;
-                            band = v2;
-                            low = low.clamp(-8.0, 8.0);
-                            band = band.clamp(-8.0, 8.0);
-                            let high = input - low - r * band;
-                            let filtered = if slope < 0.5 {
-                                let t = slope / 0.5;
-                                low + (band - low) * t
-                            } else {
-                                let t = (slope - 0.5) / 0.5;
-                                band + (high - band) * t
-                            };
-                            if decay_mode == 0 {
-                                let tilt = tilt_bipolar;
-                                let low_decay = (decay_factor * (1.0 - tilt * 0.35)).clamp(0.0, 1.0);
-                                let band_decay = (decay_factor * (1.0 + tilt * 0.35)).clamp(0.0, 1.0);
-                                low *= low_decay;
-                                band *= band_decay;
-                            }
-                            let tone_mix = filtered + tone_bipolar * (high - low) * 0.5;
-                            let waves_lfo = (waves_phase * 2.0 * PI).sin();
-                            let waves_mod =
-                                (1.0 - ring_waves) + ring_waves * (0.5 + 0.5 * waves_lfo);
-                            let noise_mod =
-                                (1.0 - ring_noise) + ring_noise * (0.5 + 0.5 * noise_value);
-                            output[channel_idx][sample_idx] =
-                                input * (1.0 - ring_wet)
-                                    + tone_mix * ring_wet * waves_mod * noise_mod;
-                            if !low.is_finite() || !band.is_finite() || !output[channel_idx][sample_idx].is_finite() {
-                                low = 0.0;
-                                band = 0.0;
-                                output[channel_idx][sample_idx] = input;
-                            }
-                            if channel_idx == 0 {
-                                phase += detune_rate;
-                                if phase >= 1.0 {
-                                    phase -= 1.0;
-                                }
-                                waves_phase += waves_step;
-                                if waves_phase >= 1.0 {
-                                    waves_phase -= 1.0;
-                                }
-                                noise_phase += noise_step;
-                                if noise_phase >= 1.0 {
-                                    noise_phase -= 1.0;
-                                    noise_rng = noise_rng
-                                        .wrapping_mul(1664525)
-                                        .wrapping_add(1013904223);
-                                    let noise = (noise_rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
-                                    if noise.is_finite() {
-                                        noise_value = noise;
-                                    } else {
-                                        noise_value = 0.0;
-                                    }
-                                }
-                            }
-                        }
-                        ring_track.ring_low[channel_idx]
-                            .store(low.to_bits(), Ordering::Relaxed);
-                        ring_track.ring_band[channel_idx]
-                            .store(band.to_bits(), Ordering::Relaxed);
-                    }
-                    ring_track
-                        .ring_detune_phase
-                        .store(phase.to_bits(), Ordering::Relaxed);
-                    ring_track
-                        .ring_waves_phase
-                        .store(waves_phase.to_bits(), Ordering::Relaxed);
-                    ring_track
-                        .ring_noise_phase
-                        .store(noise_phase.to_bits(), Ordering::Relaxed);
-                    ring_track
-                        .ring_noise_value
-                        .store(noise_value.to_bits(), Ordering::Relaxed);
-                    ring_track
-                        .ring_noise_rng
-                        .store(noise_rng, Ordering::Relaxed);
-                }
-            }
-        }
 
         let metronome_active = self.metronome_enabled.load(Ordering::Relaxed)
             && (any_playing || any_recording || any_pending);
@@ -2774,6 +3586,25 @@ impl Plugin for TLBX1 {
             }
         }
 
+        if any_playing || any_pending {
+            let mut phase = master_phase + buffer.samples() as f32;
+            let mut step = master_step;
+            if samples_per_step > 0.0 {
+                while phase >= samples_per_step {
+                    phase -= samples_per_step;
+                    step = (step + 1).rem_euclid(16);
+                    master_step_count += 1;
+                }
+            }
+            self.master_step_phase = phase;
+            self.master_step_index = step;
+            self.master_step_count = master_step_count;
+        } else {
+            self.master_step_phase = 0.0;
+            self.master_step_index = 0;
+            self.master_step_count = 0;
+        }
+
         if keep_alive {
             ProcessStatus::KeepAlive
         } else {
@@ -2806,6 +3637,37 @@ fn wrap_loop_pos(
         }
     }
     pos
+}
+
+fn lfo_division_beats(index: u32) -> f32 {
+    match index {
+        0 => 0.25,        // 1/16
+        1 => 0.5,         // 1/8
+        2 => 1.0,         // 1/4
+        3 => 1.333_333_4, // 1/3
+        4 => 2.0,         // 1/2
+        5 => 4.0,         // 1 bar
+        6 => 8.0,         // 2 bars
+        7 => 16.0,        // 4 bars
+        _ => 4.0,
+    }
+}
+
+fn lfo_waveform_value(waveform: u32, phase: f32, sample_hold: f32) -> f32 {
+    match waveform {
+        0 => (2.0 * PI * phase).sin(),
+        1 => 1.0 - 4.0 * (phase - 0.5).abs(),
+        2 => {
+            if phase < 0.5 {
+                1.0
+            } else {
+                -1.0
+            }
+        }
+        3 => 2.0 * phase - 1.0,
+        4 => sample_hold,
+        _ => 0.0,
+    }
 }
 
 fn next_mosaic_rng(state: &mut u32) -> u32 {
@@ -3157,119 +4019,346 @@ struct ProjectTrack {
     loop_mode: u32,
 }
 
+fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
+    let f = |a: &AtomicU32| f32::from_bits(a.load(Ordering::Relaxed));
+    let b = |a: &AtomicBool| if a.load(Ordering::Relaxed) { 1.0 } else { 0.0 };
+    let u = |a: &AtomicU32| a.load(Ordering::Relaxed) as f32;
+
+    params.insert("level".to_string(), f(&track.level));
+    params.insert("muted".to_string(), b(&track.is_muted));
+    params.insert("tape_speed".to_string(), f(&track.tape_speed));
+    params.insert("tape_rate_mode".to_string(), u(&track.tape_rate_mode));
+    params.insert("tape_rotate".to_string(), f(&track.tape_rotate));
+    params.insert("tape_glide".to_string(), f(&track.tape_glide));
+    params.insert("tape_sos".to_string(), f(&track.tape_sos));
+    params.insert("tape_reverse".to_string(), b(&track.tape_reverse));
+    params.insert("tape_freeze".to_string(), b(&track.tape_freeze));
+    params.insert("tape_keylock".to_string(), b(&track.tape_keylock));
+    params.insert("tape_monitor".to_string(), b(&track.tape_monitor));
+    params.insert("tape_overdub".to_string(), b(&track.tape_overdub));
+    params.insert("loop_start".to_string(), f(&track.loop_start));
+    params.insert("trigger_start".to_string(), f(&track.trigger_start));
+    params.insert("loop_length".to_string(), f(&track.loop_length));
+    params.insert("loop_xfade".to_string(), f(&track.loop_xfade));
+    params.insert("loop_enabled".to_string(), b(&track.loop_enabled));
+    params.insert("loop_mode".to_string(), u(&track.loop_mode));
+    params.insert("granular_type".to_string(), u(&track.granular_type));
+    params.insert("mosaic_pitch".to_string(), f(&track.mosaic_pitch));
+    params.insert("mosaic_rate".to_string(), f(&track.mosaic_rate));
+    params.insert("mosaic_size".to_string(), f(&track.mosaic_size));
+    params.insert("mosaic_contour".to_string(), f(&track.mosaic_contour));
+    params.insert("mosaic_warp".to_string(), f(&track.mosaic_warp));
+    params.insert("mosaic_spray".to_string(), f(&track.mosaic_spray));
+    params.insert("mosaic_pattern".to_string(), f(&track.mosaic_pattern));
+    params.insert("mosaic_wet".to_string(), f(&track.mosaic_wet));
+    params.insert("mosaic_spatial".to_string(), f(&track.mosaic_spatial));
+    params.insert("mosaic_detune".to_string(), f(&track.mosaic_detune));
+    params.insert("mosaic_rand_rate".to_string(), f(&track.mosaic_rand_rate));
+    params.insert("mosaic_rand_size".to_string(), f(&track.mosaic_rand_size));
+    params.insert("mosaic_sos".to_string(), f(&track.mosaic_sos));
+    params.insert("mosaic_enabled".to_string(), b(&track.mosaic_enabled));
+    params.insert("ring_cutoff".to_string(), f(&track.ring_cutoff));
+    params.insert("ring_resonance".to_string(), f(&track.ring_resonance));
+    params.insert("ring_decay".to_string(), f(&track.ring_decay));
+    params.insert("ring_decay_mode".to_string(), u(&track.ring_decay_mode));
+    params.insert("ring_pitch".to_string(), f(&track.ring_pitch));
+    params.insert("ring_tone".to_string(), f(&track.ring_tone));
+    params.insert("ring_tilt".to_string(), f(&track.ring_tilt));
+    params.insert("ring_slope".to_string(), f(&track.ring_slope));
+    params.insert("ring_wet".to_string(), f(&track.ring_wet));
+    params.insert("ring_detune".to_string(), f(&track.ring_detune));
+    params.insert("ring_waves".to_string(), f(&track.ring_waves));
+    params.insert("ring_waves_rate".to_string(), f(&track.ring_waves_rate));
+    params.insert("ring_waves_rate_mode".to_string(), u(&track.ring_waves_rate_mode));
+    params.insert("ring_noise".to_string(), f(&track.ring_noise));
+    params.insert("ring_noise_rate".to_string(), f(&track.ring_noise_rate));
+    params.insert("ring_noise_rate_mode".to_string(), u(&track.ring_noise_rate_mode));
+    params.insert("ring_scale".to_string(), u(&track.ring_scale));
+    params.insert("ring_enabled".to_string(), b(&track.ring_enabled));
+
+    for i in 0..4 {
+        params.insert(format!("animate_slot_type_{}", i), u(&track.animate_slot_types[i]));
+        params.insert(format!("animate_slot_wavetable_{}", i), u(&track.animate_slot_wavetables[i]));
+        params.insert(format!("animate_slot_sample_{}", i), u(&track.animate_slot_samples[i]));
+        params.insert(format!("animate_slot_coarse_{}", i), f(&track.animate_slot_coarse[i]));
+        params.insert(format!("animate_slot_fine_{}", i), f(&track.animate_slot_fine[i]));
+        params.insert(format!("animate_slot_level_{}", i), f(&track.animate_slot_level[i]));
+        params.insert(format!("animate_slot_pan_{}", i), f(&track.animate_slot_pan[i]));
+        params.insert(format!("animate_slot_wt_lfo_amount_{}", i), f(&track.animate_slot_wt_lfo_amount[i]));
+        params.insert(format!("animate_slot_wt_lfo_shape_{}", i), u(&track.animate_slot_wt_lfo_shape[i]));
+        params.insert(format!("animate_slot_wt_lfo_rate_{}", i), f(&track.animate_slot_wt_lfo_rate[i]));
+        params.insert(format!("animate_slot_wt_lfo_sync_{}", i), b(&track.animate_slot_wt_lfo_sync[i]));
+        params.insert(format!("animate_slot_wt_lfo_division_{}", i), u(&track.animate_slot_wt_lfo_division[i]));
+        params.insert(format!("animate_slot_sample_start_{}", i), f(&track.animate_slot_sample_start[i]));
+        params.insert(format!("animate_slot_loop_start_{}", i), f(&track.animate_slot_loop_start[i]));
+        params.insert(format!("animate_slot_loop_end_{}", i), f(&track.animate_slot_loop_end[i]));
+        params.insert(format!("animate_slot_filter_type_{}", i), u(&track.animate_slot_filter_type[i]));
+        params.insert(format!("animate_slot_filter_cutoff_{}", i), f(&track.animate_slot_filter_cutoff[i]));
+        params.insert(format!("animate_slot_filter_resonance_{}", i), f(&track.animate_slot_filter_resonance[i]));
+    }
+
+    params.insert("animate_vector_x".to_string(), f(&track.animate_vector_x));
+    params.insert("animate_vector_y".to_string(), f(&track.animate_vector_y));
+    params.insert("animate_lfo_x_waveform".to_string(), u(&track.animate_lfo_x_waveform));
+    params.insert("animate_lfo_x_sync".to_string(), b(&track.animate_lfo_x_sync));
+    params.insert("animate_lfo_x_division".to_string(), u(&track.animate_lfo_x_division));
+    params.insert("animate_lfo_x_rate".to_string(), f(&track.animate_lfo_x_rate));
+    params.insert("animate_lfo_x_amount".to_string(), f(&track.animate_lfo_x_amount));
+    params.insert("animate_lfo_y_waveform".to_string(), u(&track.animate_lfo_y_waveform));
+    params.insert("animate_lfo_y_sync".to_string(), b(&track.animate_lfo_y_sync));
+    params.insert("animate_lfo_y_division".to_string(), u(&track.animate_lfo_y_division));
+    params.insert("animate_lfo_y_rate".to_string(), f(&track.animate_lfo_y_rate));
+    params.insert("animate_lfo_y_amount".to_string(), f(&track.animate_lfo_y_amount));
+
+    params.insert("kick_pitch".to_string(), f(&track.kick_pitch));
+    params.insert("kick_decay".to_string(), f(&track.kick_decay));
+    params.insert("kick_attack".to_string(), f(&track.kick_attack));
+    params.insert("kick_drive".to_string(), f(&track.kick_drive));
+    params.insert("kick_level".to_string(), f(&track.kick_level));
+}
+
+fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
+    let sf = |a: &AtomicU32, name: &str| {
+        if let Some(&v) = params.get(name) {
+            a.store(v.to_bits(), Ordering::Relaxed);
+        }
+    };
+    let sb = |a: &AtomicBool, name: &str| {
+        if let Some(&v) = params.get(name) {
+            a.store(v > 0.5, Ordering::Relaxed);
+        }
+    };
+    let su = |a: &AtomicU32, name: &str| {
+        if let Some(&v) = params.get(name) {
+            a.store(v as u32, Ordering::Relaxed);
+        }
+    };
+
+    sf(&track.level, "level");
+    sb(&track.is_muted, "muted");
+    sf(&track.tape_speed, "tape_speed");
+    sf(&track.tape_speed_smooth, "tape_speed");
+    su(&track.tape_rate_mode, "tape_rate_mode");
+    sf(&track.tape_rotate, "tape_rotate");
+    sf(&track.tape_glide, "tape_glide");
+    sf(&track.tape_sos, "tape_sos");
+    sb(&track.tape_reverse, "tape_reverse");
+    sb(&track.tape_freeze, "tape_freeze");
+    sb(&track.tape_keylock, "tape_keylock");
+    sb(&track.tape_monitor, "tape_monitor");
+    sb(&track.tape_overdub, "tape_overdub");
+    sf(&track.loop_start, "loop_start");
+    sf(&track.trigger_start, "trigger_start");
+    sf(&track.loop_length, "loop_length");
+    sf(&track.loop_xfade, "loop_xfade");
+    sb(&track.loop_enabled, "loop_enabled");
+    su(&track.loop_mode, "loop_mode");
+    su(&track.granular_type, "granular_type");
+    sf(&track.mosaic_pitch, "mosaic_pitch");
+    sf(&track.mosaic_rate, "mosaic_rate");
+    sf(&track.mosaic_size, "mosaic_size");
+    sf(&track.mosaic_contour, "mosaic_contour");
+    sf(&track.mosaic_warp, "mosaic_warp");
+    sf(&track.mosaic_spray, "mosaic_spray");
+    sf(&track.mosaic_pattern, "mosaic_pattern");
+    sf(&track.mosaic_wet, "mosaic_wet");
+    sf(&track.mosaic_spatial, "mosaic_spatial");
+    sf(&track.mosaic_detune, "mosaic_detune");
+    sf(&track.mosaic_rand_rate, "mosaic_rand_rate");
+    sf(&track.mosaic_rand_size, "mosaic_rand_size");
+    sf(&track.mosaic_sos, "mosaic_sos");
+    sb(&track.mosaic_enabled, "mosaic_enabled");
+    sf(&track.ring_cutoff, "ring_cutoff");
+    sf(&track.ring_resonance, "ring_resonance");
+    sf(&track.ring_decay, "ring_decay");
+    su(&track.ring_decay_mode, "ring_decay_mode");
+    sf(&track.ring_pitch, "ring_pitch");
+    sf(&track.ring_tone, "ring_tone");
+    sf(&track.ring_tilt, "ring_tilt");
+    sf(&track.ring_slope, "ring_slope");
+    sf(&track.ring_wet, "ring_wet");
+    sf(&track.ring_detune, "ring_detune");
+    sf(&track.ring_waves, "ring_waves");
+    sf(&track.ring_waves_rate, "ring_waves_rate");
+    su(&track.ring_waves_rate_mode, "ring_waves_rate_mode");
+    sf(&track.ring_noise, "ring_noise");
+    sf(&track.ring_noise_rate, "ring_noise_rate");
+    su(&track.ring_noise_rate_mode, "ring_noise_rate_mode");
+    su(&track.ring_scale, "ring_scale");
+    sb(&track.ring_enabled, "ring_enabled");
+
+    for i in 0..4 {
+        su(&track.animate_slot_types[i], &format!("animate_slot_type_{}", i));
+        su(&track.animate_slot_wavetables[i], &format!("animate_slot_wavetable_{}", i));
+        su(&track.animate_slot_samples[i], &format!("animate_slot_sample_{}", i));
+        sf(&track.animate_slot_coarse[i], &format!("animate_slot_coarse_{}", i));
+        sf(&track.animate_slot_fine[i], &format!("animate_slot_fine_{}", i));
+        sf(&track.animate_slot_level[i], &format!("animate_slot_level_{}", i));
+        sf(&track.animate_slot_pan[i], &format!("animate_slot_pan_{}", i));
+        sf(&track.animate_slot_wt_lfo_amount[i], &format!("animate_slot_wt_lfo_amount_{}", i));
+        su(&track.animate_slot_wt_lfo_shape[i], &format!("animate_slot_wt_lfo_shape_{}", i));
+        sf(&track.animate_slot_wt_lfo_rate[i], &format!("animate_slot_wt_lfo_rate_{}", i));
+        sb(&track.animate_slot_wt_lfo_sync[i], &format!("animate_slot_wt_lfo_sync_{}", i));
+        su(&track.animate_slot_wt_lfo_division[i], &format!("animate_slot_wt_lfo_division_{}", i));
+        sf(&track.animate_slot_sample_start[i], &format!("animate_slot_sample_start_{}", i));
+        sf(&track.animate_slot_loop_start[i], &format!("animate_slot_loop_start_{}", i));
+        sf(&track.animate_slot_loop_end[i], &format!("animate_slot_loop_end_{}", i));
+        su(&track.animate_slot_filter_type[i], &format!("animate_slot_filter_type_{}", i));
+        sf(&track.animate_slot_filter_cutoff[i], &format!("animate_slot_filter_cutoff_{}", i));
+        sf(&track.animate_slot_filter_resonance[i], &format!("animate_slot_filter_resonance_{}", i));
+    }
+
+    sf(&track.animate_vector_x, "animate_vector_x");
+    sf(&track.animate_vector_y, "animate_vector_y");
+    su(&track.animate_lfo_x_waveform, "animate_lfo_x_waveform");
+    sb(&track.animate_lfo_x_sync, "animate_lfo_x_sync");
+    su(&track.animate_lfo_x_division, "animate_lfo_x_division");
+    sf(&track.animate_lfo_x_rate, "animate_lfo_x_rate");
+    sf(&track.animate_lfo_x_amount, "animate_lfo_x_amount");
+    su(&track.animate_lfo_y_waveform, "animate_lfo_y_waveform");
+    sb(&track.animate_lfo_y_sync, "animate_lfo_y_sync");
+    su(&track.animate_lfo_y_division, "animate_lfo_y_division");
+    sf(&track.animate_lfo_y_rate, "animate_lfo_y_rate");
+    sf(&track.animate_lfo_y_amount, "animate_lfo_y_amount");
+
+    sf(&track.kick_pitch, "kick_pitch");
+    sf(&track.kick_decay, "kick_decay");
+    sf(&track.kick_attack, "kick_attack");
+    sf(&track.kick_drive, "kick_drive");
+    sf(&track.kick_level, "kick_level");
+}
+
 fn save_project(
     tracks: &Arc<[Track; NUM_TRACKS]>,
     global_tempo: f32,
-    path: &PathBuf,
+    params: &Arc<TLBX1Params>,
+    title: &str,
+    description: &str,
+    project_dir: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut track_states = Vec::with_capacity(NUM_TRACKS);
-    for track in tracks.iter() {
-        let sample_path = track
-            .sample_path
-            .lock()
-            .as_ref()
-            .map(|path| path.to_string_lossy().to_string());
-        track_states.push(ProjectTrack {
-            sample_path,
-            level: f32::from_bits(track.level.load(Ordering::Relaxed)),
-            muted: track.is_muted.load(Ordering::Relaxed),
-            tape_speed: f32::from_bits(track.tape_speed.load(Ordering::Relaxed)),
-            tape_tempo: global_tempo,
-            tape_rate_mode: track.tape_rate_mode.load(Ordering::Relaxed),
-            tape_rotate: f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)),
-            tape_glide: f32::from_bits(track.tape_glide.load(Ordering::Relaxed)),
-            tape_sos: f32::from_bits(track.tape_sos.load(Ordering::Relaxed)),
-            tape_reverse: track.tape_reverse.load(Ordering::Relaxed),
-            tape_freeze: track.tape_freeze.load(Ordering::Relaxed),
-            tape_keylock: track.tape_keylock.load(Ordering::Relaxed),
-            tape_monitor: track.tape_monitor.load(Ordering::Relaxed),
-            tape_overdub: track.tape_overdub.load(Ordering::Relaxed),
-            loop_start: f32::from_bits(track.loop_start.load(Ordering::Relaxed)),
-            loop_length: f32::from_bits(track.loop_length.load(Ordering::Relaxed)),
-            loop_xfade: f32::from_bits(track.loop_xfade.load(Ordering::Relaxed)),
-            loop_enabled: track.loop_enabled.load(Ordering::Relaxed),
-            loop_mode: track.loop_mode.load(Ordering::Relaxed),
-        });
+    fs::create_dir_all(project_dir)?;
+    let samples_dir = project_dir.join("samples");
+    fs::create_dir_all(&samples_dir)?;
+
+    let mut track_file_names = Vec::new();
+
+    for (i, track) in tracks.iter().enumerate() {
+        let track_idx = i + 1;
+        let mut track_data = TrackData {
+            engine_type: track.engine_type.load(Ordering::Relaxed),
+            params: HashMap::new(),
+            sequence: Vec::new(),
+            sample_path: None,
+        };
+
+        capture_track_params(track, &mut track_data.params);
+
+        if track_data.engine_type == 2 {
+            let grid = track.animate_sequencer_grid.clone();
+            for j in 0..160 {
+                track_data.sequence.push(grid[j].load(Ordering::Relaxed));
+            }
+        } else if track_data.engine_type == 3 {
+            let grid = track.kick_sequencer_grid.clone();
+            for j in 0..16 {
+                track_data.sequence.push(grid[j].load(Ordering::Relaxed));
+            }
+        }
+
+        if let Some(path) = track.sample_path.lock().as_ref() {
+            if let Some(file_name) = path.file_name() {
+                let dest_path = samples_dir.join(file_name);
+                if path.exists() {
+                    fs::copy(path, &dest_path)?;
+                    track_data.sample_path = Some(format!("samples/{}", file_name.to_string_lossy()));
+                }
+            }
+        }
+
+        let track_file_name = format!("{}.trk", track_idx);
+        let track_path = project_dir.join(&track_file_name);
+        let track_json = serde_json::to_string_pretty(&track_data)?;
+        fs::write(track_path, track_json)?;
+        track_file_names.push(track_file_name);
     }
 
-    let project = ProjectFile {
-        version: 1,
-        global_tempo,
-        tracks: track_states,
+    let project_data = ProjectData {
+        title: title.to_string(),
+        description: description.to_string(),
+        bpm: global_tempo,
+        master_gain: params.gain.value(),
+        master_filter: params.master_filter.value(),
+        master_comp: params.master_comp.value(),
+        tracks: track_file_names,
     };
-    let json = serde_json::to_string_pretty(&project)?;
-    std::fs::write(path, json)?;
+
+    let project_file_name = format!("{}.tlbx", title);
+    let project_path = project_dir.join(project_file_name);
+    let project_json = serde_json::to_string_pretty(&project_data)?;
+    fs::write(project_path, project_json)?;
+
     Ok(())
 }
 
 fn load_project(
     tracks: &Arc<[Track; NUM_TRACKS]>,
     global_tempo: &Arc<AtomicU32>,
+    _params: &Arc<TLBX1Params>,
+    pending_project_params: &Arc<Mutex<Option<PendingProjectParams>>>,
     path: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let json = std::fs::read_to_string(path)?;
-    let project: ProjectFile = serde_json::from_str(&json)?;
-    let tempo = if project.global_tempo.is_finite() {
-        project.global_tempo
-    } else {
-        default_tempo()
-    };
-    global_tempo.store(tempo.to_bits(), Ordering::Relaxed);
-    for (track_idx, track_state) in project.tracks.iter().enumerate() {
+    let project_dir = path.parent().ok_or("Invalid project path")?;
+    let json = fs::read_to_string(path)?;
+    let project: ProjectData = serde_json::from_str(&json)?;
+
+    global_tempo.store(project.bpm.to_bits(), Ordering::Relaxed);
+    *pending_project_params.lock() = Some(PendingProjectParams {
+        gain: project.master_gain,
+        master_filter: project.master_filter,
+        master_comp: project.master_comp,
+    });
+
+    for (track_idx, track_file_name) in project.tracks.iter().enumerate() {
         if track_idx >= NUM_TRACKS {
             break;
         }
         let track = &tracks[track_idx];
-        track.level.store(track_state.level.to_bits(), Ordering::Relaxed);
-        track
-            .is_muted
-            .store(track_state.muted, Ordering::Relaxed);
-        track.tape_speed.store(track_state.tape_speed.to_bits(), Ordering::Relaxed);
-        track.tape_speed_smooth.store(track_state.tape_speed.to_bits(), Ordering::Relaxed);
-        track.tape_tempo.store(tempo.to_bits(), Ordering::Relaxed);
-        track.tape_rate_mode.store(track_state.tape_rate_mode, Ordering::Relaxed);
-        track.tape_rotate.store(track_state.tape_rotate.to_bits(), Ordering::Relaxed);
-        track.tape_glide.store(track_state.tape_glide.to_bits(), Ordering::Relaxed);
-        track.tape_sos.store(track_state.tape_sos.to_bits(), Ordering::Relaxed);
-        track.tape_reverse.store(track_state.tape_reverse, Ordering::Relaxed);
-        track.tape_freeze.store(track_state.tape_freeze, Ordering::Relaxed);
-        track.tape_keylock.store(track_state.tape_keylock, Ordering::Relaxed);
-        track.tape_monitor.store(track_state.tape_monitor, Ordering::Relaxed);
-        track.tape_overdub.store(track_state.tape_overdub, Ordering::Relaxed);
-        track.loop_start.store(
-            track_state.loop_start.clamp(0.0, 0.999).to_bits(),
-            Ordering::Relaxed,
-        );
-        track.loop_length.store(
-            track_state.loop_length.clamp(0.0, 1.0).to_bits(),
-            Ordering::Relaxed,
-        );
-        track.loop_xfade.store(
-            track_state.loop_xfade.clamp(0.0, 0.5).to_bits(),
-            Ordering::Relaxed,
-        );
-        track
-            .loop_enabled
-            .store(track_state.loop_enabled, Ordering::Relaxed);
-        track
-            .loop_mode
-            .store(track_state.loop_mode, Ordering::Relaxed);
-        track.loop_dir.store(1, Ordering::Relaxed);
-        track.engine_type.store(1, Ordering::Relaxed);
+        let track_path = project_dir.join(track_file_name);
+        if !track_path.exists() {
+            continue;
+        }
+        let track_json = fs::read_to_string(track_path)?;
+        let track_data: TrackData = serde_json::from_str(&track_json)?;
+
+        track.engine_type.store(track_data.engine_type, Ordering::Relaxed);
+        apply_track_params(track, &track_data.params);
+
+        if track_data.engine_type == 2 && track_data.sequence.len() == 160 {
+            let grid = track.animate_sequencer_grid.clone();
+            for j in 0..160 {
+                grid[j].store(track_data.sequence[j], Ordering::Relaxed);
+            }
+        } else if track_data.engine_type == 3 && track_data.sequence.len() == 16 {
+            let grid = track.kick_sequencer_grid.clone();
+            for j in 0..16 {
+                grid[j].store(track_data.sequence[j], Ordering::Relaxed);
+            }
+        }
+
         track.is_playing.store(false, Ordering::Relaxed);
         track.is_recording.store(false, Ordering::Relaxed);
         track.play_pos.store(0.0f32.to_bits(), Ordering::Relaxed);
-        track.debug_logged.store(false, Ordering::Relaxed);
 
         let mut samples = track.samples.lock();
         let mut summary = track.waveform_summary.lock();
         let mut sample_path = track.sample_path.lock();
-        if let Some(path_str) = &track_state.sample_path {
-            let path = PathBuf::from(path_str);
-            match load_audio_file(&path) {
+        
+        if let Some(rel_path) = &track_data.sample_path {
+            let abs_path = project_dir.join(rel_path);
+            match load_audio_file(&abs_path) {
                 Ok((new_samples, sample_rate)) => {
                     *samples = new_samples;
-                    *sample_path = Some(path);
+                    *sample_path = Some(abs_path);
                     track.sample_rate.store(sample_rate, Ordering::Relaxed);
                     if !samples.is_empty() {
                         calculate_waveform_summary(&samples[0], &mut summary);
@@ -3293,6 +4382,138 @@ fn load_project(
     Ok(())
 }
 
+fn export_project_as_zip(
+    tracks: &Arc<[Track; NUM_TRACKS]>,
+    global_tempo: f32,
+    params: &Arc<TLBX1Params>,
+    title: &str,
+    description: &str,
+    zip_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = fs::File::create(zip_path)?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755);
+
+    let mut track_file_names = Vec::new();
+    for i in 1..=NUM_TRACKS {
+        track_file_names.push(format!("{}.trk", i));
+    }
+
+    let project_data = ProjectData {
+        title: title.to_string(),
+        description: description.to_string(),
+        bpm: global_tempo,
+        master_gain: params.gain.value(),
+        master_filter: params.master_filter.value(),
+        master_comp: params.master_comp.value(),
+        tracks: track_file_names,
+    };
+
+    let project_json = serde_json::to_string_pretty(&project_data)?;
+    zip.start_file(format!("{}.tlbx", title), options)?;
+    zip.write_all(project_json.as_bytes())?;
+
+    for (i, track) in tracks.iter().enumerate() {
+        let mut track_data = TrackData {
+            engine_type: track.engine_type.load(Ordering::Relaxed),
+            params: HashMap::new(),
+            sequence: Vec::new(),
+            sample_path: None,
+        };
+
+        capture_track_params(track, &mut track_data.params);
+
+        if track_data.engine_type == 2 {
+            let grid = track.animate_sequencer_grid.clone();
+            for j in 0..160 {
+                track_data.sequence.push(grid[j].load(Ordering::Relaxed));
+            }
+        } else if track_data.engine_type == 3 {
+            let grid = track.kick_sequencer_grid.clone();
+            for j in 0..16 {
+                track_data.sequence.push(grid[j].load(Ordering::Relaxed));
+            }
+        }
+
+        if let Some(path) = track.sample_path.lock().as_ref() {
+            if let Some(file_name) = path.file_name() {
+                let rel_sample_path = format!("samples/{}", file_name.to_string_lossy());
+                track_data.sample_path = Some(rel_sample_path.clone());
+
+                if path.exists() {
+                    zip.start_file(rel_sample_path, options)?;
+                    let sample_bytes = fs::read(path)?;
+                    zip.write_all(&sample_bytes)?;
+                }
+            }
+        }
+
+        let track_json = serde_json::to_string_pretty(&track_data)?;
+        zip.start_file(format!("{}.trk", i + 1), options)?;
+        zip.write_all(track_json.as_bytes())?;
+    }
+
+    zip.finish()?;
+    Ok(())
+}
+
+fn refresh_browser_impl(
+    ui: &TLBX1UI,
+    current_path: &Path,
+    current_folder_content_model: &VecModel<BrowserEntry>,
+) {
+    let mut entries = Vec::new();
+
+    if let Some(parent) = current_path.parent() {
+        if current_path != Path::new(".") && current_path.as_os_str() != "" {
+            entries.push(BrowserEntry {
+                name: "..".into(),
+                is_dir: true,
+                path: parent.to_string_lossy().to_string().into(),
+            });
+        }
+    }
+
+    if let Ok(dir_entries) = std::fs::read_dir(current_path) {
+        let mut folders = Vec::new();
+        let mut files = Vec::new();
+
+        for entry in dir_entries.flatten() {
+            let entry_path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string().into();
+            let is_dir = entry_path.is_dir();
+
+            if is_dir {
+                folders.push(BrowserEntry {
+                    name,
+                    is_dir,
+                    path: entry_path.to_string_lossy().to_string().into(),
+                });
+            } else {
+                let ext = entry_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if matches!(ext, "tlbx" | "wav" | "mp3" | "json" | "trk") {
+                    files.push(BrowserEntry {
+                        name,
+                        is_dir,
+                        path: entry_path.to_string_lossy().to_string().into(),
+                    });
+                }
+            }
+        }
+
+        folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+        entries.extend(folders);
+        entries.extend(files);
+    }
+
+    current_folder_content_model.set_vec(entries);
+    ui.set_current_path(current_path.to_string_lossy().to_string().into());
+}
+
 struct SlintEditor {
     params: Arc<TLBX1Params>,
     tracks: Arc<[Track; NUM_TRACKS]>,
@@ -3305,6 +4526,7 @@ struct SlintEditor {
     metronome_count_in_playback: Arc<AtomicBool>,
     metronome_count_in_record: Arc<AtomicBool>,
     async_executor: AsyncExecutor<TLBX1>,
+    pending_project_params: Arc<Mutex<Option<PendingProjectParams>>>,
 }
 
 impl Editor for SlintEditor {
@@ -3324,6 +4546,7 @@ impl Editor for SlintEditor {
         let metronome_count_in_playback = self.metronome_count_in_playback.clone();
         let metronome_count_in_record = self.metronome_count_in_record.clone();
         let async_executor = self.async_executor.clone();
+        let pending_project_params = self.pending_project_params.clone();
 
         let initial_size = default_window_size();
         let window_handle = baseview::Window::open_parented(
@@ -3350,6 +4573,7 @@ impl Editor for SlintEditor {
                     metronome_count_in_playback,
                     metronome_count_in_record,
                     async_executor,
+                    pending_project_params,
                 )
             },
         );
@@ -3398,6 +4622,7 @@ struct SlintWindow {
     metronome_count_in_playback: Arc<AtomicBool>,
     metronome_count_in_record: Arc<AtomicBool>,
     async_executor: AsyncExecutor<TLBX1>,
+    pending_project_params: Arc<Mutex<Option<PendingProjectParams>>>,
     slint_window: std::rc::Rc<MinimalSoftwareWindow>,
     ui: Box<TLBX1UI>,
     waveform_model: std::rc::Rc<VecModel<f32>>,
@@ -3414,6 +4639,10 @@ struct SlintWindow {
     scale_factor: f32,
     pixel_buffer: Vec<PremultipliedRgbaColor>,
     last_cursor: LogicalPosition,
+    library_folders: Arc<Mutex<Vec<PathBuf>>>,
+    current_path: Arc<Mutex<PathBuf>>,
+    library_folders_model: std::rc::Rc<VecModel<SharedString>>,
+    current_folder_content_model: std::rc::Rc<VecModel<BrowserEntry>>,
 }
 
 impl SlintWindow {
@@ -3432,6 +4661,7 @@ impl SlintWindow {
         metronome_count_in_playback: Arc<AtomicBool>,
         metronome_count_in_record: Arc<AtomicBool>,
         async_executor: AsyncExecutor<TLBX1>,
+        pending_project_params: Arc<Mutex<Option<PendingProjectParams>>>,
     ) -> Self {
         ensure_slint_platform();
         let (slint_window, ui) = create_slint_ui();
@@ -3459,11 +4689,11 @@ impl SlintWindow {
             use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
             if let RawWindowHandle::Win32(handle) = window.raw_window_handle() {
                 unsafe {
-                    let dpi = GetDpiForWindow(handle.hwnd as isize) as f32;
+                    let dpi = GetDpiForWindow(handle.hwnd as _) as f32;
                     if dpi > 0.0 {
                         scale_factor = dpi / 96.0;
                     }
-                    ShowWindow(handle.hwnd as isize, SW_MAXIMIZE);
+                    ShowWindow(handle.hwnd as _, SW_MAXIMIZE);
                 }
             }
         }
@@ -3501,9 +4731,15 @@ impl SlintWindow {
         let is_software = true;
         #[cfg(any(feature = "renderer-opengl", feature = "renderer-vulkan"))]
         let is_software = false;
-        
+
         ui.set_is_software_renderer(is_software);
-    initialize_ui(
+
+        let library_folders = Arc::new(Mutex::new(Vec::new()));
+        let current_path = Arc::new(Mutex::new(PathBuf::from(".")));
+        let library_folders_model = std::rc::Rc::new(VecModel::default());
+        let current_folder_content_model = std::rc::Rc::new(VecModel::default());
+
+        initialize_ui(
             &ui,
             &gui_context,
             &params,
@@ -3521,7 +4757,19 @@ impl SlintWindow {
             &buffer_sizes,
             sample_dialog_tx,
             project_dialog_tx,
+            &library_folders,
+            &current_path,
+            &library_folders_model,
+            &current_folder_content_model,
         );
+
+        ui.set_library_folders(ModelRc::from(library_folders_model.clone()));
+        ui.set_current_folder_content(ModelRc::from(current_folder_content_model.clone()));
+
+        ui.show().unwrap();
+
+        // Mark window as active
+        slint_window.dispatch_event(WindowEvent::WindowActiveChanged(true));
 
         Self {
             gui_context,
@@ -3536,6 +4784,7 @@ impl SlintWindow {
             metronome_count_in_playback,
             metronome_count_in_record,
             async_executor,
+            pending_project_params,
             slint_window,
             ui,
             waveform_model,
@@ -3552,11 +4801,23 @@ impl SlintWindow {
             scale_factor,
             pixel_buffer: vec![PremultipliedRgbaColor::default(); (physical_width * physical_height) as usize],
             last_cursor: LogicalPosition::new(0.0, 0.0),
+            library_folders,
+            current_path,
+            library_folders_model,
+            current_folder_content_model,
         }
     }
 
     fn dispatch_slint_event(&self, event: WindowEvent) {
         self.slint_window.dispatch_event(event);
+    }
+
+    fn refresh_browser(&self) {
+        refresh_browser_impl(
+            &self.ui,
+            &self.current_path.lock(),
+            &self.current_folder_content_model,
+        );
     }
 
     fn update_ui_state(&mut self) {
@@ -3735,25 +4996,194 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].animate_slot_pan[2].load(Ordering::Relaxed)),
             f32::from_bits(self.tracks[track_idx].animate_slot_pan[3].load(Ordering::Relaxed)),
         ];
+        let animate_slot_wt_lfo_amount = [
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_wt_lfo_amount[0]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_wt_lfo_amount[1]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_wt_lfo_amount[2]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_wt_lfo_amount[3]
+                    .load(Ordering::Relaxed),
+            ),
+        ];
+        let animate_slot_wt_lfo_shape = [
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_shape[0]
+                .load(Ordering::Relaxed),
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_shape[1]
+                .load(Ordering::Relaxed),
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_shape[2]
+                .load(Ordering::Relaxed),
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_shape[3]
+                .load(Ordering::Relaxed),
+        ];
+        let animate_slot_wt_lfo_rate = [
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_wt_lfo_rate[0]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_wt_lfo_rate[1]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_wt_lfo_rate[2]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_wt_lfo_rate[3]
+                    .load(Ordering::Relaxed),
+            ),
+        ];
+        let animate_slot_wt_lfo_sync = [
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_sync[0]
+                .load(Ordering::Relaxed),
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_sync[1]
+                .load(Ordering::Relaxed),
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_sync[2]
+                .load(Ordering::Relaxed),
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_sync[3]
+                .load(Ordering::Relaxed),
+        ];
+        let animate_slot_wt_lfo_division = [
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_division[0]
+                .load(Ordering::Relaxed),
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_division[1]
+                .load(Ordering::Relaxed),
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_division[2]
+                .load(Ordering::Relaxed),
+            self.tracks[track_idx]
+                .animate_slot_wt_lfo_division[3]
+                .load(Ordering::Relaxed),
+        ];
+        let animate_slot_sample_start = [
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_sample_start[0]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_sample_start[1]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_sample_start[2]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_sample_start[3]
+                    .load(Ordering::Relaxed),
+            ),
+        ];
+        let animate_slot_loop_start = [
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_loop_start[0]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_loop_start[1]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_loop_start[2]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_loop_start[3]
+                    .load(Ordering::Relaxed),
+            ),
+        ];
+        let animate_slot_loop_end = [
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_loop_end[0]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_loop_end[1]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_loop_end[2]
+                    .load(Ordering::Relaxed),
+            ),
+            f32::from_bits(
+                self.tracks[track_idx]
+                    .animate_slot_loop_end[3]
+                    .load(Ordering::Relaxed),
+            ),
+        ];
+        let animate_slot_a_filter_type =
+            self.tracks[track_idx].animate_slot_filter_type[0].load(Ordering::Relaxed);
+        let animate_slot_a_filter_cutoff = f32::from_bits(
+            self.tracks[track_idx]
+                .animate_slot_filter_cutoff[0]
+                .load(Ordering::Relaxed),
+        );
+        let animate_slot_a_filter_resonance = f32::from_bits(
+            self.tracks[track_idx]
+                .animate_slot_filter_resonance[0]
+                .load(Ordering::Relaxed),
+        );
         let animate_vector_x =
             f32::from_bits(self.tracks[track_idx].animate_vector_x.load(Ordering::Relaxed));
         let animate_vector_y =
             f32::from_bits(self.tracks[track_idx].animate_vector_y.load(Ordering::Relaxed));
-        let animate_filter_cutoff =
-            f32::from_bits(self.tracks[track_idx].animate_filter_cutoff.load(Ordering::Relaxed));
-        let animate_filter_resonance =
-            f32::from_bits(self.tracks[track_idx].animate_filter_resonance.load(Ordering::Relaxed));
-        let animate_filter_drive =
-            f32::from_bits(self.tracks[track_idx].animate_filter_drive.load(Ordering::Relaxed));
-        let animate_filter_type = self.tracks[track_idx].animate_filter_type.load(Ordering::Relaxed);
-        let animate_amp_attack =
-            f32::from_bits(self.tracks[track_idx].animate_amp_attack.load(Ordering::Relaxed));
-        let animate_amp_decay =
-            f32::from_bits(self.tracks[track_idx].animate_amp_decay.load(Ordering::Relaxed));
-        let animate_amp_sustain =
-            f32::from_bits(self.tracks[track_idx].animate_amp_sustain.load(Ordering::Relaxed));
-        let animate_amp_release =
-            f32::from_bits(self.tracks[track_idx].animate_amp_release.load(Ordering::Relaxed));
+        let animate_lfo_x_waveform =
+            self.tracks[track_idx].animate_lfo_x_waveform.load(Ordering::Relaxed);
+        let animate_lfo_x_sync =
+            self.tracks[track_idx].animate_lfo_x_sync.load(Ordering::Relaxed);
+        let animate_lfo_x_division =
+            self.tracks[track_idx].animate_lfo_x_division.load(Ordering::Relaxed);
+        let animate_lfo_x_rate =
+            f32::from_bits(self.tracks[track_idx].animate_lfo_x_rate.load(Ordering::Relaxed));
+        let animate_lfo_x_amount =
+            f32::from_bits(self.tracks[track_idx].animate_lfo_x_amount.load(Ordering::Relaxed));
+        let animate_lfo_y_waveform =
+            self.tracks[track_idx].animate_lfo_y_waveform.load(Ordering::Relaxed);
+        let animate_lfo_y_sync =
+            self.tracks[track_idx].animate_lfo_y_sync.load(Ordering::Relaxed);
+        let animate_lfo_y_division =
+            self.tracks[track_idx].animate_lfo_y_division.load(Ordering::Relaxed);
+        let animate_lfo_y_rate =
+            f32::from_bits(self.tracks[track_idx].animate_lfo_y_rate.load(Ordering::Relaxed));
+        let animate_lfo_y_amount =
+            f32::from_bits(self.tracks[track_idx].animate_lfo_y_amount.load(Ordering::Relaxed));
         let animate_sequencer_current_step =
             self.tracks[track_idx].animate_sequencer_step.load(Ordering::Relaxed);
 
@@ -3761,6 +5191,24 @@ impl SlintWindow {
         for i in 0..160 {
             animate_sequencer_grid
                 .push(self.tracks[track_idx].animate_sequencer_grid[i].load(Ordering::Relaxed));
+        }
+
+        let kick_pitch =
+            f32::from_bits(self.tracks[track_idx].kick_pitch.load(Ordering::Relaxed));
+        let kick_decay =
+            f32::from_bits(self.tracks[track_idx].kick_decay.load(Ordering::Relaxed));
+        let kick_attack =
+            f32::from_bits(self.tracks[track_idx].kick_attack.load(Ordering::Relaxed));
+        let kick_drive =
+            f32::from_bits(self.tracks[track_idx].kick_drive.load(Ordering::Relaxed));
+        let kick_level =
+            f32::from_bits(self.tracks[track_idx].kick_level.load(Ordering::Relaxed));
+        let kick_sequencer_current_step =
+            self.tracks[track_idx].kick_sequencer_step.load(Ordering::Relaxed);
+        let mut kick_sequencer_grid = Vec::with_capacity(16);
+        for i in 0..16 {
+            kick_sequencer_grid
+                .push(self.tracks[track_idx].kick_sequencer_grid[i].load(Ordering::Relaxed));
         }
 
         let play_pos = f32::from_bits(self.tracks[track_idx].play_pos.load(Ordering::Relaxed));
@@ -3903,25 +5351,110 @@ impl SlintWindow {
         self.ui.set_animate_slot_d_fine(animate_slot_fine[3]);
         self.ui.set_animate_slot_d_level(animate_slot_level[3]);
         self.ui.set_animate_slot_d_pan(animate_slot_pan[3]);
+        self.ui
+            .set_animate_slot_a_wt_lfo_amount(animate_slot_wt_lfo_amount[0]);
+        self.ui
+            .set_animate_slot_a_wt_lfo_shape(animate_slot_wt_lfo_shape[0] as i32);
+        self.ui
+            .set_animate_slot_a_wt_lfo_rate(animate_slot_wt_lfo_rate[0]);
+        self.ui
+            .set_animate_slot_a_wt_lfo_sync(animate_slot_wt_lfo_sync[0]);
+        self.ui
+            .set_animate_slot_a_wt_lfo_division(animate_slot_wt_lfo_division[0] as i32);
+        self.ui
+            .set_animate_slot_b_wt_lfo_amount(animate_slot_wt_lfo_amount[1]);
+        self.ui
+            .set_animate_slot_b_wt_lfo_shape(animate_slot_wt_lfo_shape[1] as i32);
+        self.ui
+            .set_animate_slot_b_wt_lfo_rate(animate_slot_wt_lfo_rate[1]);
+        self.ui
+            .set_animate_slot_b_wt_lfo_sync(animate_slot_wt_lfo_sync[1]);
+        self.ui
+            .set_animate_slot_b_wt_lfo_division(animate_slot_wt_lfo_division[1] as i32);
+        self.ui
+            .set_animate_slot_c_wt_lfo_amount(animate_slot_wt_lfo_amount[2]);
+        self.ui
+            .set_animate_slot_c_wt_lfo_shape(animate_slot_wt_lfo_shape[2] as i32);
+        self.ui
+            .set_animate_slot_c_wt_lfo_rate(animate_slot_wt_lfo_rate[2]);
+        self.ui
+            .set_animate_slot_c_wt_lfo_sync(animate_slot_wt_lfo_sync[2]);
+        self.ui
+            .set_animate_slot_c_wt_lfo_division(animate_slot_wt_lfo_division[2] as i32);
+        self.ui
+            .set_animate_slot_d_wt_lfo_amount(animate_slot_wt_lfo_amount[3]);
+        self.ui
+            .set_animate_slot_d_wt_lfo_shape(animate_slot_wt_lfo_shape[3] as i32);
+        self.ui
+            .set_animate_slot_d_wt_lfo_rate(animate_slot_wt_lfo_rate[3]);
+        self.ui
+            .set_animate_slot_d_wt_lfo_sync(animate_slot_wt_lfo_sync[3]);
+        self.ui
+            .set_animate_slot_d_wt_lfo_division(animate_slot_wt_lfo_division[3] as i32);
+        self.ui
+            .set_animate_slot_a_sample_start(animate_slot_sample_start[0]);
+        self.ui
+            .set_animate_slot_a_loop_start(animate_slot_loop_start[0]);
+        self.ui
+            .set_animate_slot_a_loop_end(animate_slot_loop_end[0]);
+        self.ui
+            .set_animate_slot_b_sample_start(animate_slot_sample_start[1]);
+        self.ui
+            .set_animate_slot_b_loop_start(animate_slot_loop_start[1]);
+        self.ui
+            .set_animate_slot_b_loop_end(animate_slot_loop_end[1]);
+        self.ui
+            .set_animate_slot_c_sample_start(animate_slot_sample_start[2]);
+        self.ui
+            .set_animate_slot_c_loop_start(animate_slot_loop_start[2]);
+        self.ui
+            .set_animate_slot_c_loop_end(animate_slot_loop_end[2]);
+        self.ui
+            .set_animate_slot_d_sample_start(animate_slot_sample_start[3]);
+        self.ui
+            .set_animate_slot_d_loop_start(animate_slot_loop_start[3]);
+        self.ui
+            .set_animate_slot_d_loop_end(animate_slot_loop_end[3]);
+        self.ui
+            .set_animate_slot_a_filter_type(animate_slot_a_filter_type as i32);
+        self.ui
+            .set_animate_slot_a_filter_cutoff(animate_slot_a_filter_cutoff);
+        self.ui
+            .set_animate_slot_a_filter_resonance(animate_slot_a_filter_resonance);
 
         self.ui.set_animate_vector_x(animate_vector_x);
         self.ui.set_animate_vector_y(animate_vector_y);
+        self.ui.set_animate_lfo_x_waveform(animate_lfo_x_waveform as i32);
+        self.ui.set_animate_lfo_x_sync(animate_lfo_x_sync);
+        self.ui
+            .set_animate_lfo_x_division(animate_lfo_x_division as i32);
+        self.ui.set_animate_lfo_x_rate(animate_lfo_x_rate);
+        self.ui.set_animate_lfo_x_amount(animate_lfo_x_amount);
+        self.ui.set_animate_lfo_y_waveform(animate_lfo_y_waveform as i32);
+        self.ui.set_animate_lfo_y_sync(animate_lfo_y_sync);
+        self.ui
+            .set_animate_lfo_y_division(animate_lfo_y_division as i32);
+        self.ui.set_animate_lfo_y_rate(animate_lfo_y_rate);
+        self.ui.set_animate_lfo_y_amount(animate_lfo_y_amount);
 
-        self.ui.set_animate_filter_cutoff(animate_filter_cutoff);
-        self.ui.set_animate_filter_resonance(animate_filter_resonance);
-        self.ui.set_animate_filter_drive(animate_filter_drive);
-        self.ui.set_animate_filter_type(animate_filter_type as i32);
-
-        self.ui.set_animate_amp_attack(animate_amp_attack);
-        self.ui.set_animate_amp_decay(animate_amp_decay);
-        self.ui.set_animate_amp_sustain(animate_amp_sustain);
-        self.ui.set_animate_amp_release(animate_amp_release);
 
         self.ui
             .set_animate_sequencer_current_step(animate_sequencer_current_step);
         self.ui
             .set_animate_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
                 animate_sequencer_grid,
+            ))));
+
+        self.ui.set_kick_pitch(kick_pitch);
+        self.ui.set_kick_decay(kick_decay);
+        self.ui.set_kick_attack(kick_attack);
+        self.ui.set_kick_drive(kick_drive);
+        self.ui.set_kick_level(kick_level);
+        self.ui
+            .set_kick_sequencer_current_step(kick_sequencer_current_step);
+        self.ui
+            .set_kick_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                kick_sequencer_grid,
             ))));
 
         self.ui.set_metronome_enabled(metronome_enabled);
@@ -3994,6 +5527,37 @@ impl SlintWindow {
 
 impl BaseWindowHandler for SlintWindow {
     fn on_frame(&mut self, _window: &mut BaseWindow) {
+        // Force focus on the first frame
+        static FIRST_FRAME: AtomicBool = AtomicBool::new(true);
+        if FIRST_FRAME.swap(false, Ordering::Relaxed) {
+            #[cfg(target_os = "windows")]
+            {
+                if let RawWindowHandle::Win32(handle) = _window.raw_window_handle() {
+                    unsafe {
+                        use windows_sys::Win32::UI::WindowsAndMessaging::{SetForegroundWindow};
+                        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{SetFocus};
+                        SetForegroundWindow(handle.hwnd as _);
+                        SetFocus(handle.hwnd as _);
+                    }
+                }
+            }
+
+            self.dispatch_slint_event(WindowEvent::WindowActiveChanged(true));
+        }
+        if let Some(pending) = self.pending_project_params.lock().take() {
+            let setter = ParamSetter::new(self.gui_context.as_ref());
+            setter.begin_set_parameter(&self.params.gain);
+            setter.set_parameter(&self.params.gain, pending.gain);
+            setter.end_set_parameter(&self.params.gain);
+
+            setter.begin_set_parameter(&self.params.master_filter);
+            setter.set_parameter(&self.params.master_filter, pending.master_filter);
+            setter.end_set_parameter(&self.params.master_filter);
+
+            setter.begin_set_parameter(&self.params.master_comp);
+            setter.set_parameter(&self.params.master_comp, pending.master_comp);
+            setter.end_set_parameter(&self.params.master_comp);
+        }
         while let Ok(action) = self.sample_dialog_rx.try_recv() {
             match action {
                 SampleDialogAction::Load { track_idx, path } => {
@@ -4019,11 +5583,39 @@ impl BaseWindowHandler for SlintWindow {
             match action {
                 ProjectDialogAction::Save(path) => {
                     self.async_executor
-                        .execute_background(TLBX1Task::SaveProject(path));
+                        .execute_background(TLBX1Task::SaveProject {
+                            path,
+                            title: "Project".into(),
+                            description: "".into(),
+                        });
                 }
                 ProjectDialogAction::Load(path) => {
                     self.async_executor
                         .execute_background(TLBX1Task::LoadProject(path));
+                }
+                ProjectDialogAction::SaveWithInfo {
+                    path,
+                    title,
+                    description,
+                } => {
+                    self.async_executor
+                        .execute_background(TLBX1Task::SaveProject {
+                            path,
+                            title,
+                            description,
+                        });
+                }
+                ProjectDialogAction::ExportZip {
+                    path,
+                    title,
+                    description,
+                } => {
+                    self.async_executor
+                        .execute_background(TLBX1Task::ExportProjectZip {
+                            path,
+                            title,
+                            description,
+                        });
                 }
             }
         }
@@ -4034,6 +5626,19 @@ impl BaseWindowHandler for SlintWindow {
     }
 
     fn on_event(&mut self, _window: &mut BaseWindow, event: BaseEvent) -> BaseEventStatus {
+        // Add at the very top - this WILL print even if logging is filtered
+        match &event {
+            BaseEvent::Keyboard(e) => {
+                println!("========================================");
+                println!("KEYBOARD EVENT RECEIVED!!!");
+                println!("Key: {:?}", e.key);
+                println!("State: {:?}", e.state);
+                println!("Repeat: {}", e.repeat);
+                println!("========================================");
+                std::io::stdout().flush().unwrap();
+            }
+            _ => {}
+        }
         match event {
             BaseEvent::Window(event) => match event {
                 baseview::WindowEvent::Resized(info) => {
@@ -4061,6 +5666,7 @@ impl BaseWindowHandler for SlintWindow {
                         self.dispatch_slint_event(WindowEvent::PointerMoved { position: cursor });
                     }
                     baseview::MouseEvent::ButtonPressed { button, .. } => {
+                        self.dispatch_slint_event(WindowEvent::WindowActiveChanged(true));
                         if let Some(button) = map_mouse_button(button) {
                             self.dispatch_slint_event(WindowEvent::PointerPressed {
                                 position: self.last_cursor,
@@ -4095,28 +5701,76 @@ impl BaseWindowHandler for SlintWindow {
                 BaseEventStatus::Captured
             }
             BaseEvent::Keyboard(event) => {
-                if self.gui_context.plugin_api() == PluginApi::Standalone
-                    && event.state == KeyState::Down
-                    && !event.repeat
-                {
-                    match event.key {
-                        Key::Escape => {
-                            if self.ui.get_show_settings() {
-                                self.ui.set_show_settings(false);
-                            }
-                            if self.ui.get_show_engine_confirm() {
-                                self.ui.set_show_engine_confirm(false);
-                            }
+                eprintln!("Keyboard event: {:?} state: {:?}", event.key, event.state); // Debug output
+                if event.state == KeyState::Down && !event.repeat {
+                    let is_escape = match &event.key {
+                        Key::Escape => true,
+                        Key::Character(c) if c == "\u{1b}" => true,
+                        _ => false,
+                    };
+
+                    if is_escape {
+                        if self.ui.get_show_settings() {
+                            self.ui.set_show_settings(false);
                             return BaseEventStatus::Captured;
                         }
-                        Key::Character(ref ch) if ch == " " => {
-                            self.ui.invoke_toggle_play();
+                        if self.ui.get_show_engine_confirm() {
+                            self.ui.set_show_engine_confirm(false);
                             return BaseEventStatus::Captured;
+                        }
+                        if self.ui.get_show_browser() {
+                            self.ui.set_show_browser(false);
+                            return BaseEventStatus::Captured;
+                        }
+                    }
+                }
+
+                // **CRITICAL FIX**: Dispatch the event with text, not just key pressed/released
+                if let Some(text) = key_to_slint_string(&event.key) {
+                    let slint_event = match event.state {
+                        KeyState::Down => {
+                            WindowEvent::KeyPressed {
+                                text: text.clone().into()
+                            }
+                        }
+                        KeyState::Up => {
+                            WindowEvent::KeyReleased {
+                                text: text.into()
+                            }
+                        }
+                    };
+                    self.dispatch_slint_event(slint_event);
+                }
+
+                let slint_event = match event.state {
+                    KeyState::Down => {
+                        key_to_slint_string(&event.key).map(|text| WindowEvent::KeyPressed { text: text.into() })
+                    }
+                    KeyState::Up => {
+                        key_to_slint_string(&event.key).map(|text| WindowEvent::KeyReleased { text: text.into() })
+                    }
+                };
+
+                if let Some(se) = slint_event {
+                    self.dispatch_slint_event(se);
+                }
+
+                if event.state == KeyState::Down && !event.repeat {
+                    match event.key {
+                        Key::Character(ref ch) if ch == " " => {
+                            if self.gui_context.plugin_api() == PluginApi::Standalone
+                                && !self.ui.get_show_browser()
+                                && !self.ui.get_show_settings()
+                                && !self.ui.get_show_engine_confirm()
+                            {
+                                self.ui.invoke_toggle_play();
+                                return BaseEventStatus::Captured;
+                            }
                         }
                         _ => {}
                     }
                 }
-                BaseEventStatus::Ignored
+                BaseEventStatus::Captured
             }
         }
     }
@@ -4140,6 +5794,10 @@ fn initialize_ui(
     buffer_sizes: &[u32],
     sample_dialog_tx: std::sync::mpsc::Sender<SampleDialogAction>,
     project_dialog_tx: std::sync::mpsc::Sender<ProjectDialogAction>,
+    library_folders: &Arc<Mutex<Vec<PathBuf>>>,
+    current_path: &Arc<Mutex<PathBuf>>,
+    library_folders_model: &std::rc::Rc<VecModel<SharedString>>,
+    current_folder_content_model: &std::rc::Rc<VecModel<BrowserEntry>>,
 ) {
     ui.set_output_devices(ModelRc::new(VecModel::from(
         output_devices
@@ -4205,6 +5863,7 @@ fn initialize_ui(
     ui.set_engine_types(ModelRc::new(VecModel::from(vec![
         SharedString::from("Tape-Deck"),
         SharedString::from("Animate"),
+        SharedString::from("Simp Kick"),
     ])));
     ui.set_engine_index(0);
     ui.set_engine_confirm_text(SharedString::from(
@@ -4221,6 +5880,23 @@ fn initialize_ui(
         SharedString::from("Lowpass 12dB"),
         SharedString::from("Highpass"),
         SharedString::from("Bandpass"),
+    ])));
+    ui.set_animate_lfo_waveforms(ModelRc::new(VecModel::from(vec![
+        SharedString::from("Sine"),
+        SharedString::from("Triangle"),
+        SharedString::from("Square"),
+        SharedString::from("Saw"),
+        SharedString::from("Sample & Hold"),
+    ])));
+    ui.set_animate_lfo_divisions(ModelRc::new(VecModel::from(vec![
+        SharedString::from("1/16"),
+        SharedString::from("1/8"),
+        SharedString::from("1/4"),
+        SharedString::from("1/3"),
+        SharedString::from("1/2"),
+        SharedString::from("1"),
+        SharedString::from("2"),
+        SharedString::from("4"),
     ])));
 
     // Scan for wavetables and samples
@@ -4287,6 +5963,113 @@ fn initialize_ui(
     ui.set_buffer_size_index(buffer_size_index as i32);
 
     let ui_weak = ui.as_weak();
+
+    let ui_toggle = ui_weak.clone();
+    ui.on_toggle_browser(move || {
+        if let Some(ui) = ui_toggle.upgrade() {
+            ui.set_show_browser(!ui.get_show_browser());
+        }
+    });
+
+    let ui_add_folder = ui_weak.clone();
+    let library_folders_add = library_folders.clone();
+    ui.on_add_library_folder(move || {
+        let ui_weak = ui_add_folder.clone();
+        let library_folders = library_folders_add.clone();
+        std::thread::spawn(move || {
+            if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        let mut folders = library_folders.lock();
+                        if !folders.contains(&path) {
+                            folders.push(path);
+                            let folder_strings: Vec<SharedString> = folders
+                                .iter()
+                                .map(|p| p.to_string_lossy().to_string().into())
+                                .collect();
+                            ui.set_library_folders(ModelRc::new(VecModel::from(folder_strings)));
+                        }
+                    }
+                })
+                .unwrap();
+            }
+        });
+    });
+
+    let ui_select_folder = ui_weak.clone();
+    let library_folders_select = library_folders.clone();
+    let current_path_select = current_path.clone();
+    let current_folder_content_model_select = current_folder_content_model.clone();
+    ui.on_select_library_folder(move |index| {
+        let folders = library_folders_select.lock();
+        if let Some(path) = folders.get(index as usize) {
+            *current_path_select.lock() = path.to_path_buf();
+            if let Some(ui) = ui_select_folder.upgrade() {
+                refresh_browser_impl(&ui, path, &current_folder_content_model_select);
+            }
+        }
+    });
+
+    let ui_open_entry = ui_weak.clone();
+    let current_path_open = current_path.clone();
+    let current_folder_content_model_open = current_folder_content_model.clone();
+    let project_dialog_tx_open = project_dialog_tx.clone();
+    ui.on_open_browser_entry(move |entry| {
+        let path = PathBuf::from(entry.path.as_str());
+        if entry.is_dir {
+            *current_path_open.lock() = path.clone();
+            if let Some(ui) = ui_open_entry.upgrade() {
+                refresh_browser_impl(&ui, &path, &current_folder_content_model_open);
+            }
+        } else {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext == "tlbx" {
+                let _ = project_dialog_tx_open.send(ProjectDialogAction::Load(path));
+                if let Some(ui) = ui_open_entry.upgrade() {
+                    ui.set_show_browser(false);
+                }
+            }
+        }
+    });
+
+    let project_dialog_tx_save = project_dialog_tx.clone();
+    ui.on_save_project_data(move |title, description| {
+        let title = title.to_string();
+        let description = description.to_string();
+        let project_dialog_tx = project_dialog_tx_save.clone();
+        std::thread::spawn(move || {
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title("Select Project Folder")
+                .pick_folder()
+            {
+                let _ = project_dialog_tx.send(ProjectDialogAction::SaveWithInfo {
+                    path,
+                    title,
+                    description,
+                });
+            }
+        });
+    });
+
+    let project_dialog_tx_export = project_dialog_tx.clone();
+    ui.on_export_project_data(move |title, description| {
+        let title = title.to_string();
+        let description = description.to_string();
+        let project_dialog_tx = project_dialog_tx_export.clone();
+        std::thread::spawn(move || {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Zip Archive", &["zip"])
+                .save_file()
+            {
+                let _ = project_dialog_tx.send(ProjectDialogAction::ExportZip {
+                    path,
+                    title,
+                    description,
+                });
+            }
+        });
+    });
+
     let pending_engine = Arc::new(Mutex::new(None::<PendingEngineLoad>));
 
     let gui_context_select = Arc::clone(gui_context);
@@ -4317,6 +6100,7 @@ fn initialize_ui(
             let engine_type = match engine_index {
                 0 => 1,
                 1 => 2,
+                2 => 3,
                 _ => 0,
             };
             if engine_type == 0 {
@@ -4403,12 +6187,25 @@ fn initialize_ui(
                 f32::from_bits(track.loop_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
             let rotate_norm =
                 f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+            let reverse_active = track.tape_reverse.load(Ordering::Relaxed) || loop_mode == 3;
             let loop_start = if loop_enabled {
                 if let Some(samples) = track.samples.try_lock() {
                     let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
-                    let base_start = (loop_start_norm * len as f32) as usize;
                     let rotate_offset = (rotate_norm * len as f32) as usize;
-                    ((base_start + rotate_offset) % len.max(1)) as f32
+                    if reverse_active {
+                        let base_end = ((1.0 - loop_start_norm) * len as f32) as usize;
+                        let loop_end = (base_end + rotate_offset).min(len);
+                        let mut loop_len =
+                            (f32::from_bits(track.loop_length.load(Ordering::Relaxed)) * len as f32)
+                                as usize;
+                        if loop_len == 0 {
+                            loop_len = loop_end.max(1);
+                        }
+                        loop_end.saturating_sub(loop_len) as f32
+                    } else {
+                        let base_start = (loop_start_norm * len as f32) as usize;
+                        ((base_start + rotate_offset) % len.max(1)) as f32
+                    }
                 } else {
                     0.0
                 }
@@ -4419,7 +6216,12 @@ fn initialize_ui(
                 f32::from_bits(track.trigger_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
             let trigger_start = if let Some(samples) = track.samples.try_lock() {
                 let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
-                (trigger_start_norm * len as f32) as f32
+                let start_norm = if reverse_active {
+                    (1.0 - trigger_start_norm).clamp(0.0, 0.999)
+                } else {
+                    trigger_start_norm
+                };
+                (start_norm * len as f32) as f32
             } else {
                 0.0
             };
@@ -4500,13 +6302,26 @@ fn initialize_ui(
                 f32::from_bits(track.loop_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
             let rotate_norm =
                 f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+            let reverse_active = track.tape_reverse.load(Ordering::Relaxed) || loop_mode == 3;
 
             let loop_start = if loop_enabled {
                 if let Some(samples) = track.samples.try_lock() {
                     let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
-                    let base_start = (loop_start_norm * len as f32) as usize;
                     let rotate_offset = (rotate_norm * len as f32) as usize;
-                    ((base_start + rotate_offset) % len.max(1)) as f32
+                    if reverse_active {
+                        let base_end = ((1.0 - loop_start_norm) * len as f32) as usize;
+                        let loop_end = (base_end + rotate_offset).min(len);
+                        let mut loop_len =
+                            (f32::from_bits(track.loop_length.load(Ordering::Relaxed)) * len as f32)
+                                as usize;
+                        if loop_len == 0 {
+                            loop_len = loop_end.max(1);
+                        }
+                        loop_end.saturating_sub(loop_len) as f32
+                    } else {
+                        let base_start = (loop_start_norm * len as f32) as usize;
+                        ((base_start + rotate_offset) % len.max(1)) as f32
+                    }
                 } else {
                     0.0
                 }
@@ -4518,7 +6333,12 @@ fn initialize_ui(
                 f32::from_bits(track.trigger_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
             let trigger_start = if let Some(samples) = track.samples.try_lock() {
                 let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
-                (trigger_start_norm * len as f32) as f32
+                let start_norm = if reverse_active {
+                    (1.0 - trigger_start_norm).clamp(0.0, 0.999)
+                } else {
+                    trigger_start_norm
+                };
+                (start_norm * len as f32) as f32
             } else {
                 0.0
             };
@@ -4803,6 +6623,9 @@ fn initialize_ui(
             tracks_tape[track_idx]
                 .tape_speed
                 .store(value.to_bits(), Ordering::Relaxed);
+            tracks_tape[track_idx]
+                .tape_sync_requested
+                .store(true, Ordering::Relaxed);
         }
     });
 
@@ -4850,6 +6673,9 @@ fn initialize_ui(
             tracks_tape[track_idx]
                 .tape_rate_mode
                 .store(mode, Ordering::Relaxed);
+            tracks_tape[track_idx]
+                .tape_sync_requested
+                .store(true, Ordering::Relaxed);
         }
     });
 
@@ -5303,6 +7129,10 @@ fn initialize_ui(
     ui.on_toggle_settings(move || {
         if let Some(ui) = ui_toggle.upgrade() {
             ui.set_show_settings(!ui.get_show_settings());
+            // Request focus when opening
+            if ui.get_show_settings() {
+                ui.window().request_redraw();
+            }
         }
     });
 
@@ -5661,7 +7491,312 @@ fn initialize_ui(
             }),
             _ => (),
         }
+
+        let tracks_animate = Arc::clone(tracks);
+        let params_animate = Arc::clone(params);
+        match i {
+            0 => ui.on_animate_slot_a_wt_lfo_amount_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_amount[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            1 => ui.on_animate_slot_b_wt_lfo_amount_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_amount[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            2 => ui.on_animate_slot_c_wt_lfo_amount_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_amount[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            3 => ui.on_animate_slot_d_wt_lfo_amount_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_amount[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            _ => (),
+        }
+
+        let tracks_animate = Arc::clone(tracks);
+        let params_animate = Arc::clone(params);
+        match i {
+            0 => ui.on_animate_slot_a_wt_lfo_shape_changed(move |index| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_shape[slot_idx]
+                        .store(index as u32, Ordering::Relaxed);
+                }
+            }),
+            1 => ui.on_animate_slot_b_wt_lfo_shape_changed(move |index| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_shape[slot_idx]
+                        .store(index as u32, Ordering::Relaxed);
+                }
+            }),
+            2 => ui.on_animate_slot_c_wt_lfo_shape_changed(move |index| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_shape[slot_idx]
+                        .store(index as u32, Ordering::Relaxed);
+                }
+            }),
+            3 => ui.on_animate_slot_d_wt_lfo_shape_changed(move |index| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_shape[slot_idx]
+                        .store(index as u32, Ordering::Relaxed);
+                }
+            }),
+            _ => (),
+        }
+
+        let tracks_animate = Arc::clone(tracks);
+        let params_animate = Arc::clone(params);
+        match i {
+            0 => ui.on_animate_slot_a_wt_lfo_rate_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_rate[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            1 => ui.on_animate_slot_b_wt_lfo_rate_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_rate[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            2 => ui.on_animate_slot_c_wt_lfo_rate_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_rate[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            3 => ui.on_animate_slot_d_wt_lfo_rate_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_rate[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            _ => (),
+        }
+
+        let tracks_animate = Arc::clone(tracks);
+        let params_animate = Arc::clone(params);
+        match i {
+            0 => ui.on_animate_slot_a_wt_lfo_sync_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_sync[slot_idx]
+                        .store(value, Ordering::Relaxed);
+                }
+            }),
+            1 => ui.on_animate_slot_b_wt_lfo_sync_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_sync[slot_idx]
+                        .store(value, Ordering::Relaxed);
+                }
+            }),
+            2 => ui.on_animate_slot_c_wt_lfo_sync_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_sync[slot_idx]
+                        .store(value, Ordering::Relaxed);
+                }
+            }),
+            3 => ui.on_animate_slot_d_wt_lfo_sync_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_sync[slot_idx]
+                        .store(value, Ordering::Relaxed);
+                }
+            }),
+            _ => (),
+        }
+
+        let tracks_animate = Arc::clone(tracks);
+        let params_animate = Arc::clone(params);
+        match i {
+            0 => ui.on_animate_slot_a_wt_lfo_division_changed(move |index| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_division[slot_idx]
+                        .store(index as u32, Ordering::Relaxed);
+                }
+            }),
+            1 => ui.on_animate_slot_b_wt_lfo_division_changed(move |index| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_division[slot_idx]
+                        .store(index as u32, Ordering::Relaxed);
+                }
+            }),
+            2 => ui.on_animate_slot_c_wt_lfo_division_changed(move |index| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_division[slot_idx]
+                        .store(index as u32, Ordering::Relaxed);
+                }
+            }),
+            3 => ui.on_animate_slot_d_wt_lfo_division_changed(move |index| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_wt_lfo_division[slot_idx]
+                        .store(index as u32, Ordering::Relaxed);
+                }
+            }),
+            _ => (),
+        }
+
+        let tracks_animate = Arc::clone(tracks);
+        let params_animate = Arc::clone(params);
+        match i {
+            0 => ui.on_animate_slot_a_sample_start_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_sample_start[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            1 => ui.on_animate_slot_b_sample_start_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_sample_start[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            2 => ui.on_animate_slot_c_sample_start_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_sample_start[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            3 => ui.on_animate_slot_d_sample_start_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_sample_start[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            _ => (),
+        }
+
+        let tracks_animate = Arc::clone(tracks);
+        let params_animate = Arc::clone(params);
+        match i {
+            0 => ui.on_animate_slot_a_loop_start_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_loop_start[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            1 => ui.on_animate_slot_b_loop_start_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_loop_start[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            2 => ui.on_animate_slot_c_loop_start_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_loop_start[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            3 => ui.on_animate_slot_d_loop_start_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_loop_start[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            _ => (),
+        }
+
+        let tracks_animate = Arc::clone(tracks);
+        let params_animate = Arc::clone(params);
+        match i {
+            0 => ui.on_animate_slot_a_loop_end_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_loop_end[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            1 => ui.on_animate_slot_b_loop_end_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_loop_end[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            2 => ui.on_animate_slot_c_loop_end_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_loop_end[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            3 => ui.on_animate_slot_d_loop_end_changed(move |value| {
+                let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+                if track_idx < NUM_TRACKS {
+                    tracks_animate[track_idx].animate_slot_loop_end[slot_idx]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                }
+            }),
+            _ => (),
+        }
     }
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_slot_a_filter_type_changed(move |index| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_slot_filter_type[0]
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_slot_a_filter_cutoff_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_slot_filter_cutoff[0]
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_slot_a_filter_resonance_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_slot_filter_resonance[0]
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
 
     let tracks_animate = Arc::clone(tracks);
     let params_animate = Arc::clone(params);
@@ -5679,88 +7814,106 @@ fn initialize_ui(
 
     let tracks_animate = Arc::clone(tracks);
     let params_animate = Arc::clone(params);
-    ui.on_animate_filter_cutoff_changed(move |value| {
+    ui.on_animate_lfo_x_waveform_changed(move |index| {
         let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             tracks_animate[track_idx]
-                .animate_filter_cutoff
-                .store(value.to_bits(), Ordering::Relaxed);
-        }
-    });
-
-    let tracks_animate = Arc::clone(tracks);
-    let params_animate = Arc::clone(params);
-    ui.on_animate_filter_resonance_changed(move |value| {
-        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
-        if track_idx < NUM_TRACKS {
-            tracks_animate[track_idx]
-                .animate_filter_resonance
-                .store(value.to_bits(), Ordering::Relaxed);
-        }
-    });
-
-    let tracks_animate = Arc::clone(tracks);
-    let params_animate = Arc::clone(params);
-    ui.on_animate_filter_drive_changed(move |value| {
-        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
-        if track_idx < NUM_TRACKS {
-            tracks_animate[track_idx]
-                .animate_filter_drive
-                .store(value.to_bits(), Ordering::Relaxed);
-        }
-    });
-
-    let tracks_animate = Arc::clone(tracks);
-    let params_animate = Arc::clone(params);
-    ui.on_animate_filter_type_changed(move |index| {
-        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
-        if track_idx < NUM_TRACKS {
-            tracks_animate[track_idx]
-                .animate_filter_type
+                .animate_lfo_x_waveform
                 .store(index as u32, Ordering::Relaxed);
         }
     });
 
     let tracks_animate = Arc::clone(tracks);
     let params_animate = Arc::clone(params);
-    ui.on_animate_amp_attack_changed(move |value| {
+    ui.on_animate_lfo_x_sync_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx].animate_lfo_x_sync.store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_x_division_changed(move |index| {
         let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             tracks_animate[track_idx]
-                .animate_amp_attack
+                .animate_lfo_x_division
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_x_rate_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_x_rate
                 .store(value.to_bits(), Ordering::Relaxed);
         }
     });
 
     let tracks_animate = Arc::clone(tracks);
     let params_animate = Arc::clone(params);
-    ui.on_animate_amp_decay_changed(move |value| {
+    ui.on_animate_lfo_x_amount_changed(move |value| {
         let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             tracks_animate[track_idx]
-                .animate_amp_decay
+                .animate_lfo_x_amount
                 .store(value.to_bits(), Ordering::Relaxed);
         }
     });
 
     let tracks_animate = Arc::clone(tracks);
     let params_animate = Arc::clone(params);
-    ui.on_animate_amp_sustain_changed(move |value| {
+    ui.on_animate_lfo_y_waveform_changed(move |index| {
         let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             tracks_animate[track_idx]
-                .animate_amp_sustain
+                .animate_lfo_y_waveform
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_y_sync_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx].animate_lfo_y_sync.store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_y_division_changed(move |index| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_y_division
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
+    ui.on_animate_lfo_y_rate_changed(move |value| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_lfo_y_rate
                 .store(value.to_bits(), Ordering::Relaxed);
         }
     });
 
     let tracks_animate = Arc::clone(tracks);
     let params_animate = Arc::clone(params);
-    ui.on_animate_amp_release_changed(move |value| {
+    ui.on_animate_lfo_y_amount_changed(move |value| {
         let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             tracks_animate[track_idx]
-                .animate_amp_release
+                .animate_lfo_y_amount
                 .store(value.to_bits(), Ordering::Relaxed);
         }
     });
@@ -5777,12 +7930,92 @@ fn initialize_ui(
             }
         }
     });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_pitch_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_pitch
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_decay_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_decay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_attack_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_attack
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_drive_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_drive
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_level_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_level
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_sequencer_grid_toggled(move |step| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let index = step as usize;
+            if index < 16 {
+                let current = tracks_kick[track_idx].kick_sequencer_grid[index].load(Ordering::Relaxed);
+                tracks_kick[track_idx].kick_sequencer_grid[index].store(!current, Ordering::Relaxed);
+            }
+        }
+    });
+
+    refresh_browser_impl(ui, &current_path.lock(), current_folder_content_model);
 }
 
 #[derive(Clone)]
 enum ProjectDialogAction {
     Save(PathBuf),
     Load(PathBuf),
+    SaveWithInfo {
+        path: PathBuf,
+        title: String,
+        description: String,
+    },
+    ExportZip {
+        path: PathBuf,
+        title: String,
+        description: String,
+    },
 }
 
 #[derive(Clone)]
@@ -5968,6 +8201,22 @@ fn baseview_window_to_surface_target(
     }
 }
 
+fn key_to_slint_string(key: &Key) -> Option<String> {
+    match key {
+        Key::Character(c) => Some(c.clone()),
+        Key::Escape => Some("\u{001b}".to_string()),
+        Key::Enter => Some("\r".to_string()),
+        Key::Backspace => Some("\u{0008}".to_string()),
+        Key::Tab => Some("\t".to_string()),
+        Key::ArrowUp => Some("\u{f000}".to_string()),
+        Key::ArrowDown => Some("\u{f001}".to_string()),
+        Key::ArrowLeft => Some("\u{f002}".to_string()),
+        Key::ArrowRight => Some("\u{f003}".to_string()),
+        Key::Delete => Some("\u{007f}".to_string()),
+        _ => None,
+    }
+}
+
 fn map_mouse_button(button: baseview::MouseButton) -> Option<PointerEventButton> {
     match button {
         baseview::MouseButton::Left => Some(PointerEventButton::Left),
@@ -6065,4 +8314,3 @@ fn restart_with_audio_settings(
     cmd.spawn().map_err(|err| err.to_string())?;
     std::process::exit(0);
 }
-

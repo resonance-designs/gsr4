@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.10
+ * Version: 0.1.12
  * Component: UI Definitions
  */
 
@@ -30,8 +30,10 @@ import {
     RDSVectorscopeViz
 } from "./components/index.slint";
 
-import { TapeEngine } from "./tape_engine.slint";
-import { AnimateEngine } from "./animate_engine.slint";
+import { TapeEngine } from "./engines/tape_engine.slint";
+import { AnimateEngine } from "./engines/animate_engine.slint";
+import { SimpKickEngine } from "./engines/simpkick_engine.slint";
+import { Browser, BrowserEntry } from "./browser.slint";
 
 export component TLBX1UI inherits Window {
     in-out property <int> selected-track: 1;
@@ -120,8 +122,14 @@ export component TLBX1UI inherits Window {
     in property <string> metronome-count-in-label;
     in-out property <bool> show-engine-confirm: false;
     in property <string> engine-confirm-text;
-    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate
+    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate, 3 = Simp Kick
     in property <bool> is-software-renderer: false;
+
+    // Browser Properties
+    in property <[string]> library-folders;
+    in property <[BrowserEntry]> current-folder-content;
+    in property <string> current-path;
+    in-out property <bool> show-browser: false;
 
     // Animate Engine Properties
     in property <[string]> animate-slot-types;
@@ -161,25 +169,72 @@ export component TLBX1UI inherits Window {
     in-out property <float> animate-slot-d-fine: 0.0;
     in-out property <float> animate-slot-d-level: 1.0;
     in-out property <float> animate-slot-d-pan: 0.0;
+    in-out property <float> animate-slot-a-wt-lfo-amount: 0.0;
+    in-out property <int> animate-slot-a-wt-lfo-shape: 0;
+    in-out property <float> animate-slot-a-wt-lfo-rate: 0.5;
+    in-out property <bool> animate-slot-a-wt-lfo-sync: false;
+    in-out property <int> animate-slot-a-wt-lfo-division: 0;
+    in-out property <float> animate-slot-b-wt-lfo-amount: 0.0;
+    in-out property <int> animate-slot-b-wt-lfo-shape: 0;
+    in-out property <float> animate-slot-b-wt-lfo-rate: 0.5;
+    in-out property <bool> animate-slot-b-wt-lfo-sync: false;
+    in-out property <int> animate-slot-b-wt-lfo-division: 0;
+    in-out property <float> animate-slot-c-wt-lfo-amount: 0.0;
+    in-out property <int> animate-slot-c-wt-lfo-shape: 0;
+    in-out property <float> animate-slot-c-wt-lfo-rate: 0.5;
+    in-out property <bool> animate-slot-c-wt-lfo-sync: false;
+    in-out property <int> animate-slot-c-wt-lfo-division: 0;
+    in-out property <float> animate-slot-d-wt-lfo-amount: 0.0;
+    in-out property <int> animate-slot-d-wt-lfo-shape: 0;
+    in-out property <float> animate-slot-d-wt-lfo-rate: 0.5;
+    in-out property <bool> animate-slot-d-wt-lfo-sync: false;
+    in-out property <int> animate-slot-d-wt-lfo-division: 0;
+    in-out property <float> animate-slot-a-sample-start: 0.0;
+    in-out property <float> animate-slot-a-loop-start: 0.0;
+    in-out property <float> animate-slot-a-loop-end: 1.0;
+    in-out property <int> animate-slot-a-filter-type: 0;
+    in-out property <float> animate-slot-a-filter-cutoff: 0.5;
+    in-out property <float> animate-slot-a-filter-resonance: 0.0;
+    in-out property <float> animate-slot-b-sample-start: 0.0;
+    in-out property <float> animate-slot-b-loop-start: 0.0;
+    in-out property <float> animate-slot-b-loop-end: 1.0;
+    in-out property <float> animate-slot-c-sample-start: 0.0;
+    in-out property <float> animate-slot-c-loop-start: 0.0;
+    in-out property <float> animate-slot-c-loop-end: 1.0;
+    in-out property <float> animate-slot-d-sample-start: 0.0;
+    in-out property <float> animate-slot-d-loop-start: 0.0;
+    in-out property <float> animate-slot-d-loop-end: 1.0;
 
     in-out property <float> animate-vector-x: 0.5;
     in-out property <float> animate-vector-y: 0.5;
+    in property <[string]> animate-lfo-waveforms;
+    in property <[string]> animate-lfo-divisions;
+    in-out property <int> animate-lfo-x-waveform: 0;
+    in-out property <bool> animate-lfo-x-sync: false;
+    in-out property <int> animate-lfo-x-division: 0;
+    in-out property <float> animate-lfo-x-rate: 0.5;
+    in-out property <float> animate-lfo-x-amount: 0.0;
+    in-out property <int> animate-lfo-y-waveform: 0;
+    in-out property <bool> animate-lfo-y-sync: false;
+    in-out property <int> animate-lfo-y-division: 0;
+    in-out property <float> animate-lfo-y-rate: 0.5;
+    in-out property <float> animate-lfo-y-amount: 0.0;
 
-    in-out property <float> animate-filter-cutoff: 0.5;
-    in-out property <float> animate-filter-resonance: 0.5;
-    in-out property <float> animate-filter-drive: 0.5;
     in property <[string]> animate-filter-types;
-    in-out property <int> animate-filter-type: 0;
-
-    in-out property <float> animate-amp-attack: 0.01;
-    in-out property <float> animate-amp-decay: 0.1;
-    in-out property <float> animate-amp-sustain: 0.8;
-    in-out property <float> animate-amp-release: 0.3;
 
     in-out property <[bool]> animate-sequencer-grid; // Flat array rows * steps
     in property <int> animate-sequencer-steps: 16;
     in property <int> animate-sequencer-rows: 10;
     in property <int> animate-sequencer-current-step: -1;
+
+    // Simp Kick Engine Properties
+    in-out property <float> kick-pitch: 0.5;
+    in-out property <float> kick-decay: 0.5;
+    in-out property <float> kick-attack: 0.0;
+    in-out property <float> kick-drive: 0.0;
+    in-out property <float> kick-level: 1.0;
+    in-out property <[bool]> kick-sequencer-grid;
+    in property <int> kick-sequencer-current-step: -1;
 
     in-out property <bool> show-settings: false;
     in property <[string]> output-devices;
@@ -260,6 +315,12 @@ export component TLBX1UI inherits Window {
     callback visualizer-mode-selected(index: int);
     callback quit();
     callback toggle-settings();
+    callback toggle-browser();
+    callback save-project-data(title: string, description: string);
+    callback export-project-data(title: string, description: string);
+    callback add-library-folder();
+    callback select-library-folder(index: int);
+    callback open-browser-entry(entry: BrowserEntry);
     callback save-project();
     callback load-project();
     callback output-device-selected(index: int);
@@ -308,659 +369,877 @@ export component TLBX1UI inherits Window {
     callback animate-slot-d-fine-changed(value: float);
     callback animate-slot-d-level-changed(value: float);
     callback animate-slot-d-pan-changed(value: float);
+    callback animate-slot-a-wt-lfo-amount-changed(value: float);
+    callback animate-slot-a-wt-lfo-shape-changed(index: int);
+    callback animate-slot-a-wt-lfo-rate-changed(value: float);
+    callback animate-slot-a-wt-lfo-sync-changed(value: bool);
+    callback animate-slot-a-wt-lfo-division-changed(index: int);
+    callback animate-slot-b-wt-lfo-amount-changed(value: float);
+    callback animate-slot-b-wt-lfo-shape-changed(index: int);
+    callback animate-slot-b-wt-lfo-rate-changed(value: float);
+    callback animate-slot-b-wt-lfo-sync-changed(value: bool);
+    callback animate-slot-b-wt-lfo-division-changed(index: int);
+    callback animate-slot-c-wt-lfo-amount-changed(value: float);
+    callback animate-slot-c-wt-lfo-shape-changed(index: int);
+    callback animate-slot-c-wt-lfo-rate-changed(value: float);
+    callback animate-slot-c-wt-lfo-sync-changed(value: bool);
+    callback animate-slot-c-wt-lfo-division-changed(index: int);
+    callback animate-slot-d-wt-lfo-amount-changed(value: float);
+    callback animate-slot-d-wt-lfo-shape-changed(index: int);
+    callback animate-slot-d-wt-lfo-rate-changed(value: float);
+    callback animate-slot-d-wt-lfo-sync-changed(value: bool);
+    callback animate-slot-d-wt-lfo-division-changed(index: int);
+    callback animate-slot-a-sample-start-changed(value: float);
+    callback animate-slot-a-loop-start-changed(value: float);
+    callback animate-slot-a-loop-end-changed(value: float);
+    callback animate-slot-a-filter-type-changed(index: int);
+    callback animate-slot-a-filter-cutoff-changed(value: float);
+    callback animate-slot-a-filter-resonance-changed(value: float);
+    callback animate-slot-b-sample-start-changed(value: float);
+    callback animate-slot-b-loop-start-changed(value: float);
+    callback animate-slot-b-loop-end-changed(value: float);
+    callback animate-slot-c-sample-start-changed(value: float);
+    callback animate-slot-c-loop-start-changed(value: float);
+    callback animate-slot-c-loop-end-changed(value: float);
+    callback animate-slot-d-sample-start-changed(value: float);
+    callback animate-slot-d-loop-start-changed(value: float);
+    callback animate-slot-d-loop-end-changed(value: float);
 
     callback animate-vector-changed(x: float, y: float);
-
-    callback animate-filter-cutoff-changed(value: float);
-    callback animate-filter-resonance-changed(value: float);
-    callback animate-filter-drive-changed(value: float);
-    callback animate-filter-type-changed(index: int);
-
-    callback animate-amp-attack-changed(value: float);
-    callback animate-amp-decay-changed(value: float);
-    callback animate-amp-sustain-changed(value: float);
-    callback animate-amp-release-changed(value: float);
+    callback animate-lfo-x-waveform-changed(index: int);
+    callback animate-lfo-x-sync-changed(value: bool);
+    callback animate-lfo-x-division-changed(index: int);
+    callback animate-lfo-x-rate-changed(value: float);
+    callback animate-lfo-x-amount-changed(value: float);
+    callback animate-lfo-y-waveform-changed(index: int);
+    callback animate-lfo-y-sync-changed(value: bool);
+    callback animate-lfo-y-division-changed(index: int);
+    callback animate-lfo-y-rate-changed(value: float);
+    callback animate-lfo-y-amount-changed(value: float);
 
     callback animate-sequencer-grid-toggled(row: int, step: int);
 
-    background: #0f0f12;
+    callback kick-pitch-changed(value: float);
+    callback kick-decay-changed(value: float);
+    callback kick-attack-changed(value: float);
+    callback kick-drive-changed(value: float);
+    callback kick-level-changed(value: float);
+    callback kick-sequencer-grid-toggled(step: int);
 
-    ScrollView {
-        width: parent.width;
-        height: parent.height;
+    Rectangle {
+        background: #0f0f12;
 
-        VerticalLayout {
-            width: Math.min(parent.width, 1200px);
-            x: (parent.width - self.width) / 2;
-            padding: 12px;
-            spacing: 8px;
+        // Add FocusScope at the ROOT level that covers everything
+        main-focus := FocusScope {
+            width: 100%;
+            height: 100%;
+            enabled: true;
 
-            HorizontalLayout {
+            key-pressed(event) => {
+                debug("Key event:", event.text);
+                if (event.text == "\u{001b}") {
+                    if (root.show-settings) {
+                        root.show-settings = false;
+                        return accept;
+                    }
+                    if (root.show-engine-confirm) {
+                        root.show-engine-confirm = false;
+                        return accept;
+                    }
+                    if (root.show-browser) {
+                        root.show-browser = false;
+                        return accept;
+                    }
+                }
+                reject
+            }
+
+            ScrollView {
                 width: parent.width;
-                spacing: 16px;
+                height: parent.height;
 
                 VerticalLayout {
-                    padding-top: 12px;
-                    Text {
-                        text: "MMIStudios";
-                        font-family: "Quad Light";
-                        color: #f0f0f2;
-                        font-size: 48px;
-                        font-weight: 600;
-                    }
-                    Text {
-                        text: "TLBX-1";
-                        color: #f0f0f2;
-                        font-size: 16px;
-                        font-weight: 800;
-                        horizontal-alignment: right;
-                    }
-                }
+                    width: Math.min(parent.width, 1200px);
+                    x: (parent.width - self.width) / 2;
+                    padding: 12px;
+                    spacing: 8px;
 
-                VerticalLayout {
-                    spacing: 4px;
-                    width: 160px;
-                    alignment: center;
-                    RDSNumStepper {
-                        value: root.tape-tempo;
-                        min-value: 20;
-                        max-value: 240;
-                        button-pos: "left-right";
-                        button-tog: true;
-                        step: 1;
-                        value-changed(v) => {
-                            root.tape-tempo = v;
-                            root.tape-tempo-changed(v);
+                    HorizontalLayout {
+                        width: parent.width;
+                        spacing: 16px;
+
+                        VerticalLayout {
+                            padding-top: 12px;
+                            Text {
+                                text: "MMIStudios";
+                                font-family: "Quad Light";
+                                color: #f0f0f2;
+                                font-size: 48px;
+                                font-weight: 600;
+                            }
+                            Text {
+                                text: "TLBX-1";
+                                color: #f0f0f2;
+                                font-size: 16px;
+                                font-weight: 800;
+                                horizontal-alignment: right;
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 160px;
+                            alignment: center;
+                            RDSNumStepper {
+                                value: root.tape-tempo;
+                                min-value: 20;
+                                max-value: 240;
+                                button-pos: "left-right";
+                                button-tog: true;
+                                step: 1;
+                                value-changed(v) => {
+                                    root.tape-tempo = v;
+                                    root.tape-tempo-changed(v);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 64px;
+                            alignment: center;
+                            Text {
+                                text: "Master";
+                                color: #b9b9bf;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                            }
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.gain;
+                                min-value: 0;
+                                max-value: 1;
+                                size: 64px;
+                                indicator-position: 20px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.gain = v;
+                                    root.gain-changed(v);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 40px;
+                            alignment: center;
+                            Text {
+                                text: "Filter";
+                                color: #b9b9bf;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                            }
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.master-filter;
+                                min-value: 0;
+                                max-value: 1;
+                                size: 40px;
+                                indicator-position: 12px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.master-filter = v;
+                                    root.master-filter-changed(v);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 40px;
+                            alignment: center;
+                            Text {
+                                text: "Comp";
+                                color: #b9b9bf;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                            }
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.master-comp;
+                                min-value: 0;
+                                max-value: 1;
+                                size: 40px;
+                                indicator-position: 12px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.master-comp = v;
+                                    root.master-comp-changed(v);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            width: 200px;
+                            alignment: center;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: center;
+                                RDSToggle {
+                                    active: root.is-playing;
+                                    on-icon: "stop";
+                                    off-icon: "play_arrow";
+                                    width: 44px;
+                                    height: 32px;
+                                    icon-size: 22px;
+                                    clicked => root.toggle-play();
+                                }
+                                Button {
+                                    text: "BROWSER";
+                                    height: 32px;
+                                    clicked => { root.toggle-browser(); }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            width: 240px;
+                            height: 80px;
+                            background: #121216;
+                            border-radius: 6px;
+                            border-color: #2a2a35;
+                            border-width: 1px;
+                            VerticalLayout {
+                                padding: 4px;
+                                spacing: 4px;
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    RDSCircleToggle {
+                                        active: root.visualizer-mode == 0;
+                                        clicked => { root.visualizer-mode = 0; root.visualizer-mode-selected(0); }
+                                    }
+                                    RDSCircleToggle {
+                                        active: root.visualizer-mode == 1;
+                                        clicked => { root.visualizer-mode = 1; root.visualizer-mode-selected(1); }
+                                    }
+                                    RDSCircleToggle {
+                                        active: root.visualizer-mode == 2;
+                                        clicked => { root.visualizer-mode = 2; root.visualizer-mode-selected(2); }
+                                    }
+                                    RDSCircleToggle {
+                                        active: root.visualizer-mode == 3;
+                                        clicked => { root.visualizer-mode = 3; root.visualizer-mode-selected(3); }
+                                    }
+                                    Text {
+                                        text: root.visualizer-modes[root.visualizer-mode];
+                                        color: #b9b9bf;
+                                        font-size: 10px;
+                                    }
+                                }
+                                Rectangle {
+                                    width: parent.width - 8px;
+                                    height: parent.height - 24px;
+                                    background: #0f0f14;
+                                    border-radius: 4px;
+                                    clip: true;
+
+                                    RDSOscilloscopeViz {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        visible: root.visualizer-mode == 0;
+                                        oscilloscope: root.oscilloscope;
+                                    }
+                                    RDSSpectrumViz {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        visible: root.visualizer-mode == 1;
+                                        spectrum: root.spectrum;
+                                    }
+                                    RDSVectorscopeViz {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        visible: root.visualizer-mode == 2;
+                                        vectorscope_x: root.vectorscope_x;
+                                        vectorscope_y: root.vectorscope_y;
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 4px;
+                            alignment: center;
+                            RDSVertVUMeter { level: root.meter-left; fill-color: #34d399; height: 80px; }
+                            RDSVertVUMeter { level: root.meter-right; fill-color: #60a5fa; height: 80px; }
                         }
                     }
-                }
 
-                VerticalLayout {
-                    spacing: 4px;
-                    width: 64px;
-                    alignment: center;
-                    Text {
-                        text: "Master";
-                        color: #b9b9bf;
-                        font-size: 12px;
-                        horizontal-alignment: center;
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.gain;
-                        min-value: 0;
-                        max-value: 1;
-                        size: 64px;
-                        indicator-position: 20px;
-                        sensitivity: 0.01;
-                        scroll-sensitivity: 0.01;
-                        value-changed(v) => {
-                            root.gain = v;
-                            root.gain-changed(v);
-                        }
-                    }
-                }
-
-                VerticalLayout {
-                    spacing: 4px;
-                    width: 40px;
-                    alignment: center;
-                    Text {
-                        text: "Filter";
-                        color: #b9b9bf;
-                        font-size: 10px;
-                        horizontal-alignment: center;
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.master-filter;
-                        min-value: 0;
-                        max-value: 1;
-                        size: 40px;
-                        indicator-position: 12px;
-                        sensitivity: 0.01;
-                        scroll-sensitivity: 0.01;
-                        value-changed(v) => {
-                            root.master-filter = v;
-                            root.master-filter-changed(v);
-                        }
-                    }
-                }
-
-                VerticalLayout {
-                    spacing: 4px;
-                    width: 40px;
-                    alignment: center;
-                    Text {
-                        text: "Comp";
-                        color: #b9b9bf;
-                        font-size: 10px;
-                        horizontal-alignment: center;
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.master-comp;
-                        min-value: 0;
-                        max-value: 1;
-                        size: 40px;
-                        indicator-position: 12px;
-                        sensitivity: 0.01;
-                        scroll-sensitivity: 0.01;
-                        value-changed(v) => {
-                            root.master-comp = v;
-                            root.master-comp-changed(v);
-                        }
-                    }
-                }
-
-                VerticalLayout {
-                    spacing: 4px;
-                    width: 100px;
-                    alignment: center;
                     HorizontalLayout {
                         spacing: 8px;
-                        alignment: center;
-                        RDSToggle {
-                            active: root.is-playing;
-                            on-icon: "stop";
-                            off-icon: "play_arrow";
-                            width: 44px;
-                            height: 32px;
-                            icon-size: 22px;
-                            clicked => root.toggle-play();
+                        height: 28px;
+                        for track[i] in [0, 1, 2, 3] : RDSSelectButton {
+                            label: "Track " + (i + 1);
+                            active: (i + 1) == root.selected-track;
+                            clicked => { root.select-track(i + 1); }
+                        }
+                        Rectangle { width: 1px; background: #2a2a35; }
+                        RDSComboBox {
+                            model: root.engine-types;
+                            current-index: root.engine-index;
+                            selected => { root.engine-index = self.current-index; }
+                        }
+                        Button { text: "Load Engine"; clicked => root.load-engine(); }
+                        Rectangle { width: 1px; background: #2a2a35; }
+                        Button { text: "Save Project"; clicked => root.save-project(); }
+                        Button { text: "Load Project"; clicked => root.load-project(); }
+                        Button { text: "Settings"; clicked => root.toggle-settings(); }
+                        Button { text: "Docs"; clicked => root.open-docs(); }
+                        Button { text: "Quit"; clicked => root.quit(); }
+                    }
+
+
+                    Rectangle {
+                        border-color: #e06e26;
+                        border-width: 1px;
+                        border-radius: 6px;
+                        visible: root.engine-loaded;
+                        width: parent.width;
+                        height: root.engine-loaded ? engine-content.preferred-height : 0px;
+                        clip: true;
+
+                        engine-content := VerticalLayout {
+                            spacing: 0px;
+                            width: parent.width;
+
+                            tape-section := Rectangle {
+                                width: parent.width;
+                                height: root.active-engine-type == 1 ? tape-content.preferred-height : 0px;
+                                clip: true;
+                                visible: root.active-engine-type == 1;
+
+                                tape-content := VerticalLayout {
+                                    spacing: 8px;
+                                    width: parent.width;
+
+                                    TapeEngine {
+                                        width: parent.width;
+                                        is-recording: root.is-recording;
+                                        track-level <=> root.track-level;
+                                        track-meter-left: root.track-meter-left;
+                                        track-meter-right: root.track-meter-right;
+                                        waveform: root.waveform;
+                                        waveform_time_labels: root.waveform_time_labels;
+                                        playhead-index: root.playhead-index;
+                                        tape-speed <=> root.tape-speed;
+                                        tape-rotate <=> root.tape-rotate;
+                                        trigger-start <=> root.trigger-start;
+                                        loop-start <=> root.loop-start;
+                                        loop-length <=> root.loop-length;
+                                        tape-glide <=> root.tape-glide;
+                                        tape-sos <=> root.tape-sos;
+                                        loop-xfade <=> root.loop-xfade;
+                                        tape-rate-modes: root.tape-rate-modes;
+                                        tape-rate-mode <=> root.tape-rate-mode;
+                                        loop-modes: root.loop-modes;
+                                        loop-mode <=> root.loop-mode;
+                                        track-muted <=> root.track-muted;
+                                        loop-enabled <=> root.loop-enabled;
+                                        tape-reverse <=> root.tape-reverse;
+                                        tape-freeze <=> root.tape-freeze;
+                                        tape-keylock <=> root.tape-keylock;
+                                        tape-monitor <=> root.tape-monitor;
+                                        tape-overdub <=> root.tape-overdub;
+                                        mosaic-enabled <=> root.mosaic-enabled;
+                                        mosaic-pitch <=> root.mosaic-pitch;
+                                        mosaic-rate <=> root.mosaic-rate;
+                                        mosaic-size <=> root.mosaic-size;
+                                        mosaic-contour <=> root.mosaic-contour;
+                                        mosaic-warp <=> root.mosaic-warp;
+                                        mosaic-spray <=> root.mosaic-spray;
+                                        mosaic-pattern <=> root.mosaic-pattern;
+                                        mosaic-wet <=> root.mosaic-wet;
+                                        mosaic-detune <=> root.mosaic-detune;
+                                        mosaic-spatial <=> root.mosaic-spatial;
+                                        mosaic-rand-rate <=> root.mosaic-rand-rate;
+                                        mosaic-rand-size <=> root.mosaic-rand-size;
+                                        mosaic-sos <=> root.mosaic-sos;
+                                        ring-enabled <=> root.ring-enabled;
+                                        ring-cutoff <=> root.ring-cutoff;
+                                        ring-resonance <=> root.ring-resonance;
+                                        ring-decay <=> root.ring-decay;
+                                        ring-pitch <=> root.ring-pitch;
+                                        ring-decay-modes: root.ring-decay-modes;
+                                        ring-decay-mode <=> root.ring-decay-mode;
+                                        ring-slope <=> root.ring-slope;
+                                        ring-tone <=> root.ring-tone;
+                                        ring-tilt <=> root.ring-tilt;
+                                        ring-wet <=> root.ring-wet;
+                                        ring-detune <=> root.ring-detune;
+                                        ring-waves <=> root.ring-waves;
+                                        ring-waves-rate <=> root.ring-waves-rate;
+                                        ring-noise <=> root.ring-noise;
+                                        ring-noise-rate <=> root.ring-noise-rate;
+                                        load-sample => root.load-sample();
+                                        save-sample => root.save-sample();
+                                        toggle-record => root.toggle-record();
+                                        audition-start => root.audition-start();
+                                        audition-end => root.audition-end();
+                                        track-level-changed(value) => { root.track-level-changed(value); }
+                                        tape-speed-changed(value) => { root.tape-speed-changed(value); }
+                                        tape-rotate-changed(value) => { root.tape-rotate-changed(value); }
+                                        trigger-start-changed(value) => { root.trigger-start-changed(value); }
+                                        loop-start-changed(value) => { root.loop-start-changed(value); }
+                                        loop-length-changed(value) => { root.loop-length-changed(value); }
+                                        tape-glide-changed(value) => { root.tape-glide-changed(value); }
+                                        tape-sos-changed(value) => { root.tape-sos-changed(value); }
+                                        loop-xfade-changed(value) => { root.loop-xfade-changed(value); }
+                                        tape-rate-mode-selected(index) => { root.tape-rate-mode-selected(index); }
+                                        loop-mode-selected(index) => { root.loop-mode-selected(index); }
+                                        toggle-track-mute => root.toggle-track-mute();
+                                        toggle-loop-enabled => root.toggle-loop-enabled();
+                                        toggle-tape-reverse => root.toggle-tape-reverse();
+                                        toggle-tape-freeze => root.toggle-tape-freeze();
+                                        toggle-tape-keylock => root.toggle-tape-keylock();
+                                        toggle-tape-monitor => root.toggle-tape-monitor();
+                                        toggle-tape-overdub => root.toggle-tape-overdub();
+                                        toggle-mosaic-enabled => root.toggle-mosaic-enabled();
+                                        mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
+                                        mosaic-rate-changed(value) => { root.mosaic-rate-changed(value); }
+                                        mosaic-size-changed(value) => { root.mosaic-size-changed(value); }
+                                        mosaic-contour-changed(value) => { root.mosaic-contour-changed(value); }
+                                        mosaic-warp-changed(value) => { root.mosaic-warp-changed(value); }
+                                        mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
+                                        mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
+                                        mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                                        mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
+                                        mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
+                                        mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
+                                        mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
+                                        mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
+                                        toggle-ring-enabled => root.toggle-ring-enabled();
+                                        ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
+                                        ring-resonance-changed(value) => { root.ring-resonance-changed(value); }
+                                        ring-decay-changed(value) => { root.ring-decay-changed(value); }
+                                        ring-pitch-changed(value) => { root.ring-pitch-changed(value); }
+                                        ring-decay-mode-selected(index) => { root.ring-decay-mode-selected(index); }
+                                        ring-slope-changed(value) => { root.ring-slope-changed(value); }
+                                        ring-tone-changed(value) => { root.ring-tone-changed(value); }
+                                        ring-tilt-changed(value) => { root.ring-tilt-changed(value); }
+                                        ring-wet-changed(value) => { root.ring-wet-changed(value); }
+                                        ring-detune-changed(value) => { root.ring-detune-changed(value); }
+                                        ring-waves-changed(value) => { root.ring-waves-changed(value); }
+                                        ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
+                                        ring-noise-changed(value) => { root.ring-noise-changed(value); }
+                                        ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
+                                    }
+                                }
+                            }
+
+                            animate-section := Rectangle {
+                                width: parent.width;
+                                height: root.active-engine-type == 2 ? animate-content.preferred-height : 0px;
+                                clip: true;
+                                visible: root.active-engine-type == 2;
+
+                                animate-content := VerticalLayout {
+                                    spacing: 12px;
+                                    width: parent.width;
+
+                                    AnimateEngine {
+                                        width: parent.width;
+                                        animate-slot-types: root.animate-slot-types;
+                                        animate-slot-a-type <=> root.animate-slot-a-type;
+                                        animate-slot-b-type <=> root.animate-slot-b-type;
+                                        animate-slot-c-type <=> root.animate-slot-c-type;
+                                        animate-slot-d-type <=> root.animate-slot-d-type;
+                                        animate-wavetables: root.animate-wavetables;
+                                        animate-slot-a-wavetable <=> root.animate-slot-a-wavetable;
+                                        animate-slot-b-wavetable <=> root.animate-slot-b-wavetable;
+                                        animate-slot-c-wavetable <=> root.animate-slot-c-wavetable;
+                                        animate-slot-d-wavetable <=> root.animate-slot-d-wavetable;
+                                        animate-samples: root.animate-samples;
+                                        animate-slot-a-sample <=> root.animate-slot-a-sample;
+                                        animate-slot-b-sample <=> root.animate-slot-b-sample;
+                                        animate-slot-c-sample <=> root.animate-slot-c-sample;
+                                        animate-slot-d-sample <=> root.animate-slot-d-sample;
+                                        animate-slot-a-level <=> root.animate-slot-a-level;
+                                        animate-slot-b-level <=> root.animate-slot-b-level;
+                                        animate-slot-c-level <=> root.animate-slot-c-level;
+                                        animate-slot-d-level <=> root.animate-slot-d-level;
+                                        animate-slot-a-coarse <=> root.animate-slot-a-coarse;
+                                        animate-slot-a-fine <=> root.animate-slot-a-fine;
+                                        animate-slot-a-pan <=> root.animate-slot-a-pan;
+                                        animate-slot-b-coarse <=> root.animate-slot-b-coarse;
+                                        animate-slot-b-fine <=> root.animate-slot-b-fine;
+                                        animate-slot-b-pan <=> root.animate-slot-b-pan;
+                                        animate-slot-c-coarse <=> root.animate-slot-c-coarse;
+                                        animate-slot-c-fine <=> root.animate-slot-c-fine;
+                                        animate-slot-c-pan <=> root.animate-slot-c-pan;
+                                        animate-slot-d-coarse <=> root.animate-slot-d-coarse;
+                                        animate-slot-d-fine <=> root.animate-slot-d-fine;
+                                        animate-slot-d-pan <=> root.animate-slot-d-pan;
+                                        animate-slot-a-wt-lfo-amount <=> root.animate-slot-a-wt-lfo-amount;
+                                        animate-slot-a-wt-lfo-shape <=> root.animate-slot-a-wt-lfo-shape;
+                                        animate-slot-a-wt-lfo-rate <=> root.animate-slot-a-wt-lfo-rate;
+                                        animate-slot-a-wt-lfo-sync <=> root.animate-slot-a-wt-lfo-sync;
+                                        animate-slot-a-wt-lfo-division <=> root.animate-slot-a-wt-lfo-division;
+                                        animate-slot-b-wt-lfo-amount <=> root.animate-slot-b-wt-lfo-amount;
+                                        animate-slot-b-wt-lfo-shape <=> root.animate-slot-b-wt-lfo-shape;
+                                        animate-slot-b-wt-lfo-rate <=> root.animate-slot-b-wt-lfo-rate;
+                                        animate-slot-b-wt-lfo-sync <=> root.animate-slot-b-wt-lfo-sync;
+                                        animate-slot-b-wt-lfo-division <=> root.animate-slot-b-wt-lfo-division;
+                                        animate-slot-c-wt-lfo-amount <=> root.animate-slot-c-wt-lfo-amount;
+                                        animate-slot-c-wt-lfo-shape <=> root.animate-slot-c-wt-lfo-shape;
+                                        animate-slot-c-wt-lfo-rate <=> root.animate-slot-c-wt-lfo-rate;
+                                        animate-slot-c-wt-lfo-sync <=> root.animate-slot-c-wt-lfo-sync;
+                                        animate-slot-c-wt-lfo-division <=> root.animate-slot-c-wt-lfo-division;
+                                        animate-slot-d-wt-lfo-amount <=> root.animate-slot-d-wt-lfo-amount;
+                                        animate-slot-d-wt-lfo-shape <=> root.animate-slot-d-wt-lfo-shape;
+                                        animate-slot-d-wt-lfo-rate <=> root.animate-slot-d-wt-lfo-rate;
+                                        animate-slot-d-wt-lfo-sync <=> root.animate-slot-d-wt-lfo-sync;
+                                        animate-slot-d-wt-lfo-division <=> root.animate-slot-d-wt-lfo-division;
+                                        animate-slot-a-sample-start <=> root.animate-slot-a-sample-start;
+                                        animate-slot-a-loop-start <=> root.animate-slot-a-loop-start;
+                                        animate-slot-a-loop-end <=> root.animate-slot-a-loop-end;
+                                        animate-slot-a-filter-type <=> root.animate-slot-a-filter-type;
+                                        animate-slot-a-filter-cutoff <=> root.animate-slot-a-filter-cutoff;
+                                        animate-slot-a-filter-resonance <=> root.animate-slot-a-filter-resonance;
+                                        animate-slot-b-sample-start <=> root.animate-slot-b-sample-start;
+                                        animate-slot-b-loop-start <=> root.animate-slot-b-loop-start;
+                                        animate-slot-b-loop-end <=> root.animate-slot-b-loop-end;
+                                        animate-slot-c-sample-start <=> root.animate-slot-c-sample-start;
+                                        animate-slot-c-loop-start <=> root.animate-slot-c-loop-start;
+                                        animate-slot-c-loop-end <=> root.animate-slot-c-loop-end;
+                                        animate-slot-d-sample-start <=> root.animate-slot-d-sample-start;
+                                        animate-slot-d-loop-start <=> root.animate-slot-d-loop-start;
+                                        animate-slot-d-loop-end <=> root.animate-slot-d-loop-end;
+                                        animate-vector-x <=> root.animate-vector-x;
+                                        animate-vector-y <=> root.animate-vector-y;
+                                        animate-lfo-waveforms: root.animate-lfo-waveforms;
+                                        animate-lfo-divisions: root.animate-lfo-divisions;
+                                        animate-lfo-x-waveform <=> root.animate-lfo-x-waveform;
+                                        animate-lfo-x-sync <=> root.animate-lfo-x-sync;
+                                        animate-lfo-x-division <=> root.animate-lfo-x-division;
+                                        animate-lfo-x-rate <=> root.animate-lfo-x-rate;
+                                        animate-lfo-x-amount <=> root.animate-lfo-x-amount;
+                                        animate-lfo-y-waveform <=> root.animate-lfo-y-waveform;
+                                        animate-lfo-y-sync <=> root.animate-lfo-y-sync;
+                                        animate-lfo-y-division <=> root.animate-lfo-y-division;
+                                        animate-lfo-y-rate <=> root.animate-lfo-y-rate;
+                                        animate-lfo-y-amount <=> root.animate-lfo-y-amount;
+                                        animate-filter-types: root.animate-filter-types;
+                                        animate-sequencer-grid <=> root.animate-sequencer-grid;
+                                        animate-sequencer-current-step: root.animate-sequencer-current-step;
+                                        animate-slot-a-type-changed(index) => { root.animate-slot-a-type-changed(index); }
+                                        animate-slot-b-type-changed(index) => { root.animate-slot-b-type-changed(index); }
+                                        animate-slot-c-type-changed(index) => { root.animate-slot-c-type-changed(index); }
+                                        animate-slot-d-type-changed(index) => { root.animate-slot-d-type-changed(index); }
+                                        animate-slot-a-wavetable-changed(index) => { root.animate-slot-a-wavetable-changed(index); }
+                                        animate-slot-b-wavetable-changed(index) => { root.animate-slot-b-wavetable-changed(index); }
+                                        animate-slot-c-wavetable-changed(index) => { root.animate-slot-c-wavetable-changed(index); }
+                                        animate-slot-d-wavetable-changed(index) => { root.animate-slot-d-wavetable-changed(index); }
+                                        animate-slot-a-sample-changed(index) => { root.animate-slot-a-sample-changed(index); }
+                                        animate-slot-b-sample-changed(index) => { root.animate-slot-b-sample-changed(index); }
+                                        animate-slot-c-sample-changed(index) => { root.animate-slot-c-sample-changed(index); }
+                                        animate-slot-d-sample-changed(index) => { root.animate-slot-d-sample-changed(index); }
+                                        animate-slot-a-level-changed(value) => { root.animate-slot-a-level-changed(value); }
+                                        animate-slot-b-level-changed(value) => { root.animate-slot-b-level-changed(value); }
+                                        animate-slot-c-level-changed(value) => { root.animate-slot-c-level-changed(value); }
+                                        animate-slot-d-level-changed(value) => { root.animate-slot-d-level-changed(value); }
+                                        animate-slot-a-coarse-changed(value) => { root.animate-slot-a-coarse-changed(value); }
+                                        animate-slot-a-fine-changed(value) => { root.animate-slot-a-fine-changed(value); }
+                                        animate-slot-a-pan-changed(value) => { root.animate-slot-a-pan-changed(value); }
+                                        animate-slot-b-coarse-changed(value) => { root.animate-slot-b-coarse-changed(value); }
+                                        animate-slot-b-fine-changed(value) => { root.animate-slot-b-fine-changed(value); }
+                                        animate-slot-b-pan-changed(value) => { root.animate-slot-b-pan-changed(value); }
+                                        animate-slot-c-coarse-changed(value) => { root.animate-slot-c-coarse-changed(value); }
+                                        animate-slot-c-fine-changed(value) => { root.animate-slot-c-fine-changed(value); }
+                                        animate-slot-c-pan-changed(value) => { root.animate-slot-c-pan-changed(value); }
+                                        animate-slot-d-coarse-changed(value) => { root.animate-slot-d-coarse-changed(value); }
+                                        animate-slot-d-fine-changed(value) => { root.animate-slot-d-fine-changed(value); }
+                                        animate-slot-d-pan-changed(value) => { root.animate-slot-d-pan-changed(value); }
+                                        animate-slot-a-wt-lfo-amount-changed(value) => { root.animate-slot-a-wt-lfo-amount-changed(value); }
+                                        animate-slot-a-wt-lfo-shape-changed(index) => { root.animate-slot-a-wt-lfo-shape-changed(index); }
+                                        animate-slot-a-wt-lfo-rate-changed(value) => { root.animate-slot-a-wt-lfo-rate-changed(value); }
+                                        animate-slot-a-wt-lfo-sync-changed(value) => { root.animate-slot-a-wt-lfo-sync-changed(value); }
+                                        animate-slot-a-wt-lfo-division-changed(index) => { root.animate-slot-a-wt-lfo-division-changed(index); }
+                                        animate-slot-b-wt-lfo-amount-changed(value) => { root.animate-slot-b-wt-lfo-amount-changed(value); }
+                                        animate-slot-b-wt-lfo-shape-changed(index) => { root.animate-slot-b-wt-lfo-shape-changed(index); }
+                                        animate-slot-b-wt-lfo-rate-changed(value) => { root.animate-slot-b-wt-lfo-rate-changed(value); }
+                                        animate-slot-b-wt-lfo-sync-changed(value) => { root.animate-slot-b-wt-lfo-sync-changed(value); }
+                                        animate-slot-b-wt-lfo-division-changed(index) => { root.animate-slot-b-wt-lfo-division-changed(index); }
+                                        animate-slot-c-wt-lfo-amount-changed(value) => { root.animate-slot-c-wt-lfo-amount-changed(value); }
+                                        animate-slot-c-wt-lfo-shape-changed(index) => { root.animate-slot-c-wt-lfo-shape-changed(index); }
+                                        animate-slot-c-wt-lfo-rate-changed(value) => { root.animate-slot-c-wt-lfo-rate-changed(value); }
+                                        animate-slot-c-wt-lfo-sync-changed(value) => { root.animate-slot-c-wt-lfo-sync-changed(value); }
+                                        animate-slot-c-wt-lfo-division-changed(index) => { root.animate-slot-c-wt-lfo-division-changed(index); }
+                                        animate-slot-d-wt-lfo-amount-changed(value) => { root.animate-slot-d-wt-lfo-amount-changed(value); }
+                                        animate-slot-d-wt-lfo-shape-changed(index) => { root.animate-slot-d-wt-lfo-shape-changed(index); }
+                                        animate-slot-d-wt-lfo-rate-changed(value) => { root.animate-slot-d-wt-lfo-rate-changed(value); }
+                                        animate-slot-d-wt-lfo-sync-changed(value) => { root.animate-slot-d-wt-lfo-sync-changed(value); }
+                                        animate-slot-d-wt-lfo-division-changed(index) => { root.animate-slot-d-wt-lfo-division-changed(index); }
+                                        animate-slot-a-sample-start-changed(value) => { root.animate-slot-a-sample-start-changed(value); }
+                                        animate-slot-a-loop-start-changed(value) => { root.animate-slot-a-loop-start-changed(value); }
+                                        animate-slot-a-loop-end-changed(value) => { root.animate-slot-a-loop-end-changed(value); }
+                                        animate-slot-a-filter-type-changed(index) => { root.animate-slot-a-filter-type-changed(index); }
+                                        animate-slot-a-filter-cutoff-changed(value) => { root.animate-slot-a-filter-cutoff-changed(value); }
+                                        animate-slot-a-filter-resonance-changed(value) => { root.animate-slot-a-filter-resonance-changed(value); }
+                                        animate-slot-b-sample-start-changed(value) => { root.animate-slot-b-sample-start-changed(value); }
+                                        animate-slot-b-loop-start-changed(value) => { root.animate-slot-b-loop-start-changed(value); }
+                                        animate-slot-b-loop-end-changed(value) => { root.animate-slot-b-loop-end-changed(value); }
+                                        animate-slot-c-sample-start-changed(value) => { root.animate-slot-c-sample-start-changed(value); }
+                                        animate-slot-c-loop-start-changed(value) => { root.animate-slot-c-loop-start-changed(value); }
+                                        animate-slot-c-loop-end-changed(value) => { root.animate-slot-c-loop-end-changed(value); }
+                                        animate-slot-d-sample-start-changed(value) => { root.animate-slot-d-sample-start-changed(value); }
+                                        animate-slot-d-loop-start-changed(value) => { root.animate-slot-d-loop-start-changed(value); }
+                                        animate-slot-d-loop-end-changed(value) => { root.animate-slot-d-loop-end-changed(value); }
+                                        animate-vector-changed(x, y) => { root.animate-vector-changed(x, y); }
+                                        animate-lfo-x-waveform-changed(index) => { root.animate-lfo-x-waveform-changed(index); }
+                                        animate-lfo-x-sync-changed(value) => { root.animate-lfo-x-sync-changed(value); }
+                                        animate-lfo-x-division-changed(index) => { root.animate-lfo-x-division-changed(index); }
+                                        animate-lfo-x-rate-changed(value) => { root.animate-lfo-x-rate-changed(value); }
+                                        animate-lfo-x-amount-changed(value) => { root.animate-lfo-x-amount-changed(value); }
+                                        animate-lfo-y-waveform-changed(index) => { root.animate-lfo-y-waveform-changed(index); }
+                                        animate-lfo-y-sync-changed(value) => { root.animate-lfo-y-sync-changed(value); }
+                                        animate-lfo-y-division-changed(index) => { root.animate-lfo-y-division-changed(index); }
+                                        animate-lfo-y-rate-changed(value) => { root.animate-lfo-y-rate-changed(value); }
+                                        animate-lfo-y-amount-changed(value) => { root.animate-lfo-y-amount-changed(value); }
+                                        animate-sequencer-grid-toggled(row, step) => { root.animate-sequencer-grid-toggled(row, step); }
+                                    }
+                                }
+                            }
+                            simpkick-section := Rectangle {
+                                width: parent.width;
+                                height: root.active-engine-type == 3 ? simpkick-content.preferred-height : 0px;
+                                clip: true;
+                                visible: root.active-engine-type == 3;
+
+                                simpkick-content := VerticalLayout {
+                                    spacing: 8px;
+                                    width: parent.width;
+
+                                    SimpKickEngine {
+                                        width: parent.width;
+                                        kick-pitch <=> root.kick-pitch;
+                                        kick-decay <=> root.kick-decay;
+                                        kick-attack <=> root.kick-attack;
+                                        kick-drive <=> root.kick-drive;
+                                        kick-level <=> root.kick-level;
+                                        kick-sequencer-grid <=> root.kick-sequencer-grid;
+                                        kick-sequencer-current-step: root.kick-sequencer-current-step;
+                                        kick-pitch-changed(value) => { root.kick-pitch-changed(value); }
+                                        kick-decay-changed(value) => { root.kick-decay-changed(value); }
+                                        kick-attack-changed(value) => { root.kick-attack-changed(value); }
+                                        kick-drive-changed(value) => { root.kick-drive-changed(value); }
+                                        kick-level-changed(value) => { root.kick-level-changed(value); }
+                                        kick-sequencer-grid-toggled(step) => { root.kick-sequencer-grid-toggled(step); }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
                 Rectangle {
-                    width: 240px;
-                    height: 80px;
-                    background: #121216;
-                    border-radius: 6px;
-                    border-color: #2a2a35;
-                    border-width: 1px;
-                    VerticalLayout {
-                        padding: 4px;
-                        spacing: 4px;
-                        HorizontalLayout {
-                            spacing: 4px;
-                            RDSCircleToggle {
-                                active: root.visualizer-mode == 0;
-                                clicked => { root.visualizer-mode = 0; root.visualizer-mode-selected(0); }
+                    visible: root.show-settings;
+                    width: parent.width;
+                    height: parent.height;
+                    background: #00000080;
+
+                    Rectangle {
+                        width: Math.min(520px, parent.width - 40px);
+                        height: Math.min(520px, parent.height - 40px);
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        background: #15151c;
+                        border-color: #2a2a35;
+                        border-width: 1px;
+                        border-radius: 8px;
+
+                        VerticalLayout {
+                            padding: 16px;
+                            spacing: 10px;
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    text: "Audio Settings";
+                                    color: #e4e4ea;
+                                    font-size: 16px;
+                                    horizontal-stretch: 1;
+                                }
+                                Button {
+                                    text: "Close";
+                                    clicked => root.toggle-settings();
+                                }
                             }
-                            RDSCircleToggle {
-                                active: root.visualizer-mode == 1;
-                                clicked => { root.visualizer-mode = 1; root.visualizer-mode-selected(1); }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "Output device"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
+                                RDSComboBox {
+                                    model: root.output-devices;
+                                    current-index: root.output-device-index;
+                                    selected => {
+                                        root.output-device-index = self.current-index;
+                                        root.output-device-selected(self.current-index);
+                                    }
+                                }
                             }
-                            RDSCircleToggle {
-                                active: root.visualizer-mode == 2;
-                                clicked => { root.visualizer-mode = 2; root.visualizer-mode-selected(2); }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "Input device"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
+                                RDSComboBox {
+                                    model: root.input-devices;
+                                    current-index: root.input-device-index;
+                                    selected => {
+                                        root.input-device-index = self.current-index;
+                                        root.input-device-selected(self.current-index);
+                                    }
+                                }
                             }
-                            RDSCircleToggle {
-                                active: root.visualizer-mode == 3;
-                                clicked => { root.visualizer-mode = 3; root.visualizer-mode-selected(3); }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "Sample rate"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
+                                RDSComboBox {
+                                    model: root.sample-rates;
+                                    current-index: root.sample-rate-index;
+                                    selected => {
+                                        root.sample-rate-index = self.current-index;
+                                        root.sample-rate-selected(self.current-index);
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "Buffer size"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
+                                RDSComboBox {
+                                    model: root.buffer-sizes;
+                                    current-index: root.buffer-size-index;
+                                    selected => {
+                                        root.buffer-size-index = self.current-index;
+                                        root.buffer-size-selected(self.current-index);
+                                    }
+                                }
+                            }
+
+                            Text { text: "Metronome"; color: #e4e4ea; font-size: 15px; }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Button {
+                                    text: root.metronome-enabled ? "Metronome On" : "Metronome Off";
+                                    clicked => root.toggle-metronome();
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: root.metronome-count-in-label; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
+                                RDSKnob {
+                                    renderer: "lo-fi";
+                                    value: root.metronome-count-in;
+                                    min-value: 0;
+                                    max-value: 8;
+                                    size: 32px;
+                                    indicator-position: 10px;
+                                    sensitivity: 0.1;
+                                    scroll-sensitivity: 0.1;
+                                    value-changed(v) => {
+                                        root.metronome-count-in = v;
+                                        root.metronome-count-in-changed(v);
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Button {
+                                    text: root.metronome-count-playback ? "Count-In Playback On" : "Count-In Playback Off";
+                                    clicked => root.toggle-metronome-count-playback();
+                                }
+                                Button {
+                                    text: root.metronome-count-record ? "Count-In Record On" : "Count-In Record Off";
+                                    clicked => root.toggle-metronome-count-record();
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Button { text: "Refresh Devices"; clicked => root.refresh-devices(); }
+                                Button { text: "Apply & Restart"; clicked => root.apply-settings(); }
+                            }
+
+                            Text {
+                                text: root.settings-status;
+                                color: #d0a7ff;
+                                font-size: 12px;
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.show-engine-confirm;
+                    width: parent.width;
+                    height: parent.height;
+                    background: #00000080;
+
+                    Rectangle {
+                        width: Math.min(420px, parent.width - 40px);
+                        height: 180px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        background: #15151c;
+                        border-color: #2a2a35;
+                        border-width: 1px;
+                        border-radius: 8px;
+
+                        VerticalLayout {
+                            padding: 16px;
+                            spacing: 12px;
+                            Text {
+                                text: "Replace engine?";
+                                color: #f0f0f2;
+                                font-size: 16px;
                             }
                             Text {
-                                text: root.visualizer-modes[root.visualizer-mode];
+                                text: root.engine-confirm-text;
                                 color: #b9b9bf;
-                                font-size: 10px;
+                                font-size: 12px;
                             }
-                        }
-                        Rectangle {
-                            width: parent.width - 8px;
-                            height: parent.height - 24px;
-                            background: #0f0f14;
-                            border-radius: 4px;
-                            clip: true;
-
-                            RDSOscilloscopeViz {
-                                width: parent.width;
-                                height: parent.height;
-                                visible: root.visualizer-mode == 0;
-                                oscilloscope: root.oscilloscope;
-                            }
-                            RDSSpectrumViz {
-                                width: parent.width;
-                                height: parent.height;
-                                visible: root.visualizer-mode == 1;
-                                spectrum: root.spectrum;
-                            }
-                            RDSVectorscopeViz {
-                                width: parent.width;
-                                height: parent.height;
-                                visible: root.visualizer-mode == 2;
-                                vectorscope_x: root.vectorscope_x;
-                                vectorscope_y: root.vectorscope_y;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Button { text: "Cancel"; clicked => root.cancel-engine-load(); }
+                                Button { text: "Proceed to load..."; clicked => root.confirm-engine-load(); }
                             }
                         }
                     }
                 }
 
-                HorizontalLayout {
-                    spacing: 4px;
-                    alignment: center;
-                    RDSVertVUMeter { level: root.meter-left; fill-color: #34d399; height: 80px; }
-                    RDSVertVUMeter { level: root.meter-right; fill-color: #60a5fa; height: 80px; }
-                }
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                height: 28px;
-                for track[i] in [0, 1, 2, 3] : RDSSelectButton {
-                    label: "Track " + (i + 1);
-                    active: (i + 1) == root.selected-track;
-                    clicked => { root.select-track(i + 1); }
-                }
-                Rectangle { width: 1px; background: #2a2a35; }
-                RDSComboBox {
-                    model: root.engine-types;
-                    current-index: root.engine-index;
-                    selected => { root.engine-index = self.current-index; }
-                }
-                Button { text: "Load Engine"; clicked => root.load-engine(); }
-                Rectangle { width: 1px; background: #2a2a35; }
-            Button { text: "Save Project"; clicked => root.save-project(); }
-            Button { text: "Load Project"; clicked => root.load-project(); }
-            Button { text: "Settings"; clicked => root.toggle-settings(); }
-            Button { text: "Docs"; clicked => root.open-docs(); }
-            Button { text: "Quit"; clicked => root.quit(); }
-        }
-
-
-        Rectangle {
-            border-color: #e06e26;
-            border-width: 1px;
-            border-radius: 6px;
-            visible: root.engine-loaded;
-            width: parent.width;
-            height: root.engine-loaded ? engine-content.preferred-height : 0px;
-            clip: true;
-
-            engine-content := VerticalLayout {
-                spacing: 0px;
-                width: parent.width;
-
-                tape-section := Rectangle {
-                    width: parent.width;
-                    height: root.active-engine-type == 1 ? tape-content.preferred-height : 0px;
-                    clip: true;
-                    visible: root.active-engine-type == 1;
-
-                    tape-content := VerticalLayout {
-                        spacing: 8px;
-                        width: parent.width;
-
-                        TapeEngine {
-                            width: parent.width;
-                            is-recording: root.is-recording;
-                            track-level <=> root.track-level;
-                            track-meter-left: root.track-meter-left;
-                            track-meter-right: root.track-meter-right;
-                            waveform: root.waveform;
-                            waveform_time_labels: root.waveform_time_labels;
-                            playhead-index: root.playhead-index;
-                            tape-speed <=> root.tape-speed;
-                            tape-rotate <=> root.tape-rotate;
-                            trigger-start <=> root.trigger-start;
-                            loop-start <=> root.loop-start;
-                            loop-length <=> root.loop-length;
-                            tape-glide <=> root.tape-glide;
-                            tape-sos <=> root.tape-sos;
-                            loop-xfade <=> root.loop-xfade;
-                            tape-rate-modes: root.tape-rate-modes;
-                            tape-rate-mode <=> root.tape-rate-mode;
-                            loop-modes: root.loop-modes;
-                            loop-mode <=> root.loop-mode;
-                            track-muted <=> root.track-muted;
-                            loop-enabled <=> root.loop-enabled;
-                            tape-reverse <=> root.tape-reverse;
-                            tape-freeze <=> root.tape-freeze;
-                            tape-keylock <=> root.tape-keylock;
-                            tape-monitor <=> root.tape-monitor;
-                            tape-overdub <=> root.tape-overdub;
-                            mosaic-enabled <=> root.mosaic-enabled;
-                            mosaic-pitch <=> root.mosaic-pitch;
-                            mosaic-rate <=> root.mosaic-rate;
-                            mosaic-size <=> root.mosaic-size;
-                            mosaic-contour <=> root.mosaic-contour;
-                            mosaic-warp <=> root.mosaic-warp;
-                            mosaic-spray <=> root.mosaic-spray;
-                            mosaic-pattern <=> root.mosaic-pattern;
-                            mosaic-wet <=> root.mosaic-wet;
-                            mosaic-detune <=> root.mosaic-detune;
-                            mosaic-spatial <=> root.mosaic-spatial;
-                            mosaic-rand-rate <=> root.mosaic-rand-rate;
-                            mosaic-rand-size <=> root.mosaic-rand-size;
-                            mosaic-sos <=> root.mosaic-sos;
-                            ring-enabled <=> root.ring-enabled;
-                            ring-cutoff <=> root.ring-cutoff;
-                            ring-resonance <=> root.ring-resonance;
-                            ring-decay <=> root.ring-decay;
-                            ring-pitch <=> root.ring-pitch;
-                            ring-decay-modes: root.ring-decay-modes;
-                            ring-decay-mode <=> root.ring-decay-mode;
-                            ring-slope <=> root.ring-slope;
-                            ring-tone <=> root.ring-tone;
-                            ring-tilt <=> root.ring-tilt;
-                            ring-wet <=> root.ring-wet;
-                            ring-detune <=> root.ring-detune;
-                            ring-waves <=> root.ring-waves;
-                            ring-waves-rate <=> root.ring-waves-rate;
-                            ring-noise <=> root.ring-noise;
-                            ring-noise-rate <=> root.ring-noise-rate;
-                            load-sample => root.load-sample();
-                            save-sample => root.save-sample();
-                            toggle-record => root.toggle-record();
-                            audition-start => root.audition-start();
-                            audition-end => root.audition-end();
-                            track-level-changed(value) => { root.track-level-changed(value); }
-                            tape-speed-changed(value) => { root.tape-speed-changed(value); }
-                            tape-rotate-changed(value) => { root.tape-rotate-changed(value); }
-                            trigger-start-changed(value) => { root.trigger-start-changed(value); }
-                            loop-start-changed(value) => { root.loop-start-changed(value); }
-                            loop-length-changed(value) => { root.loop-length-changed(value); }
-                            tape-glide-changed(value) => { root.tape-glide-changed(value); }
-                            tape-sos-changed(value) => { root.tape-sos-changed(value); }
-                            loop-xfade-changed(value) => { root.loop-xfade-changed(value); }
-                            tape-rate-mode-selected(index) => { root.tape-rate-mode-selected(index); }
-                            loop-mode-selected(index) => { root.loop-mode-selected(index); }
-                            toggle-track-mute => root.toggle-track-mute();
-                            toggle-loop-enabled => root.toggle-loop-enabled();
-                            toggle-tape-reverse => root.toggle-tape-reverse();
-                            toggle-tape-freeze => root.toggle-tape-freeze();
-                            toggle-tape-keylock => root.toggle-tape-keylock();
-                            toggle-tape-monitor => root.toggle-tape-monitor();
-                            toggle-tape-overdub => root.toggle-tape-overdub();
-                            toggle-mosaic-enabled => root.toggle-mosaic-enabled();
-                            mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
-                            mosaic-rate-changed(value) => { root.mosaic-rate-changed(value); }
-                            mosaic-size-changed(value) => { root.mosaic-size-changed(value); }
-                            mosaic-contour-changed(value) => { root.mosaic-contour-changed(value); }
-                            mosaic-warp-changed(value) => { root.mosaic-warp-changed(value); }
-                            mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
-                            mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
-                            mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
-                            mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
-                            mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
-                            mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
-                            mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
-                            mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
-                            toggle-ring-enabled => root.toggle-ring-enabled();
-                            ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
-                            ring-resonance-changed(value) => { root.ring-resonance-changed(value); }
-                            ring-decay-changed(value) => { root.ring-decay-changed(value); }
-                            ring-pitch-changed(value) => { root.ring-pitch-changed(value); }
-                            ring-decay-mode-selected(index) => { root.ring-decay-mode-selected(index); }
-                            ring-slope-changed(value) => { root.ring-slope-changed(value); }
-                            ring-tone-changed(value) => { root.ring-tone-changed(value); }
-                            ring-tilt-changed(value) => { root.ring-tilt-changed(value); }
-                            ring-wet-changed(value) => { root.ring-wet-changed(value); }
-                            ring-detune-changed(value) => { root.ring-detune-changed(value); }
-                            ring-waves-changed(value) => { root.ring-waves-changed(value); }
-                            ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
-                            ring-noise-changed(value) => { root.ring-noise-changed(value); }
-                            ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
-                        }
-                    }
-                }
-
-                animate-section := Rectangle {
-                    width: parent.width;
-                    height: root.active-engine-type == 2 ? animate-content.preferred-height : 0px;
-                    clip: true;
-                    visible: root.active-engine-type == 2;
-
-                    animate-content := VerticalLayout {
-                        spacing: 12px;
-                        width: parent.width;
-                        Text { text: "Animate Engine"; color: #f0f0f2; font-size: 15px; }
-
-                        AnimateEngine {
-                            width: parent.width;
-                            animate-slot-types: root.animate-slot-types;
-                            animate-slot-a-type <=> root.animate-slot-a-type;
-                            animate-slot-b-type <=> root.animate-slot-b-type;
-                            animate-slot-c-type <=> root.animate-slot-c-type;
-                            animate-slot-d-type <=> root.animate-slot-d-type;
-                            animate-wavetables: root.animate-wavetables;
-                            animate-slot-a-wavetable <=> root.animate-slot-a-wavetable;
-                            animate-slot-b-wavetable <=> root.animate-slot-b-wavetable;
-                            animate-slot-c-wavetable <=> root.animate-slot-c-wavetable;
-                            animate-slot-d-wavetable <=> root.animate-slot-d-wavetable;
-                            animate-samples: root.animate-samples;
-                            animate-slot-a-sample <=> root.animate-slot-a-sample;
-                            animate-slot-b-sample <=> root.animate-slot-b-sample;
-                            animate-slot-c-sample <=> root.animate-slot-c-sample;
-                            animate-slot-d-sample <=> root.animate-slot-d-sample;
-                            animate-slot-a-level <=> root.animate-slot-a-level;
-                            animate-slot-b-level <=> root.animate-slot-b-level;
-                            animate-slot-c-level <=> root.animate-slot-c-level;
-                            animate-slot-d-level <=> root.animate-slot-d-level;
-                            animate-vector-x <=> root.animate-vector-x;
-                            animate-vector-y <=> root.animate-vector-y;
-                            animate-filter-cutoff <=> root.animate-filter-cutoff;
-                            animate-filter-resonance <=> root.animate-filter-resonance;
-                            animate-filter-drive <=> root.animate-filter-drive;
-                            animate-filter-types: root.animate-filter-types;
-                            animate-filter-type <=> root.animate-filter-type;
-                            animate-amp-attack <=> root.animate-amp-attack;
-                            animate-amp-decay <=> root.animate-amp-decay;
-                            animate-amp-sustain <=> root.animate-amp-sustain;
-                            animate-amp-release <=> root.animate-amp-release;
-                            animate-sequencer-grid <=> root.animate-sequencer-grid;
-                            animate-sequencer-current-step: root.animate-sequencer-current-step;
-                            animate-slot-a-type-changed(index) => { root.animate-slot-a-type-changed(index); }
-                            animate-slot-b-type-changed(index) => { root.animate-slot-b-type-changed(index); }
-                            animate-slot-c-type-changed(index) => { root.animate-slot-c-type-changed(index); }
-                            animate-slot-d-type-changed(index) => { root.animate-slot-d-type-changed(index); }
-                            animate-slot-a-wavetable-changed(index) => { root.animate-slot-a-wavetable-changed(index); }
-                            animate-slot-b-wavetable-changed(index) => { root.animate-slot-b-wavetable-changed(index); }
-                            animate-slot-c-wavetable-changed(index) => { root.animate-slot-c-wavetable-changed(index); }
-                            animate-slot-d-wavetable-changed(index) => { root.animate-slot-d-wavetable-changed(index); }
-                            animate-slot-a-sample-changed(index) => { root.animate-slot-a-sample-changed(index); }
-                            animate-slot-b-sample-changed(index) => { root.animate-slot-b-sample-changed(index); }
-                            animate-slot-c-sample-changed(index) => { root.animate-slot-c-sample-changed(index); }
-                            animate-slot-d-sample-changed(index) => { root.animate-slot-d-sample-changed(index); }
-                            animate-slot-a-level-changed(value) => { root.animate-slot-a-level-changed(value); }
-                            animate-slot-b-level-changed(value) => { root.animate-slot-b-level-changed(value); }
-                            animate-slot-c-level-changed(value) => { root.animate-slot-c-level-changed(value); }
-                            animate-slot-d-level-changed(value) => { root.animate-slot-d-level-changed(value); }
-                            animate-vector-changed(x, y) => { root.animate-vector-changed(x, y); }
-                            animate-filter-cutoff-changed(value) => { root.animate-filter-cutoff-changed(value); }
-                            animate-filter-resonance-changed(value) => { root.animate-filter-resonance-changed(value); }
-                            animate-filter-drive-changed(value) => { root.animate-filter-drive-changed(value); }
-                            animate-filter-type-changed(index) => { root.animate-filter-type-changed(index); }
-                            animate-amp-attack-changed(value) => { root.animate-amp-attack-changed(value); }
-                            animate-amp-decay-changed(value) => { root.animate-amp-decay-changed(value); }
-                            animate-amp-sustain-changed(value) => { root.animate-amp-sustain-changed(value); }
-                            animate-amp-release-changed(value) => { root.animate-amp-release-changed(value); }
-                            animate-sequencer-grid-toggled(row, step) => { root.animate-sequencer-grid-toggled(row, step); }
-                        }
-                    }
-                }
-    }
-}
-}
-
-    Rectangle {
-        visible: root.show-settings;
-        width: parent.width;
-        height: parent.height;
-        background: #00000080;
-
-        Rectangle {
-            width: Math.min(520px, parent.width - 40px);
-            height: Math.min(520px, parent.height - 40px);
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            background: #15151c;
-            border-color: #2a2a35;
-            border-width: 1px;
-            border-radius: 8px;
-
-            VerticalLayout {
-                padding: 16px;
-                spacing: 10px;
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Text {
-                        text: "Audio Settings";
-                        color: #e4e4ea;
-                        font-size: 16px;
-                        horizontal-stretch: 1;
-                    }
-                    Button {
-                        text: "Close";
-                        clicked => root.toggle-settings();
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Text { text: "Output device"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
-                    RDSComboBox {
-                        model: root.output-devices;
-                        current-index: root.output-device-index;
-                        selected => {
-                            root.output-device-index = self.current-index;
-                            root.output-device-selected(self.current-index);
-                        }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Text { text: "Input device"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
-                    RDSComboBox {
-                        model: root.input-devices;
-                        current-index: root.input-device-index;
-                        selected => {
-                            root.input-device-index = self.current-index;
-                            root.input-device-selected(self.current-index);
-                        }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Text { text: "Sample rate"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
-                    RDSComboBox {
-                        model: root.sample-rates;
-                        current-index: root.sample-rate-index;
-                        selected => {
-                            root.sample-rate-index = self.current-index;
-                            root.sample-rate-selected(self.current-index);
-                        }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Text { text: "Buffer size"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
-                    RDSComboBox {
-                        model: root.buffer-sizes;
-                        current-index: root.buffer-size-index;
-                        selected => {
-                            root.buffer-size-index = self.current-index;
-                            root.buffer-size-selected(self.current-index);
-                        }
-                    }
-                }
-
-                Text { text: "Metronome"; color: #e4e4ea; font-size: 15px; }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Button {
-                        text: root.metronome-enabled ? "Metronome On" : "Metronome Off";
-                        clicked => root.toggle-metronome();
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Text { text: root.metronome-count-in-label; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.metronome-count-in;
-                        min-value: 0;
-                        max-value: 8;
-                        size: 32px;
-                        indicator-position: 10px;
-                        sensitivity: 0.1;
-                        scroll-sensitivity: 0.1;
-                        value-changed(v) => {
-                            root.metronome-count-in = v;
-                            root.metronome-count-in-changed(v);
-                        }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Button {
-                        text: root.metronome-count-playback ? "Count-In Playback On" : "Count-In Playback Off";
-                        clicked => root.toggle-metronome-count-playback();
-                    }
-                    Button {
-                        text: root.metronome-count-record ? "Count-In Record On" : "Count-In Record Off";
-                        clicked => root.toggle-metronome-count-record();
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Button { text: "Refresh Devices"; clicked => root.refresh-devices(); }
-                    Button { text: "Apply & Restart"; clicked => root.apply-settings(); }
-                }
-
-                Text {
-                    text: root.settings-status;
-                    color: #d0a7ff;
-                    font-size: 12px;
+                if root.show-browser : Browser {
+                    x: 50px;
+                    y: 50px;
+                    width: parent.width - 100px;
+                    height: parent.height - 100px;
+                    library-folders: root.library-folders;
+                    current-folder-content: root.current-folder-content;
+                    current-path: root.current-path;
+                    close => { root.show-browser = false; }
+                    add-library-folder => { root.add-library-folder(); }
+                    select-library-folder(index) => { root.select-library-folder(index); }
+                    open-entry(entry) => { root.open-browser-entry(entry); }
+                    save-project(title, desc) => { root.save-project-data(title, desc); }
+                    export-project(title, desc) => { root.export-project-data(title, desc); }
                 }
             }
         }
     }
-
-    Rectangle {
-        visible: root.show-engine-confirm;
-        width: parent.width;
-        height: parent.height;
-        background: #00000080;
-
-        Rectangle {
-            width: Math.min(420px, parent.width - 40px);
-            height: 180px;
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            background: #15151c;
-            border-color: #2a2a35;
-            border-width: 1px;
-            border-radius: 8px;
-
-            VerticalLayout {
-                padding: 16px;
-                spacing: 12px;
-                Text {
-                    text: "Replace engine?";
-                    color: #f0f0f2;
-                    font-size: 16px;
-                }
-                Text {
-                    text: root.engine-confirm-text;
-                    color: #b9b9bf;
-                    font-size: 12px;
-                }
-                HorizontalLayout {
-                    spacing: 8px;
-                    Button { text: "Cancel"; clicked => root.cancel-engine-load(); }
-                    Button { text: "Proceed to load..."; clicked => root.confirm-engine-load(); }
-                }
-            }
-        }
-    }
-}
 }
