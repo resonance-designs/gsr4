@@ -7,15 +7,6 @@
  * Component: Core Logic
  */
 
-/**
- * TLBX-1 - A Rust-based audio toolbox.
- * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
- * Author: Richard Bakos <info@resonancedesigns.dev>
- * Website: https://resonancedesigns.dev
- * Version: 0.1.15
- * Component: Core Logic
- */
-
 use nih_plug::prelude::*;
 use cpal::traits::{DeviceTrait, HostTrait};
 use parking_lot::Mutex;
@@ -110,7 +101,7 @@ const METRONOME_COUNT_IN_MAX_TICKS: u32 = 8;
 const KEYLOCK_GRAIN_SIZE: usize = 256;
 const KEYLOCK_GRAIN_HOP: usize = KEYLOCK_GRAIN_SIZE / 2;
 const OSCILLOSCOPE_SAMPLES: usize = 256;
-const SPECTRUM_BINS: usize = 64;
+const SPECTRUM_BINS: usize = 48;
 const SPECTRUM_WINDOW: usize = 256;
 const VECTORSCOPE_POINTS: usize = 128;
 
@@ -5176,6 +5167,9 @@ impl Plugin for TLBX1 {
                                 im -= sample * phase.sin();
                             }
                             let mag = (re * re + im * im).sqrt() / window_len as f32;
+                            let mag = mag.clamp(0.0, 1.0);
+                            // Compress dynamic range to make low-level movement more visible.
+                            let mag = (1.0_f32 + 20.0 * mag).ln() / (1.0_f32 + 20.0).ln();
                             spectrum[bin] = mag.clamp(0.0, 1.0);
                         }
                         for bin in bins..SPECTRUM_BINS {
