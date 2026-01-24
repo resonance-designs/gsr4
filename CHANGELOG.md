@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.15] - 2026-01-23
+
+- Cleaned build warnings by removing unused fields/helpers and tightening follow_host_tempo field usage across TLBX1/SlintEditor/SlintWindow, plus simplified loops.
+- Removed unused project serialization structs/helpers. Fixed browser panel padding by wrapping in a layout.
+- Adjusted the spectrum display to be less “wide” and show more movement.
+- Per-engine mute toggles for Animate, SynDRM, Void Seed, and Tape UI.
+- Transport decoupling to allow synth voice tails after transport stops.
+- Void Seed output boost (+3 dB).
+- Non-tape engine mixing fix (un-nesting track mix block).
+- Added a public commit() function on RDSNumericKeypad and wired the modal “Okay” button to call it, so it uses the same committed path as the keypad.
+- Removed "Quit" button and relocated "Browser" button.
+- Reintroduced Void Seed smoothing in the DSP path and synced the reset/init path so the smooth atoms track the raw values again.
+
+## [0.1.14] - 2026-01-23
+
+- Renamed SimpKick to SynDRM and add snare synth lane + DSP params (drive, filters, attack)
+- Migrated SynDRM DSP to FunDSP with per‑track chains and new filter types
+- Overhauled SynDRM sequencer UI (pages/lanes/step editor, randomize/clear tooling)
+- Extracted Mosaic (Granulator) and Ring (Silk) devices into dedicated components
+- Added reusable UI components: XY pad, numeric keypad modal, keybed
+- Integrated keybed in Animate UI and wired via global bus to avoid TLBX1 callback crashes
+- Updated all relevant documentation.
+
+## [0.1.13] - 2026-01-23
+
+- Added Void Seed engine: a 12-oscillator generative drone swarm with chaotic LFO modulation, integrated feedback/diffusion delay, and "Chaos/Entropy" XY pad.
+- Updated user manual and developer onboarding documentation
+
 ## [0.1.12] - 2026-01-22
 
 - Fixed bug where granulator and silk devices were affecting audio processing for all tracks instead of just the track it's loaded on.

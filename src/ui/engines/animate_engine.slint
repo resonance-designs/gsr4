@@ -3,8 +3,10 @@ import {
     RDSKnob,
     RDSSequencerCell,
     RDSComboBox,
-    RDSCircleToggle
+    RDSCircleToggle,
+    RDSKeybed
 } from "../components/index.slint";
+import { RDSKeybedBus } from "../globals.slint";
 
 export component AnimateEngine {
     in property <[string]> animate-slot-types;
@@ -94,6 +96,8 @@ export component AnimateEngine {
 
     in property <[string]> animate-filter-types;
 
+    in-out property <bool> track-muted: false;
+
     in-out property <[bool]> animate-sequencer-grid;
     in property <int> animate-sequencer-current-step: -1;
 
@@ -164,6 +168,8 @@ export component AnimateEngine {
     callback animate-slot-d-loop-start-changed(value: float);
     callback animate-slot-d-loop-end-changed(value: float);
 
+    callback toggle-track-mute();
+
     callback animate-vector-changed(x: float, y: float);
     callback animate-lfo-x-waveform-changed(index: int);
     callback animate-lfo-x-sync-changed(value: bool);
@@ -176,6 +182,8 @@ export component AnimateEngine {
     callback animate-lfo-y-rate-changed(value: float);
     callback animate-lfo-y-amount-changed(value: float);
 
+    private property <int> keybed-last-note: 60;
+
     callback animate-sequencer-grid-toggled(row: int, step: int);
 
     VerticalLayout {
@@ -183,11 +191,25 @@ export component AnimateEngine {
         width: parent.width;
         padding: 12px;
 
-        RDSHeaderLabel {
-            text: "Animate";
-            horizontal-alignment: left;
-            padding-horizontal: 12px;
-            padding-vertical: 6px;
+        HorizontalLayout {
+            spacing: 12px;
+            width: parent.width;
+
+            RDSHeaderLabel {
+                text: "Animate";
+                horizontal-alignment: left;
+                padding-horizontal: 12px;
+                padding-vertical: 6px;
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                Text { text: "Mute"; color: #b9b9bf; font-size: 11px; }
+                RDSCircleToggle {
+                    active: root.track-muted;
+                    clicked => root.toggle-track-mute();
+                }
+            }
         }
 
         HorizontalLayout {
@@ -1102,15 +1124,40 @@ export component AnimateEngine {
             }
         }
 
-        VerticalLayout {
-            spacing: 4px;
-            Text { text: "Sequencer"; color: #e4e4ea; font-size: 14px; }
-            for r in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] : HorizontalLayout {
-                spacing: 2px;
-                for s in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : RDSSequencerCell {
-                    active: root.animate-sequencer-grid[r * 16 + s];
-                    current: s == root.animate-sequencer-current-step;
-                    clicked => { root.animate-sequencer-grid-toggled(r, s); }
+        HorizontalLayout {
+            spacing: 16px;
+
+            VerticalLayout {
+                spacing: 4px;
+                Text { text: "Sequencer"; color: #e4e4ea; font-size: 14px; }
+                for r in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] : HorizontalLayout {
+                    spacing: 2px;
+                    for s in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : RDSSequencerCell {
+                        active: root.animate-sequencer-grid[r * 16 + s];
+                        current: s == root.animate-sequencer-current-step;
+                        clicked => { root.animate-sequencer-grid-toggled(r, s); }
+                    }
+                }
+            }
+
+            // Keybed (UI only for isolation)
+            VerticalLayout {
+                spacing: 4px;
+                Text { text: "Keybed"; color: #e4e4ea; font-size: 14px; }
+                Text {
+                    text: "Last note: " + keybed-last-note;
+                    color: #a9a9b6;
+                    font-size: 11px;
+                }
+                RDSKeybed {
+                    octaves: 2;
+                    scale: "chromatic";
+                    size: 16px;
+                    note-triggered(note) => {
+                        keybed-last-note = note;
+                        RDSKeybedBus.last-note = note;
+                        RDSKeybedBus.note-triggered(note);
+                    }
                 }
             }
         }

@@ -20,7 +20,7 @@ This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
 ## Tracks
 
 - Use the Track 1–4 buttons to select the active track.
-- Each track can load a sample and run the Tape engine + Mosaic device, or load Animate/SimpKick.
+- Each track can load a sample and run the Tape engine + Mosaic device, or load Animate/SynDRM.
 
 ## Tape Engine
 
@@ -31,20 +31,36 @@ This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
 ## Animate Engine
 
 - Load the Animate engine per track via the Engine selector + Load Engine.
-- Animate displays its own slot controls and X‑Y pad when loaded.
+- Animate displays its own slot controls, X‑Y pad, and chromatic keybed when loaded.
 
-## SimpKick Engine
+## SynDRM Engine
 
-- Load the SimpKick engine per track via the Engine selector + Load Engine.
-- The kick synth includes Pitch, Decay, Attack, Drive, and Level controls.
-- Use the 16-step sequencer row to toggle steps on/off per track.
+- Load the SynDRM engine per track via the Engine selector + Load Engine.
+- SynDRM includes kick + snare synth lanes with Pitch/Tone, Decay, Attack, Drive, and Level controls.
+- Use the sequencer lanes to toggle steps on/off per track.
 
-## Mosaic Device
+## Void Seed Engine
+
+- Load the Void Seed engine per track via the Engine selector + Load Engine.
+- **Chaos / Entropy Map**: An X-Y pad that controls **Chaos Depth** (X-axis) and **Entropy** (Y-axis) for the generative swarm.
+- **Gain**: A vertical slider to control the final output level of the drone.
+- **Open/Close Void**: A large toggle button to activate or deactivate the engine output.
+- **Base Freq**: Sets the fundamental frequency of the oscillator swarm.
+- **Mod Rate**: Adjusts the rate of the internal chaotic LFOs.
+- **Feedback & Diffusion**: Controls the feedback and wetness of the integrated delay and diffusion network.
+- **Spectrum Viz**: Provides a real-time frequency analysis of the engine's output.
+
+## Mosaic Device (Granulator)
 
 - Mosaic runs after Tape and draws from a 4‑second buffer.
 - Mosaic ON/BYPASS toggles granular processing per track.
 - Pitch is bipolar (±36 semitones); contour is bipolar; other params are unipolar.
 - All Mosaic parameters are smoothed to avoid zipper noise.
+
+## Ring Device (Silk)
+
+- Ring runs after Tape and Mosaic in the per‑track device chain.
+- Ring provides filter/modulation processing per track with a wet/dry mix.
 
 ## Audio Settings (Standalone)
 

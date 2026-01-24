@@ -1,0 +1,218 @@
+import {
+    RDSHeaderLabel,
+    RDSKnob,
+    RDSToggle,
+    RDSSpectrumViz,
+    RDSSlider,
+    RDSXYPad,
+    RDSCircleToggle
+} from "../components/index.slint";
+
+export component VoidSeedEngine {
+    in-out property <bool> track-muted: false;
+    in-out property <float> void-base-freq: 40.0;
+    in-out property <float> void-chaos-depth: 0.5;
+    in-out property <float> void-entropy: 0.2;
+    in-out property <float> void-feedback: 0.8;
+    in-out property <float> void-diffusion: 0.5;
+    in-out property <float> void-mod-rate: 0.1;
+    in-out property <float> void-level: 0.8;
+
+    in property <bool> void-enabled: false;
+    in property <[float]> spectrum;
+
+    callback void-base-freq-changed(float);
+    callback void-chaos-depth-changed(float);
+    callback void-entropy-changed(float);
+    callback void-feedback-changed(float);
+    callback void-diffusion-changed(float);
+    callback void-mod-rate-changed(float);
+    callback void-level-changed(float);
+    callback toggle-void();
+    callback toggle-track-mute();
+
+    VerticalLayout {
+        spacing: 12px;
+        width: parent.width;
+
+        HorizontalLayout {
+            spacing: 10px;
+            width: parent.width;
+
+            RDSHeaderLabel {
+                text: "Void Seed";
+                horizontal-alignment: left;
+                padding-horizontal: 12px;
+                padding-vertical: 6px;
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                Text { text: "Mute"; color: #b9b9bf; font-size: 11px; }
+                RDSCircleToggle {
+                    active: root.track-muted;
+                    clicked => root.toggle-track-mute();
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 20px;
+
+        // Left Side: Gain Slider + Chaos Pad
+        VerticalLayout {
+            spacing: 8px;
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+
+                // Gain Slider
+                VerticalLayout {
+                    spacing: 4px;
+                    alignment: end;
+                    Text {
+                        text: "GAIN";
+                        color: #f06292;
+                        font-size: 9px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+                    RDSSlider {
+                        value: root.void-level;
+                        min-value: 0.0;
+                        max-value: 1.0;
+                        size: "small";
+                        height-override: 200px;
+                        value-changed(v) => { root.void-level = v; root.void-level-changed(v); }
+                    }
+                }
+
+                // Chaos Pad (XY Pad)
+                VerticalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: "Chaos / Entropy Map";
+                        color: #f06292;
+                        font-size: 11px;
+                        font-weight: 700;
+                        letter-spacing: 0.5px;
+                    }
+
+                    RDSXYPad {
+                        width: 200px;
+                        height: 200px;
+                        value-x <=> root.void-chaos-depth;
+                        value-y <=> root.void-entropy;
+                        pad-background: #000000;
+                        pad-border-color: #f0629233;
+                        grid-color: #f0629211;
+                        handle-color: #f06292;
+                        glow-color: #f0629233;
+                        border-radius: 8px;
+                        handle-size: 14px;
+                        value-x-changed(v) => { root.void-chaos-depth-changed(v); }
+                        value-y-changed(v) => { root.void-entropy-changed(v); }
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 40px;
+                background: root.void-enabled ? #f06292 : #1e1e26;
+                border-radius: 4px;
+                border-color: #f0629266;
+                border-width: 1px;
+
+                Text {
+                    text: root.void-enabled ? "CLOSE_VOID" : "OPEN_VOID";
+                    color: root.void-enabled ? #ffffff : #f0629266;
+                    font-size: 12px;
+                    font-weight: 900;
+                    letter-spacing: 2px;
+                }
+
+                TouchArea {
+                    clicked => {
+                        root.toggle-void();
+                    }
+                }
+
+                animate background { duration: 250ms; }
+            }
+        }
+
+        // Parameters
+        VerticalLayout {
+            spacing: 16px;
+            Text {
+                text: "Void Parameters";
+                color: #00e5ff;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+
+            GridLayout {
+                spacing: 20px;
+                Row {
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Base Freq"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-base-freq;
+                            min-value: 20; max-value: 200;
+                            size: 50px;
+                            value-changed(v) => { root.void-base-freq = v; root.void-base-freq-changed(v); }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Mod Rate"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-mod-rate;
+                            min-value: 0.01; max-value: 10.0;
+                            size: 50px;
+                            value-changed(v) => { root.void-mod-rate = v; root.void-mod-rate-changed(v); }
+                        }
+                    }
+                }
+                Row {
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Feedback"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-feedback;
+                            min-value: 0.0; max-value: 0.98;
+                            size: 50px;
+                            value-changed(v) => { root.void-feedback = v; root.void-feedback-changed(v); }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Diffusion"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-diffusion;
+                            min-value: 0.0; max-value: 1.0;
+                            size: 50px;
+                            value-changed(v) => { root.void-diffusion = v; root.void-diffusion-changed(v); }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 60px;
+                background: #000000;
+                border-radius: 4px;
+                border-color: #333333;
+                border-width: 1px;
+                RDSSpectrumViz {
+                    width: parent.width - 4px;
+                    height: parent.height - 4px;
+                    spectrum: root.spectrum;
+                }
+            }
+        }
+        }
+    }
+}
