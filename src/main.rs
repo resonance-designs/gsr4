@@ -7,6 +7,15 @@
  * Component: Main Entry Point
  */
 
+/**
+ * TLBX-1 - A Rust-based audio toolbox.
+ * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
+ * Author: Richard Bakos <info@resonancedesigns.dev>
+ * Website: https://resonancedesigns.dev
+ * Version: 0.1.15
+ * Component: Main Entry Point
+ */
+
 use nih_plug::prelude::*;
 use env_logger::Env;
 use tlbx1_core::TLBX1;

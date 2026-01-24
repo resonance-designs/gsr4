@@ -7,6 +7,15 @@
  * Component: Core Logic
  */
 
+/**
+ * TLBX-1 - A Rust-based audio toolbox.
+ * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
+ * Author: Richard Bakos <info@resonancedesigns.dev>
+ * Website: https://resonancedesigns.dev
+ * Version: 0.1.15
+ * Component: Core Logic
+ */
+
 use nih_plug::prelude::*;
 use cpal::traits::{DeviceTrait, HostTrait};
 use parking_lot::Mutex;
@@ -135,8 +144,6 @@ struct Track {
     waveform_summary: Arc<Mutex<Vec<f32>>>,
     /// Whether the track is currently recording.
     is_recording: AtomicBool,
-    /// Whether the track is armed for recording.
-    record_armed: AtomicBool,
     /// Pending play start after count-in.
     pending_play: AtomicBool,
     /// Pending record start after count-in.
@@ -597,34 +604,20 @@ struct Track {
     snare_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
     /// Void Seed base frequency.
     void_base_freq: AtomicU32,
-    /// Smoothed void base frequency.
-    void_base_freq_smooth: AtomicU32,
     /// Void Seed chaos depth (X).
     void_chaos_depth: AtomicU32,
-    /// Smoothed void chaos depth.
-    void_chaos_depth_smooth: AtomicU32,
     /// Void Seed entropy (Y).
     void_entropy: AtomicU32,
-    /// Smoothed void entropy.
-    void_entropy_smooth: AtomicU32,
     /// Whether the void seed engine is enabled and active.
     void_enabled: AtomicBool,
     /// Void Seed feedback.
     void_feedback: AtomicU32,
-    /// Smoothed void feedback.
-    void_feedback_smooth: AtomicU32,
     /// Void Seed diffusion (wet).
     void_diffusion: AtomicU32,
-    /// Smoothed void diffusion.
-    void_diffusion_smooth: AtomicU32,
     /// Void Seed modulation rate.
     void_mod_rate: AtomicU32,
-    /// Smoothed void modulation rate.
-    void_mod_rate_smooth: AtomicU32,
     /// Void Seed level.
     void_level: AtomicU32,
-    /// Smoothed void level.
-    void_level_smooth: AtomicU32,
     /// Void Seed oscillator phases.
     void_osc_phases: [AtomicU32; 12],
     /// Void Seed detune LFO phases.
@@ -658,7 +651,6 @@ impl Default for Track {
             sample_path: Arc::new(Mutex::new(None)),
             waveform_summary: Arc::new(Mutex::new(vec![0.0; WAVEFORM_SUMMARY_SIZE])),
             is_recording: AtomicBool::new(false),
-            record_armed: AtomicBool::new(false),
             pending_play: AtomicBool::new(false),
             pending_record: AtomicBool::new(false),
             count_in_remaining: AtomicU32::new(0),
@@ -900,20 +892,13 @@ impl Default for Track {
             snare_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.6f32.to_bits()))),
             snare_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits()))),
             void_base_freq: AtomicU32::new(40.0f32.to_bits()),
-            void_base_freq_smooth: AtomicU32::new(40.0f32.to_bits()),
             void_enabled: AtomicBool::new(false),
             void_chaos_depth: AtomicU32::new(0.5f32.to_bits()),
-            void_chaos_depth_smooth: AtomicU32::new(0.5f32.to_bits()),
             void_entropy: AtomicU32::new(0.2f32.to_bits()),
-            void_entropy_smooth: AtomicU32::new(0.2f32.to_bits()),
             void_feedback: AtomicU32::new(0.8f32.to_bits()),
-            void_feedback_smooth: AtomicU32::new(0.8f32.to_bits()),
             void_diffusion: AtomicU32::new(0.5f32.to_bits()),
-            void_diffusion_smooth: AtomicU32::new(0.5f32.to_bits()),
             void_mod_rate: AtomicU32::new(0.1f32.to_bits()),
-            void_mod_rate_smooth: AtomicU32::new(0.1f32.to_bits()),
             void_level: AtomicU32::new(0.8f32.to_bits()),
-            void_level_smooth: AtomicU32::new(0.8f32.to_bits()),
             void_osc_phases: Default::default(),
             void_lfo_phases: Default::default(),
             void_lfo_freqs: [
@@ -1087,7 +1072,7 @@ impl AnimateLibrary {
         if idx >= self.wavetable_paths.len() {
             return None;
         }
-        if let Some(mut cache) = self.wavetables.try_lock() {
+        if let Some(cache) = self.wavetables.try_lock() {
             if let Some(existing) = cache.get(idx).and_then(|entry| entry.clone()) {
                 return Some(existing);
             }
@@ -1111,7 +1096,7 @@ impl AnimateLibrary {
         if idx >= self.sample_paths.len() {
             return None;
         }
-        if let Some(mut cache) = self.samples.try_lock() {
+        if let Some(cache) = self.samples.try_lock() {
             if let Some(existing) = cache.get(idx).and_then(|entry| entry.clone()) {
                 return Some(existing);
             }
@@ -2216,18 +2201,18 @@ impl TLBX1 {
                     let filter_f =
                         (2.0 * (std::f32::consts::PI * cutoff_hz / sr).sin()).clamp(0.0, 0.99);
                     let filter_q = 1.0 - filter_resonance;
-                    let mut filter_v1 = f32::from_bits(
+                    let filter_v1 = f32::from_bits(
                         track.animate_slot_filter_v1[row][slot].load(Ordering::Relaxed),
                     );
-                    let mut filter_v2 = f32::from_bits(
+                    let filter_v2 = f32::from_bits(
                         track.animate_slot_filter_v2[row][slot].load(Ordering::Relaxed),
                     );
-                    let mut filter_v1_stage2 = f32::from_bits(
+                    let filter_v1_stage2 = f32::from_bits(
                         track
                             .animate_slot_filter_v1_stage2[row][slot]
                             .load(Ordering::Relaxed),
                     );
-                    let mut filter_v2_stage2 = f32::from_bits(
+                    let filter_v2_stage2 = f32::from_bits(
                         track
                             .animate_slot_filter_v2_stage2[row][slot]
                             .load(Ordering::Relaxed),
@@ -2247,23 +2232,24 @@ impl TLBX1 {
                     };
                     if !filtered_sample.is_finite() {
                         filtered_sample = slot_sample;
-                        filter_v1 = 0.0;
-                        filter_v2 = 0.0;
-                        filter_v1_stage2 = 0.0;
-                        filter_v2_stage2 = 0.0;
+                        track.animate_slot_filter_v1[row][slot]
+                            .store(0.0f32.to_bits(), Ordering::Relaxed);
+                        track.animate_slot_filter_v2[row][slot]
+                            .store(0.0f32.to_bits(), Ordering::Relaxed);
+                        track.animate_slot_filter_v1_stage2[row][slot]
+                            .store(0.0f32.to_bits(), Ordering::Relaxed);
+                        track.animate_slot_filter_v2_stage2[row][slot]
+                            .store(0.0f32.to_bits(), Ordering::Relaxed);
+                    } else {
+                        track.animate_slot_filter_v1[row][slot]
+                            .store(filter_band.to_bits(), Ordering::Relaxed);
+                        track.animate_slot_filter_v2[row][slot]
+                            .store(filter_low.to_bits(), Ordering::Relaxed);
+                        track.animate_slot_filter_v1_stage2[row][slot]
+                            .store(filter_band_stage2.to_bits(), Ordering::Relaxed);
+                        track.animate_slot_filter_v2_stage2[row][slot]
+                            .store(filter_low_stage2.to_bits(), Ordering::Relaxed);
                     }
-                    filter_v1 = filter_band;
-                    filter_v2 = filter_low;
-                    filter_v1_stage2 = filter_band_stage2;
-                    filter_v2_stage2 = filter_low_stage2;
-                    track.animate_slot_filter_v1[row][slot]
-                        .store(filter_v1.to_bits(), Ordering::Relaxed);
-                    track.animate_slot_filter_v2[row][slot]
-                        .store(filter_v2.to_bits(), Ordering::Relaxed);
-                    track.animate_slot_filter_v1_stage2[row][slot]
-                        .store(filter_v1_stage2.to_bits(), Ordering::Relaxed);
-                    track.animate_slot_filter_v2_stage2[row][slot]
-                        .store(filter_v2_stage2.to_bits(), Ordering::Relaxed);
                     slot_sample = filtered_sample;
 
                     let level = f32::from_bits(track.animate_slot_level[slot].load(Ordering::Relaxed)) * weights[slot] * amp_levels[row];
@@ -2397,19 +2383,20 @@ impl TLBX1 {
                     };
                     if !filtered_sample.is_finite() {
                         filtered_sample = slot_sample;
-                        filter_v1 = 0.0;
-                        filter_v2 = 0.0;
-                        filter_v1_stage2 = 0.0;
-                        filter_v2_stage2 = 0.0;
+                        keybed_filter_v1[slot] = 0.0;
+                        keybed_filter_v2[slot] = 0.0;
+                        keybed_filter_v1_stage2[slot] = 0.0;
+                        keybed_filter_v2_stage2[slot] = 0.0;
+                    } else {
+                        filter_v1 = filter_band;
+                        filter_v2 = filter_low;
+                        filter_v1_stage2 = filter_band_stage2;
+                        filter_v2_stage2 = filter_low_stage2;
+                        keybed_filter_v1[slot] = filter_v1;
+                        keybed_filter_v2[slot] = filter_v2;
+                        keybed_filter_v1_stage2[slot] = filter_v1_stage2;
+                        keybed_filter_v2_stage2[slot] = filter_v2_stage2;
                     }
-                    filter_v1 = filter_band;
-                    filter_v2 = filter_low;
-                    filter_v1_stage2 = filter_band_stage2;
-                    filter_v2_stage2 = filter_low_stage2;
-                    keybed_filter_v1[slot] = filter_v1;
-                    keybed_filter_v2[slot] = filter_v2;
-                    keybed_filter_v1_stage2[slot] = filter_v1_stage2;
-                    keybed_filter_v2_stage2[slot] = filter_v2_stage2;
                     slot_sample = filtered_sample;
 
                     let level = f32::from_bits(track.animate_slot_level[slot].load(Ordering::Relaxed))
@@ -4228,7 +4215,7 @@ impl Plugin for TLBX1 {
         }
 
         // Handle recording for all tracks
-        for (track_idx, track) in self.tracks.iter().enumerate() {
+        for track in self.tracks.iter() {
             if track.is_recording.load(Ordering::Relaxed) {
                 keep_alive = true;
             }
@@ -4306,7 +4293,7 @@ impl Plugin for TLBX1 {
             .iter()
             .any(|track| track.is_recording.load(Ordering::Relaxed));
         let mut monitor_level = 0.0;
-        for (track_idx, track) in self.tracks.iter().enumerate() {
+        for track in self.tracks.iter() {
             if track.tape_monitor.load(Ordering::Relaxed) && !track.is_muted.load(Ordering::Relaxed)
             {
                 monitor_level += f32::from_bits(track.level.load(Ordering::Relaxed));
@@ -4332,7 +4319,11 @@ impl Plugin for TLBX1 {
 
         // Handle playback for all tracks
         let transport_running = any_playing;
-        for (track_idx, track) in self.tracks.iter().enumerate() {
+        for (track, syndrm_dsp) in self
+            .tracks
+            .iter()
+            .zip(self.syndrm_dsp.iter_mut())
+        {
             if track.is_recording.load(Ordering::Relaxed) {
                 continue;
             }
@@ -4398,7 +4389,7 @@ impl Plugin for TLBX1 {
                 Self::process_syndrm(
                     track,
                     &mut self.track_buffer,
-                    &mut self.syndrm_dsp[track_idx],
+                    syndrm_dsp,
                     buffer.samples(),
                     &self.global_tempo,
                     master_step,
@@ -5759,56 +5750,6 @@ fn save_track_sample(track: &Track, path: &PathBuf) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-fn default_one() -> f32 {
-    1.0
-}
-
-fn default_tempo() -> f32 {
-    120.0
-}
-
-#[derive(Serialize, Deserialize)]
-struct ProjectFile {
-    version: u32,
-    #[serde(default = "default_tempo")]
-    global_tempo: f32,
-    tracks: Vec<ProjectTrack>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ProjectTrack {
-    sample_path: Option<String>,
-    level: f32,
-    muted: bool,
-    #[serde(default = "default_one")]
-    tape_speed: f32,
-    #[serde(default = "default_tempo")]
-    tape_tempo: f32,
-    #[serde(default)]
-    tape_rate_mode: u32,
-    #[serde(default)]
-    tape_rotate: f32,
-    #[serde(default)]
-    tape_glide: f32,
-    #[serde(default)]
-    tape_sos: f32,
-    #[serde(default)]
-    tape_reverse: bool,
-    #[serde(default)]
-    tape_freeze: bool,
-    #[serde(default)]
-    tape_keylock: bool,
-    #[serde(default)]
-    tape_monitor: bool,
-    #[serde(default)]
-    tape_overdub: bool,
-    loop_start: f32,
-    loop_length: f32,
-    loop_xfade: f32,
-    loop_enabled: bool,
-    #[serde(default)]
-    loop_mode: u32,
-}
 
 fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     let f = |a: &AtomicU32| f32::from_bits(a.load(Ordering::Relaxed));
@@ -6581,7 +6522,7 @@ struct SlintWindow {
     master_meters: Arc<MasterMeters>,
     visualizer: Arc<VisualizerState>,
     global_tempo: Arc<AtomicU32>,
-    follow_host_tempo: Arc<AtomicBool>,
+    _follow_host_tempo: Arc<AtomicBool>,
     metronome_enabled: Arc<AtomicBool>,
     metronome_count_in_ticks: Arc<AtomicU32>,
     metronome_count_in_playback: Arc<AtomicBool>,
@@ -6604,11 +6545,11 @@ struct SlintWindow {
     scale_factor: f32,
     pixel_buffer: Vec<PremultipliedRgbaColor>,
     last_cursor: LogicalPosition,
-    library_folders: Arc<Mutex<Vec<PathBuf>>>,
+    _library_folders: Arc<Mutex<Vec<PathBuf>>>,
     current_path: Arc<Mutex<PathBuf>>,
-    library_folders_model: std::rc::Rc<VecModel<SharedString>>,
+    _library_folders_model: std::rc::Rc<VecModel<SharedString>>,
     current_folder_content_model: std::rc::Rc<VecModel<BrowserEntry>>,
-    animate_library: Arc<AnimateLibrary>,
+    _animate_library: Arc<AnimateLibrary>,
 }
 
 impl SlintWindow {
@@ -6695,11 +6636,11 @@ impl SlintWindow {
         let sample_rates = vec![44100, 48000, 88200, 96000];
         let buffer_sizes = vec![256, 512, 1024, 2048, 4096];
 
-        let is_software = true;
+        let _is_software = true;
         #[cfg(any(feature = "renderer-opengl", feature = "renderer-vulkan"))]
-        let is_software = false;
+        let _is_software = false;
 
-        ui.set_is_software_renderer(is_software);
+        ui.set_is_software_renderer(_is_software);
 
         let library_folders = Arc::new(Mutex::new(Vec::new()));
         let current_path = Arc::new(Mutex::new(PathBuf::from(".")));
@@ -6746,7 +6687,7 @@ impl SlintWindow {
             master_meters,
             visualizer,
             global_tempo,
-            follow_host_tempo,
+            _follow_host_tempo: follow_host_tempo,
             metronome_enabled,
             metronome_count_in_ticks,
             metronome_count_in_playback,
@@ -6769,11 +6710,11 @@ impl SlintWindow {
             scale_factor,
             pixel_buffer: vec![PremultipliedRgbaColor::default(); (physical_width * physical_height) as usize],
             last_cursor: LogicalPosition::new(0.0, 0.0),
-            library_folders,
+            _library_folders: library_folders,
             current_path,
-            library_folders_model,
+            _library_folders_model: library_folders_model,
             current_folder_content_model,
-            animate_library,
+            _animate_library: animate_library,
         }
     }
 
@@ -6781,6 +6722,7 @@ impl SlintWindow {
         self.slint_window.dispatch_event(event);
     }
 
+    #[allow(dead_code)]
     fn refresh_browser(&self) {
         refresh_browser_impl(
             &self.ui,
@@ -7912,7 +7854,7 @@ fn initialize_ui(
     project_dialog_tx: std::sync::mpsc::Sender<ProjectDialogAction>,
     library_folders: &Arc<Mutex<Vec<PathBuf>>>,
     current_path: &Arc<Mutex<PathBuf>>,
-    library_folders_model: &std::rc::Rc<VecModel<SharedString>>,
+    _library_folders_model: &std::rc::Rc<VecModel<SharedString>>,
     current_folder_content_model: &std::rc::Rc<VecModel<BrowserEntry>>,
     animate_library: &Arc<AnimateLibrary>,
 ) {
