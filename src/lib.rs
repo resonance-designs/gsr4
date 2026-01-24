@@ -63,8 +63,16 @@ use std::sync::mpsc;
 use std::sync::{Arc, Once};
 use std::time::Instant;
 use std::f32::consts::PI;
+use fundsp::hacker32::{
+    AudioUnit, Tanh, bandpass, highpass, lowpass, moog, noise, shape, sine,
+};
 
 pub const NUM_TRACKS: usize = 4;
+pub const SYNDRM_PAGE_SIZE: usize = 16;
+pub const SYNDRM_PAGES: usize = 8;
+pub const SYNDRM_STEPS: usize = SYNDRM_PAGE_SIZE * SYNDRM_PAGES;
+pub const SYNDRM_LANES: usize = 2;
+pub const SYNDRM_FILTER_TYPES: u32 = 4;
 pub const WAVEFORM_SUMMARY_SIZE: usize = 100;
 pub const RECORD_MAX_SECONDS: usize = 30;
 pub const RECORD_MAX_SAMPLE_RATE: usize = 48_000;
@@ -453,30 +461,140 @@ struct Track {
     animate_amp_stage: [AtomicU32; 10],
     /// Animate amp envelope level (0..1) for each voice.
     animate_amp_level: [AtomicU32; 10],
-    /// Simp Kick pitch (normalized 0..1).
+    /// Animate keybed trigger note (MIDI note).
+    animate_keybed_note: AtomicI32,
+    /// Animate keybed trigger flag.
+    animate_keybed_trigger: AtomicBool,
+    /// Animate keybed hold (sustain).
+    animate_keybed_hold: AtomicBool,
+    /// Animate keybed amp envelope stage.
+    animate_keybed_amp_stage: AtomicU32,
+    /// Animate keybed amp envelope level.
+    animate_keybed_amp_level: AtomicU32,
+    /// Animate keybed slot oscillator phases.
+    animate_keybed_slot_phases: [AtomicU32; 4],
+    /// Animate keybed slot sample playback positions.
+    animate_keybed_slot_sample_pos: [AtomicU32; 4],
+    /// Animate keybed filter state v1 per slot.
+    animate_keybed_filter_v1: [AtomicU32; 4],
+    /// Animate keybed filter state v2 per slot.
+    animate_keybed_filter_v2: [AtomicU32; 4],
+    /// Animate keybed filter state v1 stage 2 per slot.
+    animate_keybed_filter_v1_stage2: [AtomicU32; 4],
+    /// Animate keybed filter state v2 stage 2 per slot.
+    animate_keybed_filter_v2_stage2: [AtomicU32; 4],
+    /// SynDRM kick pitch (normalized 0..1).
     kick_pitch: AtomicU32,
-    /// Simp Kick decay (normalized 0..1).
+    /// SynDRM kick decay (normalized 0..1).
     kick_decay: AtomicU32,
-    /// Simp Kick attack (normalized 0..1).
+    /// SynDRM kick attack (normalized 0..1).
     kick_attack: AtomicU32,
-    /// Simp Kick drive (normalized 0..1).
+    /// SynDRM kick drive (normalized 0..1).
     kick_drive: AtomicU32,
-    /// Simp Kick output level (normalized 0..1).
+    /// SynDRM kick output level (normalized 0..1).
     kick_level: AtomicU32,
-    /// Simp Kick sequencer grid (16 steps).
-    kick_sequencer_grid: Arc<[AtomicBool; 16]>,
-    /// Simp Kick sequencer current step.
+    /// SynDRM kick filter type (0 = Moog LP, 1 = LP, 2 = HP, 3 = BP).
+    kick_filter_type: AtomicU32,
+    /// SynDRM kick filter cutoff (normalized 0..1).
+    kick_filter_cutoff: AtomicU32,
+    /// SynDRM kick filter resonance (normalized 0..1).
+    kick_filter_resonance: AtomicU32,
+    /// SynDRM kick sequencer grid (128 steps).
+    kick_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM kick sequencer current step.
     kick_sequencer_step: AtomicI32,
-    /// Simp Kick sequencer phase in samples.
+    /// SynDRM kick sequencer phase in samples.
     kick_sequencer_phase: AtomicU32,
-    /// Simp Kick oscillator phase (0..1).
+    /// SynDRM kick oscillator phase (0..1).
     kick_phase: AtomicU32,
-    /// Simp Kick amplitude envelope (0..1).
+    /// SynDRM kick amplitude envelope (0..1).
     kick_env: AtomicU32,
-    /// Simp Kick pitch envelope (0..1).
+    /// SynDRM kick pitch envelope (0..1).
     kick_pitch_env: AtomicU32,
-    /// Simp Kick attack remaining samples.
+    /// SynDRM kick attack remaining samples.
+    /// SynDRM snare tone (normalized 0..1).
+    snare_tone: AtomicU32,
+    /// SynDRM snare decay (normalized 0..1).
+    snare_decay: AtomicU32,
+    /// SynDRM snare snappy/noise mix (normalized 0..1).
+    snare_snappy: AtomicU32,
+    /// SynDRM snare attack (normalized 0..1).
+    snare_attack: AtomicU32,
+    /// SynDRM snare drive (normalized 0..1).
+    snare_drive: AtomicU32,
+    /// SynDRM snare output level (normalized 0..1).
+    snare_level: AtomicU32,
+    /// SynDRM snare filter type (0 = Moog LP, 1 = LP, 2 = HP, 3 = BP).
+    snare_filter_type: AtomicU32,
+    /// SynDRM snare filter cutoff (normalized 0..1).
+    snare_filter_cutoff: AtomicU32,
+    /// SynDRM snare filter resonance (normalized 0..1).
+    snare_filter_resonance: AtomicU32,
+    /// SynDRM snare sequencer grid (128 steps).
+    snare_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM snare sequencer current step.
+    snare_sequencer_step: AtomicI32,
+    /// SynDRM snare sequencer phase in samples.
+    snare_sequencer_phase: AtomicU32,
+    /// SynDRM snare oscillator phase (0..1).
+    snare_phase: AtomicU32,
+    /// SynDRM snare tone envelope (0..1).
+    snare_env: AtomicU32,
+    /// SynDRM snare noise envelope (0..1).
+    snare_noise_env: AtomicU32,
+    /// SynDRM snare attack remaining samples.
+    snare_attack_remaining: AtomicU32,
+    /// SynDRM snare noise RNG state.
+    snare_noise_rng: AtomicU32,
     kick_attack_remaining: AtomicU32,
+    /// SynDRM sequencer page (0..7).
+    syndrm_page: AtomicU32,
+    /// SynDRM step editor lane (0 = kick, 1 = snare).
+    syndrm_edit_lane: AtomicU32,
+    /// SynDRM step editor step index (0..127).
+    syndrm_edit_step: AtomicU32,
+    /// SynDRM step hold mode (true = hold override).
+    syndrm_step_hold: AtomicBool,
+    /// SynDRM RNG state for sequencer randomization.
+    syndrm_rng_state: AtomicU32,
+    /// SynDRM kick step override enabled.
+    kick_step_override_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM kick step pitch override.
+    kick_step_pitch: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM kick step decay override.
+    kick_step_decay: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM kick step attack override.
+    kick_step_attack: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM kick step drive override.
+    kick_step_drive: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM kick step level override.
+    kick_step_level: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM kick step filter type override.
+    kick_step_filter_type: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM kick step filter cutoff override.
+    kick_step_filter_cutoff: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM kick step filter resonance override.
+    kick_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step override enabled.
+    snare_step_override_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM snare step tone override.
+    snare_step_tone: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step decay override.
+    snare_step_decay: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step snappy override.
+    snare_step_snappy: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step attack override.
+    snare_step_attack: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step drive override.
+    snare_step_drive: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step level override.
+    snare_step_level: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step filter type override.
+    snare_step_filter_type: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step filter cutoff override.
+    snare_step_filter_cutoff: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step filter resonance override.
+    snare_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
     /// Void Seed base frequency.
     void_base_freq: AtomicU32,
     /// Smoothed void base frequency.
@@ -525,7 +643,7 @@ struct Track {
     void_delay_buffer: Arc<Mutex<[Vec<f32>; 2]>>,
     /// Void Seed delay write position.
     void_delay_write_pos: AtomicU32,
-    /// Engine type loaded for this track (0 = none, 1 = tape, 2 = animate, 3 = simpkick, 4 = voidseed).
+    /// Engine type loaded for this track (0 = none, 1 = tape, 2 = animate, 3 = syndrm, 4 = voidseed).
     engine_type: AtomicU32,
     /// Logs one debug line per playback start to confirm audio thread output.
     debug_logged: AtomicBool,
@@ -714,11 +832,25 @@ impl Default for Track {
             animate_slot_sample_pos: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
             animate_amp_stage: std::array::from_fn(|_| AtomicU32::new(0)),
             animate_amp_level: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_keybed_note: AtomicI32::new(60),
+            animate_keybed_trigger: AtomicBool::new(false),
+            animate_keybed_hold: AtomicBool::new(false),
+            animate_keybed_amp_stage: AtomicU32::new(0),
+            animate_keybed_amp_level: AtomicU32::new(0.0f32.to_bits()),
+            animate_keybed_slot_phases: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_keybed_slot_sample_pos: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_keybed_filter_v1: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_keybed_filter_v2: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_keybed_filter_v1_stage2: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            animate_keybed_filter_v2_stage2: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
             kick_pitch: AtomicU32::new(0.5f32.to_bits()),
             kick_decay: AtomicU32::new(0.5f32.to_bits()),
             kick_attack: AtomicU32::new(0.0f32.to_bits()),
             kick_drive: AtomicU32::new(0.0f32.to_bits()),
             kick_level: AtomicU32::new(1.0f32.to_bits()),
+            kick_filter_type: AtomicU32::new(0),
+            kick_filter_cutoff: AtomicU32::new(0.6f32.to_bits()),
+            kick_filter_resonance: AtomicU32::new(0.2f32.to_bits()),
             kick_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             kick_sequencer_step: AtomicI32::new(-1),
             kick_sequencer_phase: AtomicU32::new(0),
@@ -726,6 +858,47 @@ impl Default for Track {
             kick_env: AtomicU32::new(0.0f32.to_bits()),
             kick_pitch_env: AtomicU32::new(0.0f32.to_bits()),
             kick_attack_remaining: AtomicU32::new(0),
+            snare_tone: AtomicU32::new(0.5f32.to_bits()),
+            snare_decay: AtomicU32::new(0.4f32.to_bits()),
+            snare_snappy: AtomicU32::new(0.6f32.to_bits()),
+            snare_attack: AtomicU32::new(0.0f32.to_bits()),
+            snare_drive: AtomicU32::new(0.0f32.to_bits()),
+            snare_level: AtomicU32::new(0.8f32.to_bits()),
+            snare_filter_type: AtomicU32::new(0),
+            snare_filter_cutoff: AtomicU32::new(0.6f32.to_bits()),
+            snare_filter_resonance: AtomicU32::new(0.2f32.to_bits()),
+            snare_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            snare_sequencer_step: AtomicI32::new(-1),
+            snare_sequencer_phase: AtomicU32::new(0),
+            snare_phase: AtomicU32::new(0.0f32.to_bits()),
+            snare_env: AtomicU32::new(0.0f32.to_bits()),
+            snare_noise_env: AtomicU32::new(0.0f32.to_bits()),
+            snare_attack_remaining: AtomicU32::new(0),
+            snare_noise_rng: AtomicU32::new(0xdead_beef),
+            syndrm_page: AtomicU32::new(0),
+            syndrm_edit_lane: AtomicU32::new(0),
+            syndrm_edit_step: AtomicU32::new(0),
+            syndrm_step_hold: AtomicBool::new(false),
+            syndrm_rng_state: AtomicU32::new(0x81c3_5f27),
+            kick_step_override_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            kick_step_pitch: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            kick_step_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            kick_step_attack: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            kick_step_drive: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            kick_step_level: Arc::new(std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits()))),
+            kick_step_filter_type: Arc::new(std::array::from_fn(|_| AtomicU32::new(0))),
+            kick_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.6f32.to_bits()))),
+            kick_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits()))),
+            snare_step_override_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            snare_step_tone: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            snare_step_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.4f32.to_bits()))),
+            snare_step_snappy: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.6f32.to_bits()))),
+            snare_step_attack: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            snare_step_drive: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            snare_step_level: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.8f32.to_bits()))),
+            snare_step_filter_type: Arc::new(std::array::from_fn(|_| AtomicU32::new(0))),
+            snare_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.6f32.to_bits()))),
+            snare_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits()))),
             void_base_freq: AtomicU32::new(40.0f32.to_bits()),
             void_base_freq_smooth: AtomicU32::new(40.0f32.to_bits()),
             void_enabled: AtomicBool::new(false),
@@ -791,11 +964,73 @@ pub struct TLBX1 {
     sample_rate: AtomicU32,
     pending_project_params: Arc<Mutex<Option<PendingProjectParams>>>,
     track_buffer: Vec<Vec<f32>>,
+    syndrm_dsp: [SynDRMDspState; NUM_TRACKS],
+}
+
+struct SynDRMDspState {
+    sample_rate: f32,
+    kick_osc: Box<dyn AudioUnit>,
+    kick_drive: Box<dyn AudioUnit>,
+    snare_osc: Box<dyn AudioUnit>,
+    snare_noise: Box<dyn AudioUnit>,
+    snare_drive: Box<dyn AudioUnit>,
+    kick_filter_moog: Box<dyn AudioUnit>,
+    kick_filter_lp: Box<dyn AudioUnit>,
+    kick_filter_hp: Box<dyn AudioUnit>,
+    kick_filter_bp: Box<dyn AudioUnit>,
+    snare_filter_moog: Box<dyn AudioUnit>,
+    snare_filter_lp: Box<dyn AudioUnit>,
+    snare_filter_hp: Box<dyn AudioUnit>,
+    snare_filter_bp: Box<dyn AudioUnit>,
+}
+
+impl SynDRMDspState {
+    fn new() -> Self {
+        Self {
+            sample_rate: 0.0,
+            kick_osc: Box::new(sine()),
+            kick_drive: Box::new(shape(Tanh(1.0))),
+            snare_osc: Box::new(sine()),
+            snare_noise: Box::new(noise()),
+            snare_drive: Box::new(shape(Tanh(1.0))),
+            kick_filter_moog: Box::new(moog()),
+            kick_filter_lp: Box::new(lowpass()),
+            kick_filter_hp: Box::new(highpass()),
+            kick_filter_bp: Box::new(bandpass()),
+            snare_filter_moog: Box::new(moog()),
+            snare_filter_lp: Box::new(lowpass()),
+            snare_filter_hp: Box::new(highpass()),
+            snare_filter_bp: Box::new(bandpass()),
+        }
+    }
+
+    fn set_sample_rate(&mut self, sample_rate: f32) {
+        if (self.sample_rate - sample_rate).abs() < f32::EPSILON {
+            return;
+        }
+        self.sample_rate = sample_rate;
+        let sr = sample_rate as f64;
+        self.kick_osc.set_sample_rate(sr);
+        self.kick_drive.set_sample_rate(sr);
+        self.snare_osc.set_sample_rate(sr);
+        self.snare_noise.set_sample_rate(sr);
+        self.snare_drive.set_sample_rate(sr);
+        self.kick_filter_moog.set_sample_rate(sr);
+        self.kick_filter_lp.set_sample_rate(sr);
+        self.kick_filter_hp.set_sample_rate(sr);
+        self.kick_filter_bp.set_sample_rate(sr);
+        self.snare_filter_moog.set_sample_rate(sr);
+        self.snare_filter_lp.set_sample_rate(sr);
+        self.snare_filter_hp.set_sample_rate(sr);
+        self.snare_filter_bp.set_sample_rate(sr);
+    }
 }
 
 struct AnimateLibrary {
-    wavetables: Vec<Vec<f32>>,
-    samples: Vec<Vec<Vec<f32>>>,
+    wavetable_paths: Vec<PathBuf>,
+    sample_paths: Vec<PathBuf>,
+    wavetables: Mutex<Vec<Option<Arc<Vec<f32>>>>>,
+    samples: Mutex<Vec<Option<Arc<Vec<Vec<f32>>>>>>,
 }
 
 #[derive(Params)]
@@ -815,10 +1050,7 @@ pub struct TLBX1Params {
 
 impl AnimateLibrary {
     fn load() -> Self {
-        let mut wavetables = Vec::new();
-        let mut samples = Vec::new();
-
-        fn scan_dir(dir: &Path, wavetables: &mut Vec<Vec<f32>>, samples: &mut Vec<Vec<Vec<f32>>>, is_wavetable: bool) {
+        fn scan_dir(dir: &Path, paths: &mut Vec<PathBuf>) {
             if let Ok(entries) = std::fs::read_dir(dir) {
                 let mut sorted_entries: Vec<_> = entries.flatten().collect();
                 sorted_entries.sort_by_key(|e| e.file_name());
@@ -826,27 +1058,94 @@ impl AnimateLibrary {
                 for entry in sorted_entries {
                     let path = entry.path();
                     if path.is_dir() {
-                        scan_dir(&path, wavetables, samples, is_wavetable);
+                        scan_dir(&path, paths);
                     } else if path.extension().map_or(false, |ext| ext == "wav" || ext == "mp3") {
-                        if let Ok((data, _)) = load_audio_file(&path) {
-                            if is_wavetable {
-                                // For wavetables, we only take the first channel
-                                if !data.is_empty() {
-                                    wavetables.push(data[0].clone());
-                                }
-                            } else {
-                                samples.push(data);
-                            }
-                        }
+                        paths.push(path);
                     }
                 }
             }
         }
 
-        scan_dir(Path::new("src/library/factory/wavetables"), &mut wavetables, &mut samples, true);
-        scan_dir(Path::new("src/library/factory/samples"), &mut wavetables, &mut samples, false);
+        let mut wavetable_paths = Vec::new();
+        let mut sample_paths = Vec::new();
 
-        Self { wavetables, samples }
+        scan_dir(Path::new("src/library/factory/wavetables"), &mut wavetable_paths);
+        scan_dir(Path::new("src/library/factory/samples"), &mut sample_paths);
+
+        let wavetables = vec![None; wavetable_paths.len()];
+        let samples = vec![None; sample_paths.len()];
+
+        Self {
+            wavetable_paths,
+            sample_paths,
+            wavetables: Mutex::new(wavetables),
+            samples: Mutex::new(samples),
+        }
+    }
+
+    fn ensure_wavetable_loaded(&self, idx: usize) -> Option<Arc<Vec<f32>>> {
+        if idx >= self.wavetable_paths.len() {
+            return None;
+        }
+        if let Some(mut cache) = self.wavetables.try_lock() {
+            if let Some(existing) = cache.get(idx).and_then(|entry| entry.clone()) {
+                return Some(existing);
+            }
+        }
+        let path = self.wavetable_paths.get(idx)?.clone();
+        let data = load_audio_file(&path).ok();
+        let wavetable = data.and_then(|(data, _)| data.get(0).cloned());
+        if let Some(wt) = wavetable {
+            let arc = Arc::new(wt);
+            if let Some(mut cache) = self.wavetables.try_lock() {
+                if let Some(entry) = cache.get_mut(idx) {
+                    *entry = Some(Arc::clone(&arc));
+                }
+            }
+            return Some(arc);
+        }
+        None
+    }
+
+    fn ensure_sample_loaded(&self, idx: usize) -> Option<Arc<Vec<Vec<f32>>>> {
+        if idx >= self.sample_paths.len() {
+            return None;
+        }
+        if let Some(mut cache) = self.samples.try_lock() {
+            if let Some(existing) = cache.get(idx).and_then(|entry| entry.clone()) {
+                return Some(existing);
+            }
+        }
+        let path = self.sample_paths.get(idx)?.clone();
+        let data = load_audio_file(&path).ok();
+        if let Some((data, _)) = data {
+            let arc = Arc::new(data);
+            if let Some(mut cache) = self.samples.try_lock() {
+                if let Some(entry) = cache.get_mut(idx) {
+                    *entry = Some(Arc::clone(&arc));
+                }
+            }
+            return Some(arc);
+        }
+        None
+    }
+
+    fn get_wavetable_cached(&self, idx: usize) -> Option<Arc<Vec<f32>>> {
+        if idx >= self.wavetable_paths.len() {
+            return None;
+        }
+        self.wavetables
+            .try_lock()
+            .and_then(|cache| cache.get(idx).and_then(|entry| entry.clone()))
+    }
+
+    fn get_sample_cached(&self, idx: usize) -> Option<Arc<Vec<Vec<f32>>>> {
+        if idx >= self.sample_paths.len() {
+            return None;
+        }
+        self.samples
+            .try_lock()
+            .and_then(|cache| cache.get(idx).and_then(|entry| entry.clone()))
     }
 }
 
@@ -880,6 +1179,7 @@ impl Default for TLBX1 {
             sample_rate: AtomicU32::new(44100),
             pending_project_params: Arc::new(Mutex::new(None)),
             track_buffer: vec![vec![0.0; 1024]; 2],
+            syndrm_dsp: std::array::from_fn(|_| SynDRMDspState::new()),
         }
     }
 }
@@ -1230,12 +1530,40 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
         track.animate_amp_stage[voice].store(0, Ordering::Relaxed);
         track.animate_amp_level[voice].store(0.0f32.to_bits(), Ordering::Relaxed);
     }
+    track.animate_keybed_note.store(60, Ordering::Relaxed);
+    track.animate_keybed_trigger.store(false, Ordering::Relaxed);
+    track.animate_keybed_hold.store(false, Ordering::Relaxed);
+    track.animate_keybed_amp_stage.store(0, Ordering::Relaxed);
+    track.animate_keybed_amp_level.store(0.0f32.to_bits(), Ordering::Relaxed);
+    for slot in 0..4 {
+        track
+            .animate_keybed_slot_phases[slot]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_keybed_slot_sample_pos[slot]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_keybed_filter_v1[slot]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_keybed_filter_v2[slot]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_keybed_filter_v1_stage2[slot]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .animate_keybed_filter_v2_stage2[slot]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+    }
     track.kick_pitch.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.kick_decay.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.kick_attack.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.kick_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.kick_level.store(1.0f32.to_bits(), Ordering::Relaxed);
-    for i in 0..16 {
+    track.kick_filter_type.store(0, Ordering::Relaxed);
+    track.kick_filter_cutoff.store(0.6f32.to_bits(), Ordering::Relaxed);
+    track.kick_filter_resonance.store(0.2f32.to_bits(), Ordering::Relaxed);
+    for i in 0..SYNDRM_STEPS {
         track.kick_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
     track.kick_sequencer_step.store(-1, Ordering::Relaxed);
@@ -1244,6 +1572,51 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.kick_env.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.kick_pitch_env.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.kick_attack_remaining.store(0, Ordering::Relaxed);
+    track.snare_tone.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.snare_decay.store(0.4f32.to_bits(), Ordering::Relaxed);
+    track.snare_snappy.store(0.6f32.to_bits(), Ordering::Relaxed);
+    track.snare_attack.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.snare_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.snare_level.store(0.8f32.to_bits(), Ordering::Relaxed);
+    track.snare_filter_type.store(0, Ordering::Relaxed);
+    track.snare_filter_cutoff.store(0.6f32.to_bits(), Ordering::Relaxed);
+    track.snare_filter_resonance.store(0.2f32.to_bits(), Ordering::Relaxed);
+    for i in 0..SYNDRM_STEPS {
+        track.snare_sequencer_grid[i].store(false, Ordering::Relaxed);
+    }
+    track.snare_sequencer_step.store(-1, Ordering::Relaxed);
+    track.snare_sequencer_phase.store(0, Ordering::Relaxed);
+    track.snare_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.snare_env.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.snare_noise_env.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.snare_attack_remaining.store(0, Ordering::Relaxed);
+    track.snare_noise_rng.store(0xdead_beef, Ordering::Relaxed);
+    track.syndrm_page.store(0, Ordering::Relaxed);
+    track.syndrm_edit_lane.store(0, Ordering::Relaxed);
+    track.syndrm_edit_step.store(0, Ordering::Relaxed);
+    track.syndrm_step_hold.store(false, Ordering::Relaxed);
+    track.syndrm_rng_state.store(0x81c3_5f27, Ordering::Relaxed);
+    for i in 0..SYNDRM_STEPS {
+        track.kick_step_override_enabled[i].store(false, Ordering::Relaxed);
+        track.kick_step_pitch[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.kick_step_decay[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.kick_step_attack[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.kick_step_drive[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.kick_step_level[i].store(1.0f32.to_bits(), Ordering::Relaxed);
+        track.kick_step_filter_type[i].store(0, Ordering::Relaxed);
+        track.kick_step_filter_cutoff[i].store(0.6f32.to_bits(), Ordering::Relaxed);
+        track.kick_step_filter_resonance[i].store(0.2f32.to_bits(), Ordering::Relaxed);
+        track.snare_step_override_enabled[i].store(false, Ordering::Relaxed);
+        track.snare_step_tone[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.snare_step_decay[i].store(0.4f32.to_bits(), Ordering::Relaxed);
+        track.snare_step_snappy[i].store(0.6f32.to_bits(), Ordering::Relaxed);
+        track.snare_step_attack[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.snare_step_drive[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.snare_step_level[i].store(0.8f32.to_bits(), Ordering::Relaxed);
+        track.snare_step_filter_type[i].store(0, Ordering::Relaxed);
+        track.snare_step_filter_cutoff[i].store(0.6f32.to_bits(), Ordering::Relaxed);
+        track.snare_step_filter_resonance[i].store(0.2f32.to_bits(), Ordering::Relaxed);
+    }
 
     track.void_base_freq.store(40.0f32.to_bits(), Ordering::Relaxed);
     track.void_chaos_depth.store(0.5f32.to_bits(), Ordering::Relaxed);
@@ -1475,6 +1848,79 @@ impl TLBX1 {
             amp_stages[i] = track.animate_amp_stage[i].load(Ordering::Relaxed);
         }
 
+        let mut keybed_amp_level =
+            f32::from_bits(track.animate_keybed_amp_level.load(Ordering::Relaxed));
+        let mut keybed_amp_stage = track.animate_keybed_amp_stage.load(Ordering::Relaxed);
+        let mut keybed_phases = [
+            f32::from_bits(track.animate_keybed_slot_phases[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_slot_phases[1].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_slot_phases[2].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_slot_phases[3].load(Ordering::Relaxed)),
+        ];
+        let mut keybed_sample_pos = [
+            f32::from_bits(track.animate_keybed_slot_sample_pos[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_slot_sample_pos[1].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_slot_sample_pos[2].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_slot_sample_pos[3].load(Ordering::Relaxed)),
+        ];
+        let mut keybed_filter_v1 = [
+            f32::from_bits(track.animate_keybed_filter_v1[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v1[1].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v1[2].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v1[3].load(Ordering::Relaxed)),
+        ];
+        let mut keybed_filter_v2 = [
+            f32::from_bits(track.animate_keybed_filter_v2[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v2[1].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v2[2].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v2[3].load(Ordering::Relaxed)),
+        ];
+        let mut keybed_filter_v1_stage2 = [
+            f32::from_bits(track.animate_keybed_filter_v1_stage2[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v1_stage2[1].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v1_stage2[2].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v1_stage2[3].load(Ordering::Relaxed)),
+        ];
+        let mut keybed_filter_v2_stage2 = [
+            f32::from_bits(track.animate_keybed_filter_v2_stage2[0].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v2_stage2[1].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v2_stage2[2].load(Ordering::Relaxed)),
+            f32::from_bits(track.animate_keybed_filter_v2_stage2[3].load(Ordering::Relaxed)),
+        ];
+
+        let keybed_triggered = track
+            .animate_keybed_trigger
+            .swap(false, Ordering::Relaxed);
+        let mut keybed_note = track.animate_keybed_note.load(Ordering::Relaxed);
+        let mut keybed_freq = (440.0
+            * 2.0_f32.powf((keybed_note as f32 - 69.0) / 12.0))
+            .max(1.0);
+
+        if keybed_triggered {
+            keybed_note = track.animate_keybed_note.load(Ordering::Relaxed);
+            keybed_freq = (440.0
+                * 2.0_f32.powf((keybed_note as f32 - 69.0) / 12.0))
+                .max(1.0);
+            keybed_amp_stage = 1;
+            keybed_amp_level = 0.0;
+            for slot in 0..4 {
+                if track.animate_slot_types[slot].load(Ordering::Relaxed) == 1 {
+                    let smp_idx =
+                        track.animate_slot_samples[slot].load(Ordering::Relaxed) as usize;
+                    if let Some(smp) = animate_library.get_sample_cached(smp_idx) {
+                        let len = smp.get(0).map(|ch| ch.len()).unwrap_or(0);
+                        if len > 0 {
+                            let start = (sample_start[slot]
+                                * (len.saturating_sub(1) as f32))
+                                .round()
+                                .clamp(0.0, (len.saturating_sub(1)) as f32);
+                            keybed_sample_pos[slot] = start;
+                        }
+                    }
+                }
+            }
+        }
+
         
         // Pre-calculate envelope coefficients
         let calc_coef = |time_secs: f32| -> f32 {
@@ -1485,6 +1931,8 @@ impl TLBX1 {
         let coef_attack = calc_coef(attack);
         let coef_decay = calc_coef(decay);
         let coef_release = calc_coef(release);
+        let keybed_hold = track.animate_keybed_hold.load(Ordering::Relaxed);
+        let keybed_sustain = if keybed_hold { 1.0f32 } else { 0.0f32 };
 
         let frequencies = [
             65.41, 73.42, 82.41, 98.00, 110.00, // C2, D2, E2, G2, A2
@@ -1513,7 +1961,7 @@ impl TLBX1 {
                             for slot in 0..4 {
                                 if track.animate_slot_types[slot].load(Ordering::Relaxed) == 1 {
                                     let smp_idx = track.animate_slot_samples[slot].load(Ordering::Relaxed) as usize;
-                                    if let Some(smp) = animate_library.samples.get(smp_idx) {
+                                    if let Some(smp) = animate_library.get_sample_cached(smp_idx) {
                                         let len = smp.get(0).map(|ch| ch.len()).unwrap_or(0);
                                         if len > 0 {
                                             let start = (sample_start[slot] * (len.saturating_sub(1) as f32))
@@ -1579,6 +2027,42 @@ impl TLBX1 {
                 }
             }
 
+            match keybed_amp_stage {
+                1 => {
+                    keybed_amp_level =
+                        keybed_amp_level * coef_attack + 1.1 * (1.0 - coef_attack);
+                    if keybed_amp_level >= 1.0 {
+                        keybed_amp_level = 1.0;
+                        keybed_amp_stage = 2;
+                    }
+                }
+                2 => {
+                    keybed_amp_level =
+                        keybed_amp_level * coef_decay + keybed_sustain * (1.0 - coef_decay);
+                    if (keybed_amp_level - keybed_sustain).abs() < 0.001 {
+                        keybed_amp_level = keybed_sustain;
+                        keybed_amp_stage = if keybed_hold { 3 } else { 4 };
+                    }
+                }
+                3 => {
+                    if keybed_hold {
+                        keybed_amp_level = keybed_sustain;
+                    } else {
+                        keybed_amp_stage = 4;
+                    }
+                }
+                4 => {
+                    keybed_amp_level = keybed_amp_level * coef_release;
+                    if keybed_amp_level < 0.0001 {
+                        keybed_amp_level = 0.0;
+                        keybed_amp_stage = 0;
+                    }
+                }
+                _ => {
+                    keybed_amp_level = 0.0;
+                }
+            }
+
             // Smooth vector position
             let lfo_x_value = lfo_waveform_value(lfo_x_waveform, lfo_x_phase, lfo_x_snh);
             let lfo_y_value = lfo_waveform_value(lfo_y_waveform, lfo_y_phase, lfo_y_snh);
@@ -1629,8 +2113,9 @@ impl TLBX1 {
 
                     let mut slot_sample = 0.0f32;
                     if slot_type == 0 { // Wavetable
-                        let wt_idx = track.animate_slot_wavetables[slot].load(Ordering::Relaxed) as usize;
-                        if let Some(wt) = animate_library.wavetables.get(wt_idx) {
+                        let wt_idx =
+                            track.animate_slot_wavetables[slot].load(Ordering::Relaxed) as usize;
+                        if let Some(wt) = animate_library.get_wavetable_cached(wt_idx) {
                             if !wt.is_empty() {
                                 let phase = f32::from_bits(track.animate_slot_phases[row][slot].load(Ordering::Relaxed));
                                 // Use first cycle (2048 samples)
@@ -1658,8 +2143,9 @@ impl TLBX1 {
                             }
                         }
                     } else { // Sample
-                        let smp_idx = track.animate_slot_samples[slot].load(Ordering::Relaxed) as usize;
-                        if let Some(smp) = animate_library.samples.get(smp_idx) {
+                        let smp_idx =
+                            track.animate_slot_samples[slot].load(Ordering::Relaxed) as usize;
+                        if let Some(smp) = animate_library.get_sample_cached(smp_idx) {
                             if !smp.is_empty() && !smp[0].is_empty() {
                                 let len = smp[0].len();
                                 if len > 0 {
@@ -1774,6 +2260,153 @@ impl TLBX1 {
                 }
             }
 
+            if keybed_amp_level > 0.0 {
+                for slot in 0..4 {
+                    let slot_type = track.animate_slot_types[slot].load(Ordering::Relaxed);
+                    let coarse =
+                        f32::from_bits(track.animate_slot_coarse[slot].load(Ordering::Relaxed));
+                    let fine =
+                        f32::from_bits(track.animate_slot_fine[slot].load(Ordering::Relaxed));
+                    let pitch_ratio = 2.0f32.powf((coarse + fine / 100.0) / 12.0);
+                    let freq = keybed_freq * pitch_ratio;
+
+                    let mut slot_sample = 0.0f32;
+                    if slot_type == 0 {
+                        let wt_idx =
+                            track.animate_slot_wavetables[slot].load(Ordering::Relaxed) as usize;
+                        if let Some(wt) = animate_library.get_wavetable_cached(wt_idx) {
+                            if !wt.is_empty() {
+                                let phase = keybed_phases[slot];
+                                let cycle_len = wt.len().min(2048);
+                                if cycle_len > 0 {
+                                    let num_cycles = wt.len() / cycle_len;
+                                    let cycle_offset = if num_cycles > 1
+                                        && wt_lfo_amount[slot] > 0.0
+                                    {
+                                        let lfo_pos =
+                                            (wt_lfo_values[slot] * 0.5 + 0.5).clamp(0.0, 1.0);
+                                        let max_idx = (num_cycles - 1) as f32;
+                                        (lfo_pos * wt_lfo_amount[slot] * max_idx).round() as usize
+                                    } else {
+                                        0
+                                    };
+                                    let base = cycle_offset * cycle_len;
+                                    let pos = phase * (cycle_len - 1) as f32;
+                                    let idx = pos as usize;
+                                    let frac = pos - idx as f32;
+                                    let s1 = wt[base + idx];
+                                    let s2 = wt[base + ((idx + 1) % cycle_len)];
+                                    slot_sample = s1 + (s2 - s1) * frac;
+                                }
+                                keybed_phases[slot] = (phase + freq / sr) % 1.0;
+                            }
+                        }
+                    } else {
+                        let smp_idx =
+                            track.animate_slot_samples[slot].load(Ordering::Relaxed) as usize;
+                        if let Some(smp) = animate_library.get_sample_cached(smp_idx) {
+                            if !smp.is_empty() && !smp[0].is_empty() {
+                                let len = smp[0].len();
+                                if len > 0 {
+                                    let mut pos = keybed_sample_pos[slot];
+                                    let start_idx = (sample_start[slot]
+                                        * (len.saturating_sub(1) as f32))
+                                        .round()
+                                        .clamp(0.0, (len.saturating_sub(1)) as f32)
+                                        as usize;
+                                    let mut loop_start_idx = (loop_start[slot]
+                                        * (len.saturating_sub(1) as f32))
+                                        .round()
+                                        .clamp(0.0, (len.saturating_sub(1)) as f32)
+                                        as usize;
+                                    let mut loop_end_idx = (loop_end[slot]
+                                        * (len.saturating_sub(1) as f32))
+                                        .round()
+                                        .clamp(0.0, (len.saturating_sub(1)) as f32)
+                                        as usize;
+                                    if loop_end_idx <= loop_start_idx {
+                                        loop_start_idx = start_idx.min(len.saturating_sub(1));
+                                        loop_end_idx = len.saturating_sub(1);
+                                    }
+                                    let mut idx = pos as usize;
+                                    if idx >= loop_end_idx {
+                                        pos = loop_start_idx as f32;
+                                        idx = loop_start_idx;
+                                    }
+                                    if idx < len {
+                                        slot_sample = smp[0][idx];
+                                        let mut new_pos = pos + (freq / 440.0);
+                                        if new_pos >= loop_end_idx as f32 {
+                                            new_pos = loop_start_idx as f32;
+                                        }
+                                        keybed_sample_pos[slot] = new_pos;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let filter_type =
+                        track.animate_slot_filter_type[slot].load(Ordering::Relaxed) as u32;
+                    let filter_cutoff = f32::from_bits(
+                        track.animate_slot_filter_cutoff[slot].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.001, 1.0);
+                    let filter_resonance = f32::from_bits(
+                        track.animate_slot_filter_resonance[slot].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 0.95);
+                    let cutoff_hz = 20.0 + filter_cutoff.powf(2.0) * (20_000.0 - 20.0);
+                    let filter_f =
+                        (2.0 * (std::f32::consts::PI * cutoff_hz / sr).sin()).clamp(0.0, 0.99);
+                    let filter_q = 1.0 - filter_resonance;
+                    let mut filter_v1 = keybed_filter_v1[slot];
+                    let mut filter_v2 = keybed_filter_v2[slot];
+                    let mut filter_v1_stage2 = keybed_filter_v1_stage2[slot];
+                    let mut filter_v2_stage2 = keybed_filter_v2_stage2[slot];
+                    let filter_low = filter_v2 + filter_f * filter_v1;
+                    let filter_high = slot_sample - filter_low - filter_q * filter_v1;
+                    let filter_band = filter_f * filter_high + filter_v1;
+                    let filter_low_stage2 = filter_v2_stage2 + filter_f * filter_v1_stage2;
+                    let filter_high_stage2 =
+                        filter_low - filter_low_stage2 - filter_q * filter_v1_stage2;
+                    let filter_band_stage2 = filter_f * filter_high_stage2 + filter_v1_stage2;
+                    let mut filtered_sample = match filter_type {
+                        0 => filter_low_stage2,
+                        1 => filter_low,
+                        2 => filter_high,
+                        3 => filter_band,
+                        _ => filter_low,
+                    };
+                    if !filtered_sample.is_finite() {
+                        filtered_sample = slot_sample;
+                        filter_v1 = 0.0;
+                        filter_v2 = 0.0;
+                        filter_v1_stage2 = 0.0;
+                        filter_v2_stage2 = 0.0;
+                    }
+                    filter_v1 = filter_band;
+                    filter_v2 = filter_low;
+                    filter_v1_stage2 = filter_band_stage2;
+                    filter_v2_stage2 = filter_low_stage2;
+                    keybed_filter_v1[slot] = filter_v1;
+                    keybed_filter_v2[slot] = filter_v2;
+                    keybed_filter_v1_stage2[slot] = filter_v1_stage2;
+                    keybed_filter_v2_stage2[slot] = filter_v2_stage2;
+                    slot_sample = filtered_sample;
+
+                    let level = f32::from_bits(track.animate_slot_level[slot].load(Ordering::Relaxed))
+                        * weights[slot]
+                        * keybed_amp_level;
+                    let pan = f32::from_bits(track.animate_slot_pan[slot].load(Ordering::Relaxed))
+                        .clamp(-1.0, 1.0);
+                    let left_gain = (1.0 - pan).min(1.0);
+                    let right_gain = (1.0 + pan).min(1.0);
+                    mixed_sample_l += slot_sample * level * left_gain;
+                    mixed_sample_r += slot_sample * level * right_gain;
+                }
+            }
+
             for ch in 0..num_channels.min(2) {
                 let input = if ch == 0 { mixed_sample_l } else { mixed_sample_r };
                 output[ch][sample_idx] += input;
@@ -1810,53 +2443,532 @@ impl TLBX1 {
             track.animate_amp_stage[i].store(amp_stages[i], Ordering::Relaxed);
             track.animate_amp_level[i].store(amp_levels[i].to_bits(), Ordering::Relaxed);
         }
+        track
+            .animate_keybed_amp_stage
+            .store(keybed_amp_stage, Ordering::Relaxed);
+        track
+            .animate_keybed_amp_level
+            .store(keybed_amp_level.to_bits(), Ordering::Relaxed);
+        for slot in 0..4 {
+            track
+                .animate_keybed_slot_phases[slot]
+                .store(keybed_phases[slot].to_bits(), Ordering::Relaxed);
+            track
+                .animate_keybed_slot_sample_pos[slot]
+                .store(keybed_sample_pos[slot].to_bits(), Ordering::Relaxed);
+            track
+                .animate_keybed_filter_v1[slot]
+                .store(keybed_filter_v1[slot].to_bits(), Ordering::Relaxed);
+            track
+                .animate_keybed_filter_v2[slot]
+                .store(keybed_filter_v2[slot].to_bits(), Ordering::Relaxed);
+            track
+                .animate_keybed_filter_v1_stage2[slot]
+                .store(keybed_filter_v1_stage2[slot].to_bits(), Ordering::Relaxed);
+            track
+                .animate_keybed_filter_v2_stage2[slot]
+                .store(keybed_filter_v2_stage2[slot].to_bits(), Ordering::Relaxed);
+        }
     }
 
-    fn process_simpkick(
+    fn process_syndrm(
         track: &Track,
         track_output: &mut [Vec<f32>],
+        dsp_state: &mut SynDRMDspState,
         num_buffer_samples: usize,
         _global_tempo: &AtomicU32,
-        master_step: i32,
+        _master_step: i32,
         master_phase: f32,
+        master_step_count: i64,
         samples_per_step: f32,
         sample_rate: f32,
     ) {
         let sr = sample_rate.max(1.0);
+        dsp_state.set_sample_rate(sr);
+        let mut max_active_step = None;
+        for i in 0..SYNDRM_STEPS {
+            if track.kick_sequencer_grid[i].load(Ordering::Relaxed)
+                || track.snare_sequencer_grid[i].load(Ordering::Relaxed)
+            {
+                max_active_step = Some(i);
+            }
+        }
+        let mut loop_steps = SYNDRM_PAGE_SIZE;
+        if let Some(max_step) = max_active_step {
+            loop_steps = ((max_step / SYNDRM_PAGE_SIZE) + 1) * SYNDRM_PAGE_SIZE;
+        }
+        let loop_steps_i32 = loop_steps.max(1) as i32;
         let mut sequencer_phase = master_phase;
-        let mut current_step = master_step;
+        let mut current_step = (master_step_count as i32).rem_euclid(loop_steps_i32);
         track.kick_sequencer_step.store(current_step, Ordering::Relaxed);
+        track.snare_sequencer_step.store(current_step, Ordering::Relaxed);
 
-        let kick_pitch = f32::from_bits(track.kick_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-        let kick_decay = f32::from_bits(track.kick_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-        let kick_attack = f32::from_bits(track.kick_attack.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-        let kick_drive = f32::from_bits(track.kick_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut kick_pitch_base =
+            f32::from_bits(track.kick_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut kick_decay_base =
+            f32::from_bits(track.kick_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut kick_attack_base =
+            f32::from_bits(track.kick_attack.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut kick_drive_base =
+            f32::from_bits(track.kick_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let track_muted = track.is_muted.load(Ordering::Relaxed);
-        let kick_level = if track_muted {
-            0.0
-        } else {
-            f32::from_bits(track.kick_level.load(Ordering::Relaxed)).clamp(0.0, 1.0)
-        };
+        let mut kick_level_base =
+            f32::from_bits(track.kick_level.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut kick_filter_type_base = track.kick_filter_type.load(Ordering::Relaxed);
+        let mut kick_filter_cutoff_base =
+            f32::from_bits(track.kick_filter_cutoff.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut kick_filter_resonance_base =
+            f32::from_bits(track.kick_filter_resonance.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut snare_tone_base =
+            f32::from_bits(track.snare_tone.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut snare_decay_base =
+            f32::from_bits(track.snare_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut snare_snappy_base =
+            f32::from_bits(track.snare_snappy.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut snare_attack_base =
+            f32::from_bits(track.snare_attack.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut snare_drive_base =
+            f32::from_bits(track.snare_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut snare_level_base =
+            f32::from_bits(track.snare_level.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut snare_filter_type_base = track.snare_filter_type.load(Ordering::Relaxed);
+        let mut snare_filter_cutoff_base =
+            f32::from_bits(track.snare_filter_cutoff.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut snare_filter_resonance_base =
+            f32::from_bits(track.snare_filter_resonance.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+
         let mut env = f32::from_bits(track.kick_env.load(Ordering::Relaxed));
         let mut pitch_env = f32::from_bits(track.kick_pitch_env.load(Ordering::Relaxed));
-        let mut phase = f32::from_bits(track.kick_phase.load(Ordering::Relaxed));
-        let mut attack_remaining =
-            track.kick_attack_remaining.load(Ordering::Relaxed);
+        let mut attack_remaining = track.kick_attack_remaining.load(Ordering::Relaxed);
+        let mut snare_env = f32::from_bits(track.snare_env.load(Ordering::Relaxed));
+        let mut snare_noise_env =
+            f32::from_bits(track.snare_noise_env.load(Ordering::Relaxed));
+        let mut snare_attack_remaining =
+            track.snare_attack_remaining.load(Ordering::Relaxed);
 
-        let decay_time = 0.05 + kick_decay * 1.5;
-        let pitch_decay_time = 0.01 + kick_decay * 0.25;
-        let env_coeff = (-1.0 / (decay_time * sr)).exp();
-        let attack_time = kick_attack * 0.01;
-        let attack_samples = (attack_time * sr).round().max(0.0) as u32;
-        let attack_step = if attack_samples > 0 {
+        let cutoff_min = 20.0;
+        let cutoff_max = 12_000.0;
+        let cutoff_span: f32 = cutoff_max / cutoff_min;
+        let step_hold = track.syndrm_step_hold.load(Ordering::Relaxed);
+
+        let mut kick_pitch = kick_pitch_base;
+        let mut kick_decay = kick_decay_base;
+        let mut kick_attack = kick_attack_base;
+        let mut kick_drive = kick_drive_base;
+        let mut kick_level = kick_level_base;
+        let mut kick_filter_type = kick_filter_type_base;
+        let mut kick_filter_cutoff = kick_filter_cutoff_base;
+        let mut kick_filter_resonance = kick_filter_resonance_base;
+        let mut snare_tone = snare_tone_base;
+        let mut snare_decay = snare_decay_base;
+        let mut snare_snappy = snare_snappy_base;
+        let mut snare_attack = snare_attack_base;
+        let mut snare_drive = snare_drive_base;
+        let mut snare_level = snare_level_base;
+        let mut snare_filter_type = snare_filter_type_base;
+        let mut snare_filter_cutoff = snare_filter_cutoff_base;
+        let mut snare_filter_resonance = snare_filter_resonance_base;
+
+        let mut decay_time = 0.05 + kick_decay * 1.5;
+        let mut pitch_decay_time = 0.01 + kick_decay * 0.25;
+        let mut env_coeff = (-1.0 / (decay_time * sr)).exp();
+        let mut attack_time = kick_attack * 0.01;
+        let mut attack_samples = (attack_time * sr).round().max(0.0) as u32;
+        let mut attack_step = if attack_samples > 0 {
             1.0 / attack_samples as f32
         } else {
             1.0
         };
-        let pitch_coeff = (-1.0 / (pitch_decay_time * sr)).exp();
-        let base_freq = 40.0 + kick_pitch * 120.0;
-        let sweep = base_freq * 2.5;
-        let drive = 1.0 + kick_drive * 8.0;
+        let mut pitch_coeff = (-1.0 / (pitch_decay_time * sr)).exp();
+        let mut base_freq = 40.0 + kick_pitch * 120.0;
+        let mut sweep = base_freq * 2.5;
+        let mut drive = 1.0 + kick_drive * 8.0;
+        let mut kick_cutoff_hz = cutoff_min * cutoff_span.powf(kick_filter_cutoff);
+        let mut kick_q = 0.1 + kick_filter_resonance * 0.9;
+        let mut snare_decay_time = 0.03 + snare_decay * 0.4;
+        let mut snare_noise_decay_time = 0.02 + snare_decay * 0.2;
+        let mut snare_env_coeff = (-1.0 / (snare_decay_time * sr)).exp();
+        let mut snare_noise_coeff = (-1.0 / (snare_noise_decay_time * sr)).exp();
+        let mut snare_attack_time = snare_attack * 0.01;
+        let mut snare_attack_samples = (snare_attack_time * sr).round().max(0.0) as u32;
+        let mut snare_attack_step = if snare_attack_samples > 0 {
+            1.0 / snare_attack_samples as f32
+        } else {
+            1.0
+        };
+        let mut snare_freq = 180.0 + snare_tone * 420.0;
+        let mut snare_cutoff_hz = cutoff_min * cutoff_span.powf(snare_filter_cutoff);
+        let mut snare_q = 0.1 + snare_filter_resonance * 0.9;
+        let mut snare_drive_gain = 1.0 + snare_drive * 8.0;
+
+        fn apply_kick_step_params(
+            track: &Track,
+            step_idx: usize,
+            step_hold: bool,
+            track_muted: bool,
+            cutoff_min: f32,
+            cutoff_span: f32,
+            sr: f32,
+            kick_pitch: &mut f32,
+            kick_decay: &mut f32,
+            kick_attack: &mut f32,
+            kick_drive: &mut f32,
+            kick_level: &mut f32,
+            kick_filter_type: &mut u32,
+            kick_filter_cutoff: &mut f32,
+            kick_filter_resonance: &mut f32,
+            kick_pitch_base: &mut f32,
+            kick_decay_base: &mut f32,
+            kick_attack_base: &mut f32,
+            kick_drive_base: &mut f32,
+            kick_level_base: &mut f32,
+            kick_filter_type_base: &mut u32,
+            kick_filter_cutoff_base: &mut f32,
+            kick_filter_resonance_base: &mut f32,
+            decay_time: &mut f32,
+            pitch_decay_time: &mut f32,
+            env_coeff: &mut f32,
+            attack_time: &mut f32,
+            attack_samples: &mut u32,
+            attack_step: &mut f32,
+            pitch_coeff: &mut f32,
+            base_freq: &mut f32,
+            sweep: &mut f32,
+            drive: &mut f32,
+            kick_cutoff_hz: &mut f32,
+            kick_q: &mut f32,
+        ) {
+            let override_enabled =
+                track.kick_step_override_enabled[step_idx].load(Ordering::Relaxed);
+            if override_enabled {
+                let pitch =
+                    f32::from_bits(track.kick_step_pitch[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let decay =
+                    f32::from_bits(track.kick_step_decay[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let attack =
+                    f32::from_bits(track.kick_step_attack[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let drive_val =
+                    f32::from_bits(track.kick_step_drive[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let level =
+                    f32::from_bits(track.kick_step_level[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let filter_type = track.kick_step_filter_type[step_idx].load(Ordering::Relaxed);
+                let filter_cutoff = f32::from_bits(
+                    track.kick_step_filter_cutoff[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let filter_resonance = f32::from_bits(
+                    track.kick_step_filter_resonance[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+
+                *kick_pitch = pitch;
+                *kick_decay = decay;
+                *kick_attack = attack;
+                *kick_drive = drive_val;
+                *kick_level = if track_muted { 0.0 } else { level };
+                *kick_filter_type = filter_type;
+                *kick_filter_cutoff = filter_cutoff;
+                *kick_filter_resonance = filter_resonance;
+
+                *decay_time = 0.05 + *kick_decay * 1.5;
+                *pitch_decay_time = 0.01 + *kick_decay * 0.25;
+                *env_coeff = (-1.0 / (*decay_time * sr)).exp();
+                *attack_time = *kick_attack * 0.01;
+                *attack_samples = (*attack_time * sr).round().max(0.0) as u32;
+                *attack_step = if *attack_samples > 0 {
+                    1.0 / *attack_samples as f32
+                } else {
+                    1.0
+                };
+                *pitch_coeff = (-1.0 / (*pitch_decay_time * sr)).exp();
+                *base_freq = 40.0 + *kick_pitch * 120.0;
+                *sweep = *base_freq * 2.5;
+                *drive = 1.0 + *kick_drive * 8.0;
+                *kick_cutoff_hz = cutoff_min * cutoff_span.powf(*kick_filter_cutoff);
+                *kick_q = 0.1 + *kick_filter_resonance * 0.9;
+
+                if step_hold {
+                    *kick_pitch_base = pitch;
+                    *kick_decay_base = decay;
+                    *kick_attack_base = attack;
+                    *kick_drive_base = drive_val;
+                    *kick_level_base = level;
+                    *kick_filter_type_base = filter_type;
+                    *kick_filter_cutoff_base = filter_cutoff;
+                    *kick_filter_resonance_base = filter_resonance;
+                    track.kick_pitch.store(pitch.to_bits(), Ordering::Relaxed);
+                    track.kick_decay.store(decay.to_bits(), Ordering::Relaxed);
+                    track.kick_attack.store(attack.to_bits(), Ordering::Relaxed);
+                    track.kick_drive.store(drive_val.to_bits(), Ordering::Relaxed);
+                    track.kick_level.store(level.to_bits(), Ordering::Relaxed);
+                    track.kick_filter_type.store(filter_type, Ordering::Relaxed);
+                    track.kick_filter_cutoff.store(filter_cutoff.to_bits(), Ordering::Relaxed);
+                    track
+                        .kick_filter_resonance
+                        .store(filter_resonance.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                *kick_pitch = *kick_pitch_base;
+                *kick_decay = *kick_decay_base;
+                *kick_attack = *kick_attack_base;
+                *kick_drive = *kick_drive_base;
+                *kick_level = if track_muted { 0.0 } else { *kick_level_base };
+                *kick_filter_type = *kick_filter_type_base;
+                *kick_filter_cutoff = *kick_filter_cutoff_base;
+                *kick_filter_resonance = *kick_filter_resonance_base;
+
+                *decay_time = 0.05 + *kick_decay * 1.5;
+                *pitch_decay_time = 0.01 + *kick_decay * 0.25;
+                *env_coeff = (-1.0 / (*decay_time * sr)).exp();
+                *attack_time = *kick_attack * 0.01;
+                *attack_samples = (*attack_time * sr).round().max(0.0) as u32;
+                *attack_step = if *attack_samples > 0 {
+                    1.0 / *attack_samples as f32
+                } else {
+                    1.0
+                };
+                *pitch_coeff = (-1.0 / (*pitch_decay_time * sr)).exp();
+                *base_freq = 40.0 + *kick_pitch * 120.0;
+                *sweep = *base_freq * 2.5;
+                *drive = 1.0 + *kick_drive * 8.0;
+                *kick_cutoff_hz = cutoff_min * cutoff_span.powf(*kick_filter_cutoff);
+                *kick_q = 0.1 + *kick_filter_resonance * 0.9;
+            }
+        }
+
+        fn apply_snare_step_params(
+            track: &Track,
+            step_idx: usize,
+            step_hold: bool,
+            track_muted: bool,
+            cutoff_min: f32,
+            cutoff_span: f32,
+            sr: f32,
+            snare_tone: &mut f32,
+            snare_decay: &mut f32,
+            snare_snappy: &mut f32,
+            snare_attack: &mut f32,
+            snare_drive: &mut f32,
+            snare_level: &mut f32,
+            snare_filter_type: &mut u32,
+            snare_filter_cutoff: &mut f32,
+            snare_filter_resonance: &mut f32,
+            snare_tone_base: &mut f32,
+            snare_decay_base: &mut f32,
+            snare_snappy_base: &mut f32,
+            snare_attack_base: &mut f32,
+            snare_drive_base: &mut f32,
+            snare_level_base: &mut f32,
+            snare_filter_type_base: &mut u32,
+            snare_filter_cutoff_base: &mut f32,
+            snare_filter_resonance_base: &mut f32,
+            snare_decay_time: &mut f32,
+            snare_noise_decay_time: &mut f32,
+            snare_env_coeff: &mut f32,
+            snare_noise_coeff: &mut f32,
+            snare_attack_time: &mut f32,
+            snare_attack_samples: &mut u32,
+            snare_attack_step: &mut f32,
+            snare_freq: &mut f32,
+            snare_cutoff_hz: &mut f32,
+            snare_q: &mut f32,
+            snare_drive_gain: &mut f32,
+        ) {
+            let override_enabled =
+                track.snare_step_override_enabled[step_idx].load(Ordering::Relaxed);
+            if override_enabled {
+                let tone =
+                    f32::from_bits(track.snare_step_tone[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let decay =
+                    f32::from_bits(track.snare_step_decay[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let snappy =
+                    f32::from_bits(track.snare_step_snappy[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let attack =
+                    f32::from_bits(track.snare_step_attack[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let drive_val =
+                    f32::from_bits(track.snare_step_drive[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let level =
+                    f32::from_bits(track.snare_step_level[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let filter_type = track.snare_step_filter_type[step_idx].load(Ordering::Relaxed);
+                let filter_cutoff = f32::from_bits(
+                    track.snare_step_filter_cutoff[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let filter_resonance = f32::from_bits(
+                    track.snare_step_filter_resonance[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+
+                *snare_tone = tone;
+                *snare_decay = decay;
+                *snare_snappy = snappy;
+                *snare_attack = attack;
+                *snare_drive = drive_val;
+                *snare_level = if track_muted { 0.0 } else { level };
+                *snare_filter_type = filter_type;
+                *snare_filter_cutoff = filter_cutoff;
+                *snare_filter_resonance = filter_resonance;
+
+                *snare_decay_time = 0.03 + *snare_decay * 0.4;
+                *snare_noise_decay_time = 0.02 + *snare_decay * 0.2;
+                *snare_env_coeff = (-1.0 / (*snare_decay_time * sr)).exp();
+                *snare_noise_coeff = (-1.0 / (*snare_noise_decay_time * sr)).exp();
+                *snare_attack_time = *snare_attack * 0.01;
+                *snare_attack_samples = (*snare_attack_time * sr).round().max(0.0) as u32;
+                *snare_attack_step = if *snare_attack_samples > 0 {
+                    1.0 / *snare_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *snare_freq = 180.0 + *snare_tone * 420.0;
+                *snare_cutoff_hz = cutoff_min * cutoff_span.powf(*snare_filter_cutoff);
+                *snare_q = 0.1 + *snare_filter_resonance * 0.9;
+                *snare_drive_gain = 1.0 + *snare_drive * 8.0;
+
+                if step_hold {
+                    *snare_tone_base = tone;
+                    *snare_decay_base = decay;
+                    *snare_snappy_base = snappy;
+                    *snare_attack_base = attack;
+                    *snare_drive_base = drive_val;
+                    *snare_level_base = level;
+                    *snare_filter_type_base = filter_type;
+                    *snare_filter_cutoff_base = filter_cutoff;
+                    *snare_filter_resonance_base = filter_resonance;
+                    track.snare_tone.store(tone.to_bits(), Ordering::Relaxed);
+                    track.snare_decay.store(decay.to_bits(), Ordering::Relaxed);
+                    track.snare_snappy.store(snappy.to_bits(), Ordering::Relaxed);
+                    track.snare_attack.store(attack.to_bits(), Ordering::Relaxed);
+                    track.snare_drive.store(drive_val.to_bits(), Ordering::Relaxed);
+                    track.snare_level.store(level.to_bits(), Ordering::Relaxed);
+                    track.snare_filter_type.store(filter_type, Ordering::Relaxed);
+                    track
+                        .snare_filter_cutoff
+                        .store(filter_cutoff.to_bits(), Ordering::Relaxed);
+                    track
+                        .snare_filter_resonance
+                        .store(filter_resonance.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                *snare_tone = *snare_tone_base;
+                *snare_decay = *snare_decay_base;
+                *snare_snappy = *snare_snappy_base;
+                *snare_attack = *snare_attack_base;
+                *snare_drive = *snare_drive_base;
+                *snare_level = if track_muted { 0.0 } else { *snare_level_base };
+                *snare_filter_type = *snare_filter_type_base;
+                *snare_filter_cutoff = *snare_filter_cutoff_base;
+                *snare_filter_resonance = *snare_filter_resonance_base;
+
+                *snare_decay_time = 0.03 + *snare_decay * 0.4;
+                *snare_noise_decay_time = 0.02 + *snare_decay * 0.2;
+                *snare_env_coeff = (-1.0 / (*snare_decay_time * sr)).exp();
+                *snare_noise_coeff = (-1.0 / (*snare_noise_decay_time * sr)).exp();
+                *snare_attack_time = *snare_attack * 0.01;
+                *snare_attack_samples = (*snare_attack_time * sr).round().max(0.0) as u32;
+                *snare_attack_step = if *snare_attack_samples > 0 {
+                    1.0 / *snare_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *snare_freq = 180.0 + *snare_tone * 420.0;
+                *snare_cutoff_hz = cutoff_min * cutoff_span.powf(*snare_filter_cutoff);
+                *snare_q = 0.1 + *snare_filter_resonance * 0.9;
+                *snare_drive_gain = 1.0 + *snare_drive * 8.0;
+            }
+        }
+
+        if current_step >= 0 {
+            let step_idx = current_step as usize;
+            if step_idx < SYNDRM_STEPS {
+                apply_kick_step_params(
+                    track,
+                    step_idx,
+                    step_hold,
+                    track_muted,
+                    cutoff_min,
+                    cutoff_span,
+                    sr,
+                    &mut kick_pitch,
+                    &mut kick_decay,
+                    &mut kick_attack,
+                    &mut kick_drive,
+                    &mut kick_level,
+                    &mut kick_filter_type,
+                    &mut kick_filter_cutoff,
+                    &mut kick_filter_resonance,
+                    &mut kick_pitch_base,
+                    &mut kick_decay_base,
+                    &mut kick_attack_base,
+                    &mut kick_drive_base,
+                    &mut kick_level_base,
+                    &mut kick_filter_type_base,
+                    &mut kick_filter_cutoff_base,
+                    &mut kick_filter_resonance_base,
+                    &mut decay_time,
+                    &mut pitch_decay_time,
+                    &mut env_coeff,
+                    &mut attack_time,
+                    &mut attack_samples,
+                    &mut attack_step,
+                    &mut pitch_coeff,
+                    &mut base_freq,
+                    &mut sweep,
+                    &mut drive,
+                    &mut kick_cutoff_hz,
+                    &mut kick_q,
+                );
+                apply_snare_step_params(
+                    track,
+                    step_idx,
+                    step_hold,
+                    track_muted,
+                    cutoff_min,
+                    cutoff_span,
+                    sr,
+                    &mut snare_tone,
+                    &mut snare_decay,
+                    &mut snare_snappy,
+                    &mut snare_attack,
+                    &mut snare_drive,
+                    &mut snare_level,
+                    &mut snare_filter_type,
+                    &mut snare_filter_cutoff,
+                    &mut snare_filter_resonance,
+                    &mut snare_tone_base,
+                    &mut snare_decay_base,
+                    &mut snare_snappy_base,
+                    &mut snare_attack_base,
+                    &mut snare_drive_base,
+                    &mut snare_level_base,
+                    &mut snare_filter_type_base,
+                    &mut snare_filter_cutoff_base,
+                    &mut snare_filter_resonance_base,
+                    &mut snare_decay_time,
+                    &mut snare_noise_decay_time,
+                    &mut snare_env_coeff,
+                    &mut snare_noise_coeff,
+                    &mut snare_attack_time,
+                    &mut snare_attack_samples,
+                    &mut snare_attack_step,
+                    &mut snare_freq,
+                    &mut snare_cutoff_hz,
+                    &mut snare_q,
+                    &mut snare_drive_gain,
+                );
+            }
+        }
 
         let output = track_output;
 
@@ -1864,15 +2976,104 @@ impl TLBX1 {
             sequencer_phase += 1.0;
             if sequencer_phase >= samples_per_step {
                 sequencer_phase -= samples_per_step;
-                current_step = (current_step + 1).rem_euclid(16);
+                current_step = (current_step + 1).rem_euclid(loop_steps_i32);
                 track.kick_sequencer_step.store(current_step, Ordering::Relaxed);
+                track.snare_sequencer_step.store(current_step, Ordering::Relaxed);
                 let step_idx = current_step as usize;
-                if track.kick_sequencer_grid[step_idx].load(Ordering::Relaxed) {
-                    pitch_env = 1.0;
-                    if attack_samples > 0 {
-                        attack_remaining = attack_samples;
-                    } else {
-                        env = 1.0;
+                if step_idx < SYNDRM_STEPS {
+                    apply_kick_step_params(
+                        track,
+                        step_idx,
+                        step_hold,
+                        track_muted,
+                        cutoff_min,
+                        cutoff_span,
+                        sr,
+                        &mut kick_pitch,
+                        &mut kick_decay,
+                        &mut kick_attack,
+                        &mut kick_drive,
+                        &mut kick_level,
+                        &mut kick_filter_type,
+                        &mut kick_filter_cutoff,
+                        &mut kick_filter_resonance,
+                        &mut kick_pitch_base,
+                        &mut kick_decay_base,
+                        &mut kick_attack_base,
+                        &mut kick_drive_base,
+                        &mut kick_level_base,
+                        &mut kick_filter_type_base,
+                        &mut kick_filter_cutoff_base,
+                        &mut kick_filter_resonance_base,
+                        &mut decay_time,
+                        &mut pitch_decay_time,
+                        &mut env_coeff,
+                        &mut attack_time,
+                        &mut attack_samples,
+                        &mut attack_step,
+                        &mut pitch_coeff,
+                        &mut base_freq,
+                        &mut sweep,
+                        &mut drive,
+                        &mut kick_cutoff_hz,
+                        &mut kick_q,
+                    );
+                    apply_snare_step_params(
+                        track,
+                        step_idx,
+                        step_hold,
+                        track_muted,
+                        cutoff_min,
+                        cutoff_span,
+                        sr,
+                        &mut snare_tone,
+                        &mut snare_decay,
+                        &mut snare_snappy,
+                        &mut snare_attack,
+                        &mut snare_drive,
+                        &mut snare_level,
+                        &mut snare_filter_type,
+                        &mut snare_filter_cutoff,
+                        &mut snare_filter_resonance,
+                        &mut snare_tone_base,
+                        &mut snare_decay_base,
+                        &mut snare_snappy_base,
+                        &mut snare_attack_base,
+                        &mut snare_drive_base,
+                        &mut snare_level_base,
+                        &mut snare_filter_type_base,
+                        &mut snare_filter_cutoff_base,
+                        &mut snare_filter_resonance_base,
+                        &mut snare_decay_time,
+                        &mut snare_noise_decay_time,
+                        &mut snare_env_coeff,
+                        &mut snare_noise_coeff,
+                        &mut snare_attack_time,
+                        &mut snare_attack_samples,
+                        &mut snare_attack_step,
+                        &mut snare_freq,
+                        &mut snare_cutoff_hz,
+                        &mut snare_q,
+                        &mut snare_drive_gain,
+                    );
+
+                    if track.kick_sequencer_grid[step_idx].load(Ordering::Relaxed) {
+                        pitch_env = 1.0;
+                        if attack_samples > 0 {
+                            attack_remaining = attack_samples;
+                        } else {
+                            env = 1.0;
+                        }
+                    }
+                    if track.snare_sequencer_grid[step_idx].load(Ordering::Relaxed) {
+                        if snare_attack_samples > 0 {
+                            snare_attack_remaining = snare_attack_samples;
+                            snare_env = 0.0;
+                            snare_noise_env = 0.0;
+                        } else {
+                            snare_env = 1.0;
+                            snare_noise_env = 1.0;
+                        }
                     }
                 }
             }
@@ -1884,18 +3085,63 @@ impl TLBX1 {
                 env *= env_coeff;
             }
             pitch_env *= pitch_coeff;
+            if snare_attack_remaining > 0 {
+                snare_env = (snare_env + (1.0 - snare_env) * snare_attack_step).min(1.0);
+                snare_noise_env =
+                    (snare_noise_env + (1.0 - snare_noise_env) * snare_attack_step).min(1.0);
+                snare_attack_remaining = snare_attack_remaining.saturating_sub(1);
+            } else {
+                snare_env *= snare_env_coeff;
+                snare_noise_env *= snare_noise_coeff;
+            }
 
             let freq = base_freq + pitch_env * sweep;
-            phase += freq / sr;
-            if phase >= 1.0 {
-                phase -= 1.0;
-            }
-
-            let mut sample = (phase * 2.0 * PI).sin() * env;
+            let mut osc_out = [0.0f32];
+            dsp_state.kick_osc.tick(&[freq], &mut osc_out);
+            let mut sample = osc_out[0] * env;
             if kick_drive > 0.0 {
-                sample = (sample * drive).tanh();
+                let mut drive_out = [0.0f32];
+                dsp_state.kick_drive.tick(&[sample * drive], &mut drive_out);
+                sample = drive_out[0];
             }
+            sample = Self::apply_syndrm_filter(
+                kick_filter_type,
+                sample,
+                kick_cutoff_hz,
+                kick_q,
+                &mut *dsp_state.kick_filter_moog,
+                &mut *dsp_state.kick_filter_lp,
+                &mut *dsp_state.kick_filter_hp,
+                &mut *dsp_state.kick_filter_bp,
+            );
             sample *= kick_level;
+
+            if snare_env > 0.0 || snare_noise_env > 0.0 {
+                let mut tone_out = [0.0f32];
+                dsp_state.snare_osc.tick(&[snare_freq], &mut tone_out);
+                let mut noise_out = [0.0f32];
+                dsp_state.snare_noise.tick(&[], &mut noise_out);
+                let tone_sample = tone_out[0] * snare_env;
+                let noise_sample = noise_out[0] * snare_noise_env;
+                let mut snare_sample =
+                    tone_sample * (1.0 - snare_snappy) + noise_sample * snare_snappy;
+                let mut drive_out = [0.0f32];
+                dsp_state
+                    .snare_drive
+                    .tick(&[snare_sample * snare_drive_gain], &mut drive_out);
+                snare_sample = drive_out[0];
+                snare_sample = Self::apply_syndrm_filter(
+                    snare_filter_type,
+                    snare_sample,
+                    snare_cutoff_hz,
+                    snare_q,
+                    &mut *dsp_state.snare_filter_moog,
+                    &mut *dsp_state.snare_filter_lp,
+                    &mut *dsp_state.snare_filter_hp,
+                    &mut *dsp_state.snare_filter_bp,
+                );
+                sample += snare_sample * snare_level;
+            }
 
             for channel in output.iter_mut() {
                 channel[sample_idx] += sample;
@@ -1905,7 +3151,9 @@ impl TLBX1 {
         track
             .kick_sequencer_phase
             .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
-        track.kick_phase.store(phase.to_bits(), Ordering::Relaxed);
+        track
+            .snare_sequencer_phase
+            .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
         track.kick_env.store(env.to_bits(), Ordering::Relaxed);
         track
             .kick_pitch_env
@@ -1913,6 +3161,45 @@ impl TLBX1 {
         track
             .kick_attack_remaining
             .store(attack_remaining, Ordering::Relaxed);
+        track.snare_env.store(snare_env.to_bits(), Ordering::Relaxed);
+        track
+            .snare_noise_env
+            .store(snare_noise_env.to_bits(), Ordering::Relaxed);
+        track
+            .snare_attack_remaining
+            .store(snare_attack_remaining, Ordering::Relaxed);
+    }
+
+    fn apply_syndrm_filter(
+        filter_type: u32,
+        sample: f32,
+        cutoff_hz: f32,
+        q: f32,
+        moog: &mut dyn AudioUnit,
+        lp: &mut dyn AudioUnit,
+        hp: &mut dyn AudioUnit,
+        bp: &mut dyn AudioUnit,
+    ) -> f32 {
+        let mut out = [0.0f32];
+        match filter_type {
+            0 => {
+                moog.tick(&[sample, cutoff_hz, q], &mut out);
+                out[0]
+            }
+            1 => {
+                lp.tick(&[sample, cutoff_hz, q], &mut out);
+                out[0]
+            }
+            2 => {
+                hp.tick(&[sample, cutoff_hz, q], &mut out);
+                out[0]
+            }
+            3 => {
+                bp.tick(&[sample, cutoff_hz, q], &mut out);
+                out[0]
+            }
+            _ => sample,
+        }
     }
 
     fn process_voidseed(
@@ -2721,6 +4008,7 @@ impl Plugin for TLBX1 {
             metronome_count_in_record: self.metronome_count_in_record.clone(),
             async_executor,
             pending_project_params: self.pending_project_params.clone(),
+            animate_library: self.animate_library.clone(),
         }))
     }
 
@@ -2897,7 +4185,7 @@ impl Plugin for TLBX1 {
         }
 
         // Handle recording for all tracks
-        for track in self.tracks.iter() {
+        for (track_idx, track) in self.tracks.iter().enumerate() {
             if track.is_recording.load(Ordering::Relaxed) {
                 keep_alive = true;
             }
@@ -2975,7 +4263,7 @@ impl Plugin for TLBX1 {
             .iter()
             .any(|track| track.is_recording.load(Ordering::Relaxed));
         let mut monitor_level = 0.0;
-        for track in self.tracks.iter() {
+        for (track_idx, track) in self.tracks.iter().enumerate() {
             if track.tape_monitor.load(Ordering::Relaxed) && !track.is_muted.load(Ordering::Relaxed)
             {
                 monitor_level += f32::from_bits(track.level.load(Ordering::Relaxed));
@@ -3000,7 +4288,7 @@ impl Plugin for TLBX1 {
         }
 
         // Handle playback for all tracks
-        for track in self.tracks.iter() {
+        for (track_idx, track) in self.tracks.iter().enumerate() {
             if track.is_recording.load(Ordering::Relaxed) {
                 continue;
             }
@@ -3029,13 +4317,15 @@ impl Plugin for TLBX1 {
                         samples_per_step,
                     );
                 } else if engine_type == 3 {
-                    Self::process_simpkick(
+                    Self::process_syndrm(
                         track,
                         &mut self.track_buffer,
+                        &mut self.syndrm_dsp[track_idx],
                         buffer.samples(),
                         &self.global_tempo,
                         master_step,
                         master_phase,
+                        master_step_count,
                         samples_per_step,
                         master_sr,
                     );
@@ -3936,6 +5226,188 @@ fn next_mosaic_rand_unit(state: &mut u32) -> f32 {
     value as f32 / u32::MAX as f32
 }
 
+fn syndrm_rand_bool(state: &mut u32) -> bool {
+    next_mosaic_rand_unit(state) >= 0.5
+}
+
+fn syndrm_rand_unit(state: &mut u32) -> f32 {
+    next_mosaic_rand_unit(state).clamp(0.0, 1.0)
+}
+
+fn syndrm_rand_filter_type(state: &mut u32) -> u32 {
+    let max = SYNDRM_FILTER_TYPES.max(1);
+    let idx = (syndrm_rand_unit(state) * max as f32).floor() as u32;
+    idx.min(max - 1)
+}
+
+fn syndrm_randomize_steps(
+    track: &Track,
+    rng_state: &mut u32,
+    lanes: u8,
+    start: usize,
+    len: usize,
+) {
+    let end = (start + len).min(SYNDRM_STEPS);
+    for step in start..end {
+        if (lanes & 0b01) != 0 {
+            track.kick_sequencer_grid[step].store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+        }
+        if (lanes & 0b10) != 0 {
+            track.snare_sequencer_grid[step].store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+        }
+    }
+}
+
+fn syndrm_randomize_params(
+    track: &Track,
+    rng_state: &mut u32,
+    lanes: u8,
+    start: usize,
+    len: usize,
+) {
+    let end = (start + len).min(SYNDRM_STEPS);
+    for step in start..end {
+        if (lanes & 0b01) != 0 {
+            track.kick_step_override_enabled[step].store(true, Ordering::Relaxed);
+            track.kick_step_pitch[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.kick_step_decay[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.kick_step_attack[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.kick_step_drive[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.kick_step_level[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.kick_step_filter_type[step]
+                .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+            track.kick_step_filter_cutoff[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.kick_step_filter_resonance[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+        }
+        if (lanes & 0b10) != 0 {
+            track.snare_step_override_enabled[step].store(true, Ordering::Relaxed);
+            track.snare_step_tone[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.snare_step_decay[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.snare_step_snappy[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.snare_step_attack[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.snare_step_drive[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.snare_step_level[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.snare_step_filter_type[step]
+                .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+            track.snare_step_filter_cutoff[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            track.snare_step_filter_resonance[step]
+                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+        }
+    }
+}
+
+fn syndrm_randomize_apply(
+    track: &Track,
+    lanes: u8,
+    start: usize,
+    len: usize,
+    randomize_steps: bool,
+    randomize_params: bool,
+) {
+    let mut rng_state = track.syndrm_rng_state.load(Ordering::Relaxed);
+    if randomize_steps {
+        syndrm_randomize_steps(track, &mut rng_state, lanes, start, len);
+    }
+    if randomize_params {
+        syndrm_randomize_params(track, &mut rng_state, lanes, start, len);
+    }
+    track.syndrm_rng_state.store(rng_state, Ordering::Relaxed);
+}
+
+fn syndrm_clear_steps(track: &Track, lanes: u8, start: usize, len: usize) {
+    let end = (start + len).min(SYNDRM_STEPS);
+    for step in start..end {
+        if (lanes & 0b01) != 0 {
+            track.kick_sequencer_grid[step].store(false, Ordering::Relaxed);
+        }
+        if (lanes & 0b10) != 0 {
+            track.snare_sequencer_grid[step].store(false, Ordering::Relaxed);
+        }
+    }
+}
+
+fn syndrm_clear_params(track: &Track, lanes: u8, start: usize, len: usize) {
+    let end = (start + len).min(SYNDRM_STEPS);
+    let kick_pitch = f32::from_bits(track.kick_pitch.load(Ordering::Relaxed));
+    let kick_decay = f32::from_bits(track.kick_decay.load(Ordering::Relaxed));
+    let kick_attack = f32::from_bits(track.kick_attack.load(Ordering::Relaxed));
+    let kick_drive = f32::from_bits(track.kick_drive.load(Ordering::Relaxed));
+    let kick_level = f32::from_bits(track.kick_level.load(Ordering::Relaxed));
+    let kick_filter_type = track.kick_filter_type.load(Ordering::Relaxed);
+    let kick_filter_cutoff = f32::from_bits(track.kick_filter_cutoff.load(Ordering::Relaxed));
+    let kick_filter_resonance =
+        f32::from_bits(track.kick_filter_resonance.load(Ordering::Relaxed));
+
+    let snare_tone = f32::from_bits(track.snare_tone.load(Ordering::Relaxed));
+    let snare_decay = f32::from_bits(track.snare_decay.load(Ordering::Relaxed));
+    let snare_snappy = f32::from_bits(track.snare_snappy.load(Ordering::Relaxed));
+    let snare_attack = f32::from_bits(track.snare_attack.load(Ordering::Relaxed));
+    let snare_drive = f32::from_bits(track.snare_drive.load(Ordering::Relaxed));
+    let snare_level = f32::from_bits(track.snare_level.load(Ordering::Relaxed));
+    let snare_filter_type = track.snare_filter_type.load(Ordering::Relaxed);
+    let snare_filter_cutoff = f32::from_bits(track.snare_filter_cutoff.load(Ordering::Relaxed));
+    let snare_filter_resonance =
+        f32::from_bits(track.snare_filter_resonance.load(Ordering::Relaxed));
+
+    for step in start..end {
+        if (lanes & 0b01) != 0 {
+            track.kick_step_override_enabled[step].store(false, Ordering::Relaxed);
+            track.kick_step_pitch[step].store(kick_pitch.to_bits(), Ordering::Relaxed);
+            track.kick_step_decay[step].store(kick_decay.to_bits(), Ordering::Relaxed);
+            track.kick_step_attack[step].store(kick_attack.to_bits(), Ordering::Relaxed);
+            track.kick_step_drive[step].store(kick_drive.to_bits(), Ordering::Relaxed);
+            track.kick_step_level[step].store(kick_level.to_bits(), Ordering::Relaxed);
+            track.kick_step_filter_type[step].store(kick_filter_type, Ordering::Relaxed);
+            track.kick_step_filter_cutoff[step].store(kick_filter_cutoff.to_bits(), Ordering::Relaxed);
+            track.kick_step_filter_resonance[step]
+                .store(kick_filter_resonance.to_bits(), Ordering::Relaxed);
+        }
+        if (lanes & 0b10) != 0 {
+            track.snare_step_override_enabled[step].store(false, Ordering::Relaxed);
+            track.snare_step_tone[step].store(snare_tone.to_bits(), Ordering::Relaxed);
+            track.snare_step_decay[step].store(snare_decay.to_bits(), Ordering::Relaxed);
+            track.snare_step_snappy[step].store(snare_snappy.to_bits(), Ordering::Relaxed);
+            track.snare_step_attack[step].store(snare_attack.to_bits(), Ordering::Relaxed);
+            track.snare_step_drive[step].store(snare_drive.to_bits(), Ordering::Relaxed);
+            track.snare_step_level[step].store(snare_level.to_bits(), Ordering::Relaxed);
+            track.snare_step_filter_type[step].store(snare_filter_type, Ordering::Relaxed);
+            track.snare_step_filter_cutoff[step].store(snare_filter_cutoff.to_bits(), Ordering::Relaxed);
+            track.snare_step_filter_resonance[step]
+                .store(snare_filter_resonance.to_bits(), Ordering::Relaxed);
+        }
+    }
+}
+
+fn syndrm_clear_apply(
+    track: &Track,
+    lanes: u8,
+    start: usize,
+    len: usize,
+    clear_steps: bool,
+    clear_params: bool,
+) {
+    if clear_steps {
+        syndrm_clear_steps(track, lanes, start, len);
+    }
+    if clear_params {
+        syndrm_clear_params(track, lanes, start, len);
+    }
+}
+
 fn mosaic_cc_bipolar(value: f32) -> f32 {
     let cc = (value.clamp(0.0, 1.0) * 127.0).round();
     ((cc - 64.0) / 64.0).clamp(-1.0, 1.0)
@@ -4367,6 +5839,78 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("kick_attack".to_string(), f(&track.kick_attack));
     params.insert("kick_drive".to_string(), f(&track.kick_drive));
     params.insert("kick_level".to_string(), f(&track.kick_level));
+    params.insert("kick_filter_type".to_string(), u(&track.kick_filter_type));
+    params.insert("kick_filter_cutoff".to_string(), f(&track.kick_filter_cutoff));
+    params.insert("kick_filter_resonance".to_string(), f(&track.kick_filter_resonance));
+    params.insert("snare_tone".to_string(), f(&track.snare_tone));
+    params.insert("snare_decay".to_string(), f(&track.snare_decay));
+    params.insert("snare_snappy".to_string(), f(&track.snare_snappy));
+    params.insert("snare_attack".to_string(), f(&track.snare_attack));
+    params.insert("snare_drive".to_string(), f(&track.snare_drive));
+    params.insert("snare_level".to_string(), f(&track.snare_level));
+    params.insert("snare_filter_type".to_string(), u(&track.snare_filter_type));
+    params.insert("snare_filter_cutoff".to_string(), f(&track.snare_filter_cutoff));
+    params.insert("snare_filter_resonance".to_string(), f(&track.snare_filter_resonance));
+    params.insert("snare_tone".to_string(), f(&track.snare_tone));
+    params.insert("snare_decay".to_string(), f(&track.snare_decay));
+    params.insert("snare_snappy".to_string(), f(&track.snare_snappy));
+    params.insert("snare_attack".to_string(), f(&track.snare_attack));
+    params.insert("snare_level".to_string(), f(&track.snare_level));
+    params.insert("syndrm_page".to_string(), u(&track.syndrm_page));
+    params.insert("syndrm_edit_lane".to_string(), u(&track.syndrm_edit_lane));
+    params.insert("syndrm_edit_step".to_string(), u(&track.syndrm_edit_step));
+    params.insert("syndrm_step_hold".to_string(), b(&track.syndrm_step_hold));
+    for i in 0..SYNDRM_STEPS {
+        params.insert(
+            format!("syndrm_kick_step_override_{}", i),
+            b(&track.kick_step_override_enabled[i]),
+        );
+        params.insert(format!("syndrm_kick_step_pitch_{}", i), f(&track.kick_step_pitch[i]));
+        params.insert(format!("syndrm_kick_step_decay_{}", i), f(&track.kick_step_decay[i]));
+        params.insert(format!("syndrm_kick_step_attack_{}", i), f(&track.kick_step_attack[i]));
+        params.insert(format!("syndrm_kick_step_drive_{}", i), f(&track.kick_step_drive[i]));
+        params.insert(format!("syndrm_kick_step_level_{}", i), f(&track.kick_step_level[i]));
+        params.insert(
+            format!("syndrm_kick_step_filter_type_{}", i),
+            u(&track.kick_step_filter_type[i]),
+        );
+        params.insert(
+            format!("syndrm_kick_step_filter_cutoff_{}", i),
+            f(&track.kick_step_filter_cutoff[i]),
+        );
+        params.insert(
+            format!("syndrm_kick_step_filter_resonance_{}", i),
+            f(&track.kick_step_filter_resonance[i]),
+        );
+        params.insert(
+            format!("syndrm_snare_step_override_{}", i),
+            b(&track.snare_step_override_enabled[i]),
+        );
+        params.insert(format!("syndrm_snare_step_tone_{}", i), f(&track.snare_step_tone[i]));
+        params.insert(format!("syndrm_snare_step_decay_{}", i), f(&track.snare_step_decay[i]));
+        params.insert(
+            format!("syndrm_snare_step_snappy_{}", i),
+            f(&track.snare_step_snappy[i]),
+        );
+        params.insert(
+            format!("syndrm_snare_step_attack_{}", i),
+            f(&track.snare_step_attack[i]),
+        );
+        params.insert(format!("syndrm_snare_step_drive_{}", i), f(&track.snare_step_drive[i]));
+        params.insert(format!("syndrm_snare_step_level_{}", i), f(&track.snare_step_level[i]));
+        params.insert(
+            format!("syndrm_snare_step_filter_type_{}", i),
+            u(&track.snare_step_filter_type[i]),
+        );
+        params.insert(
+            format!("syndrm_snare_step_filter_cutoff_{}", i),
+            f(&track.snare_step_filter_cutoff[i]),
+        );
+        params.insert(
+            format!("syndrm_snare_step_filter_resonance_{}", i),
+            f(&track.snare_step_filter_resonance[i]),
+        );
+    }
 
     params.insert("void_base_freq".to_string(), f(&track.void_base_freq));
     params.insert("void_chaos_depth".to_string(), f(&track.void_chaos_depth));
@@ -4487,6 +6031,61 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.kick_attack, "kick_attack");
     sf(&track.kick_drive, "kick_drive");
     sf(&track.kick_level, "kick_level");
+    su(&track.kick_filter_type, "kick_filter_type");
+    sf(&track.kick_filter_cutoff, "kick_filter_cutoff");
+    sf(&track.kick_filter_resonance, "kick_filter_resonance");
+    sf(&track.snare_tone, "snare_tone");
+    sf(&track.snare_decay, "snare_decay");
+    sf(&track.snare_snappy, "snare_snappy");
+    sf(&track.snare_attack, "snare_attack");
+    sf(&track.snare_drive, "snare_drive");
+    sf(&track.snare_level, "snare_level");
+    su(&track.snare_filter_type, "snare_filter_type");
+    sf(&track.snare_filter_cutoff, "snare_filter_cutoff");
+    sf(&track.snare_filter_resonance, "snare_filter_resonance");
+    su(&track.syndrm_page, "syndrm_page");
+    su(&track.syndrm_edit_lane, "syndrm_edit_lane");
+    su(&track.syndrm_edit_step, "syndrm_edit_step");
+    sb(&track.syndrm_step_hold, "syndrm_step_hold");
+    for i in 0..SYNDRM_STEPS {
+        sb(&track.kick_step_override_enabled[i], &format!("syndrm_kick_step_override_{}", i));
+        sf(&track.kick_step_pitch[i], &format!("syndrm_kick_step_pitch_{}", i));
+        sf(&track.kick_step_decay[i], &format!("syndrm_kick_step_decay_{}", i));
+        sf(&track.kick_step_attack[i], &format!("syndrm_kick_step_attack_{}", i));
+        sf(&track.kick_step_drive[i], &format!("syndrm_kick_step_drive_{}", i));
+        sf(&track.kick_step_level[i], &format!("syndrm_kick_step_level_{}", i));
+        su(&track.kick_step_filter_type[i], &format!("syndrm_kick_step_filter_type_{}", i));
+        sf(
+            &track.kick_step_filter_cutoff[i],
+            &format!("syndrm_kick_step_filter_cutoff_{}", i),
+        );
+        sf(
+            &track.kick_step_filter_resonance[i],
+            &format!("syndrm_kick_step_filter_resonance_{}", i),
+        );
+        sb(&track.snare_step_override_enabled[i], &format!("syndrm_snare_step_override_{}", i));
+        sf(&track.snare_step_tone[i], &format!("syndrm_snare_step_tone_{}", i));
+        sf(&track.snare_step_decay[i], &format!("syndrm_snare_step_decay_{}", i));
+        sf(
+            &track.snare_step_snappy[i],
+            &format!("syndrm_snare_step_snappy_{}", i),
+        );
+        sf(&track.snare_step_attack[i], &format!("syndrm_snare_step_attack_{}", i));
+        sf(&track.snare_step_drive[i], &format!("syndrm_snare_step_drive_{}", i));
+        sf(&track.snare_step_level[i], &format!("syndrm_snare_step_level_{}", i));
+        su(
+            &track.snare_step_filter_type[i],
+            &format!("syndrm_snare_step_filter_type_{}", i),
+        );
+        sf(
+            &track.snare_step_filter_cutoff[i],
+            &format!("syndrm_snare_step_filter_cutoff_{}", i),
+        );
+        sf(
+            &track.snare_step_filter_resonance[i],
+            &format!("syndrm_snare_step_filter_resonance_{}", i),
+        );
+    }
 
     sf(&track.void_base_freq, "void_base_freq");
     sf(&track.void_chaos_depth, "void_chaos_depth");
@@ -4530,8 +6129,12 @@ fn save_project(
             }
         } else if track_data.engine_type == 3 {
             let grid = track.kick_sequencer_grid.clone();
-            for j in 0..16 {
+            for j in 0..SYNDRM_STEPS {
                 track_data.sequence.push(grid[j].load(Ordering::Relaxed));
+            }
+            let snare_grid = track.snare_sequencer_grid.clone();
+            for j in 0..SYNDRM_STEPS {
+                track_data.sequence.push(snare_grid[j].load(Ordering::Relaxed));
             }
         }
 
@@ -4607,6 +6210,24 @@ fn load_project(
             let grid = track.animate_sequencer_grid.clone();
             for j in 0..160 {
                 grid[j].store(track_data.sequence[j], Ordering::Relaxed);
+            }
+        } else if track_data.engine_type == 3 && track_data.sequence.len() == SYNDRM_STEPS * 2 {
+            let grid = track.kick_sequencer_grid.clone();
+            for j in 0..SYNDRM_STEPS {
+                grid[j].store(track_data.sequence[j], Ordering::Relaxed);
+            }
+            let snare_grid = track.snare_sequencer_grid.clone();
+            for j in 0..SYNDRM_STEPS {
+                snare_grid[j].store(track_data.sequence[j + SYNDRM_STEPS], Ordering::Relaxed);
+            }
+        } else if track_data.engine_type == 3 && track_data.sequence.len() == 32 {
+            let grid = track.kick_sequencer_grid.clone();
+            for j in 0..16 {
+                grid[j].store(track_data.sequence[j], Ordering::Relaxed);
+            }
+            let snare_grid = track.snare_sequencer_grid.clone();
+            for j in 0..16 {
+                snare_grid[j].store(track_data.sequence[j + 16], Ordering::Relaxed);
             }
         } else if track_data.engine_type == 3 && track_data.sequence.len() == 16 {
             let grid = track.kick_sequencer_grid.clone();
@@ -4702,8 +6323,12 @@ fn export_project_as_zip(
             }
         } else if track_data.engine_type == 3 {
             let grid = track.kick_sequencer_grid.clone();
-            for j in 0..16 {
+            for j in 0..SYNDRM_STEPS {
                 track_data.sequence.push(grid[j].load(Ordering::Relaxed));
+            }
+            let snare_grid = track.snare_sequencer_grid.clone();
+            for j in 0..SYNDRM_STEPS {
+                track_data.sequence.push(snare_grid[j].load(Ordering::Relaxed));
             }
         }
 
@@ -4797,6 +6422,7 @@ struct SlintEditor {
     metronome_count_in_record: Arc<AtomicBool>,
     async_executor: AsyncExecutor<TLBX1>,
     pending_project_params: Arc<Mutex<Option<PendingProjectParams>>>,
+    animate_library: Arc<AnimateLibrary>,
 }
 
 impl Editor for SlintEditor {
@@ -4817,6 +6443,7 @@ impl Editor for SlintEditor {
         let metronome_count_in_record = self.metronome_count_in_record.clone();
         let async_executor = self.async_executor.clone();
         let pending_project_params = self.pending_project_params.clone();
+        let animate_library = self.animate_library.clone();
 
         let initial_size = default_window_size();
         let window_handle = baseview::Window::open_parented(
@@ -4844,6 +6471,7 @@ impl Editor for SlintEditor {
                     metronome_count_in_record,
                     async_executor,
                     pending_project_params,
+                    animate_library,
                 )
             },
         );
@@ -4913,6 +6541,7 @@ struct SlintWindow {
     current_path: Arc<Mutex<PathBuf>>,
     library_folders_model: std::rc::Rc<VecModel<SharedString>>,
     current_folder_content_model: std::rc::Rc<VecModel<BrowserEntry>>,
+    animate_library: Arc<AnimateLibrary>,
 }
 
 impl SlintWindow {
@@ -4932,6 +6561,7 @@ impl SlintWindow {
         metronome_count_in_record: Arc<AtomicBool>,
         async_executor: AsyncExecutor<TLBX1>,
         pending_project_params: Arc<Mutex<Option<PendingProjectParams>>>,
+        animate_library: Arc<AnimateLibrary>,
     ) -> Self {
         ensure_slint_platform();
         let (slint_window, ui) = create_slint_ui();
@@ -5031,6 +6661,7 @@ impl SlintWindow {
             &current_path,
             &library_folders_model,
             &current_folder_content_model,
+            &animate_library,
         );
 
         ui.set_library_folders(ModelRc::from(library_folders_model.clone()));
@@ -5075,6 +6706,7 @@ impl SlintWindow {
             current_path,
             library_folders_model,
             current_folder_content_model,
+            animate_library,
         }
     }
 
@@ -5473,13 +7105,88 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].kick_drive.load(Ordering::Relaxed));
         let kick_level =
             f32::from_bits(self.tracks[track_idx].kick_level.load(Ordering::Relaxed));
+        let kick_filter_type =
+            self.tracks[track_idx].kick_filter_type.load(Ordering::Relaxed);
+        let kick_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].kick_filter_cutoff.load(Ordering::Relaxed));
+        let kick_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].kick_filter_resonance.load(Ordering::Relaxed));
         let kick_sequencer_current_step =
             self.tracks[track_idx].kick_sequencer_step.load(Ordering::Relaxed);
-        let mut kick_sequencer_grid = Vec::with_capacity(16);
-        for i in 0..16 {
+        let mut kick_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
+        for i in 0..SYNDRM_STEPS {
             kick_sequencer_grid
                 .push(self.tracks[track_idx].kick_sequencer_grid[i].load(Ordering::Relaxed));
         }
+        let snare_tone =
+            f32::from_bits(self.tracks[track_idx].snare_tone.load(Ordering::Relaxed));
+        let snare_decay =
+            f32::from_bits(self.tracks[track_idx].snare_decay.load(Ordering::Relaxed));
+        let snare_snappy =
+            f32::from_bits(self.tracks[track_idx].snare_snappy.load(Ordering::Relaxed));
+        let snare_attack =
+            f32::from_bits(self.tracks[track_idx].snare_attack.load(Ordering::Relaxed));
+        let snare_drive =
+            f32::from_bits(self.tracks[track_idx].snare_drive.load(Ordering::Relaxed));
+        let snare_level =
+            f32::from_bits(self.tracks[track_idx].snare_level.load(Ordering::Relaxed));
+        let snare_filter_type =
+            self.tracks[track_idx].snare_filter_type.load(Ordering::Relaxed);
+        let snare_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].snare_filter_cutoff.load(Ordering::Relaxed));
+        let snare_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].snare_filter_resonance.load(Ordering::Relaxed));
+        let snare_sequencer_current_step =
+            self.tracks[track_idx].snare_sequencer_step.load(Ordering::Relaxed);
+        let mut snare_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
+        for i in 0..SYNDRM_STEPS {
+            snare_sequencer_grid
+                .push(self.tracks[track_idx].snare_sequencer_grid[i].load(Ordering::Relaxed));
+        }
+        let syndrm_page = self.tracks[track_idx].syndrm_page.load(Ordering::Relaxed) as i32;
+        let syndrm_edit_lane = self.tracks[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as i32;
+        let syndrm_edit_step = self.tracks[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as i32;
+        let syndrm_step_hold = self.tracks[track_idx].syndrm_step_hold.load(Ordering::Relaxed);
+        let edit_step = syndrm_edit_step.clamp(0, (SYNDRM_STEPS - 1) as i32) as usize;
+        let syndrm_step_override = if syndrm_edit_lane == 0 {
+            self.tracks[track_idx].kick_step_override_enabled[edit_step].load(Ordering::Relaxed)
+        } else {
+            self.tracks[track_idx].snare_step_override_enabled[edit_step].load(Ordering::Relaxed)
+        };
+        let syndrm_step_kick_pitch =
+            f32::from_bits(self.tracks[track_idx].kick_step_pitch[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_kick_decay =
+            f32::from_bits(self.tracks[track_idx].kick_step_decay[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_kick_attack =
+            f32::from_bits(self.tracks[track_idx].kick_step_attack[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_kick_drive =
+            f32::from_bits(self.tracks[track_idx].kick_step_drive[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_kick_level =
+            f32::from_bits(self.tracks[track_idx].kick_step_level[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_kick_filter_type =
+            self.tracks[track_idx].kick_step_filter_type[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_kick_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].kick_step_filter_cutoff[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_kick_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].kick_step_filter_resonance[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_snare_tone =
+            f32::from_bits(self.tracks[track_idx].snare_step_tone[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_snare_decay =
+            f32::from_bits(self.tracks[track_idx].snare_step_decay[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_snare_snappy =
+            f32::from_bits(self.tracks[track_idx].snare_step_snappy[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_snare_attack =
+            f32::from_bits(self.tracks[track_idx].snare_step_attack[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_snare_drive =
+            f32::from_bits(self.tracks[track_idx].snare_step_drive[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_snare_level =
+            f32::from_bits(self.tracks[track_idx].snare_step_level[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_snare_filter_type =
+            self.tracks[track_idx].snare_step_filter_type[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_snare_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].snare_step_filter_cutoff[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_snare_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].snare_step_filter_resonance[edit_step].load(Ordering::Relaxed));
 
         let void_base_freq = f32::from_bits(self.tracks[track_idx].void_base_freq.load(Ordering::Relaxed));
         let void_chaos_depth = f32::from_bits(self.tracks[track_idx].void_chaos_depth.load(Ordering::Relaxed));
@@ -5729,12 +7436,57 @@ impl SlintWindow {
         self.ui.set_kick_attack(kick_attack);
         self.ui.set_kick_drive(kick_drive);
         self.ui.set_kick_level(kick_level);
+        self.ui.set_kick_filter_type(kick_filter_type as i32);
+        self.ui.set_kick_filter_cutoff(kick_filter_cutoff);
+        self.ui.set_kick_filter_resonance(kick_filter_resonance);
         self.ui
             .set_kick_sequencer_current_step(kick_sequencer_current_step);
         self.ui
             .set_kick_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
                 kick_sequencer_grid,
             ))));
+        self.ui.set_snare_tone(snare_tone);
+        self.ui.set_snare_decay(snare_decay);
+        self.ui.set_snare_snappy(snare_snappy);
+        self.ui.set_snare_attack(snare_attack);
+        self.ui.set_snare_drive(snare_drive);
+        self.ui.set_snare_level(snare_level);
+        self.ui.set_snare_filter_type(snare_filter_type as i32);
+        self.ui.set_snare_filter_cutoff(snare_filter_cutoff);
+        self.ui.set_snare_filter_resonance(snare_filter_resonance);
+        self.ui
+            .set_snare_sequencer_current_step(snare_sequencer_current_step);
+        self.ui
+            .set_snare_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                snare_sequencer_grid,
+            ))));
+        self.ui.set_syndrm_page(syndrm_page);
+        self.ui.set_syndrm_edit_lane(syndrm_edit_lane);
+        self.ui.set_syndrm_edit_step(syndrm_edit_step);
+        self.ui.set_syndrm_step_hold(syndrm_step_hold);
+        self.ui.set_syndrm_step_override(syndrm_step_override);
+        self.ui.set_syndrm_step_kick_pitch(syndrm_step_kick_pitch);
+        self.ui.set_syndrm_step_kick_decay(syndrm_step_kick_decay);
+        self.ui.set_syndrm_step_kick_attack(syndrm_step_kick_attack);
+        self.ui.set_syndrm_step_kick_drive(syndrm_step_kick_drive);
+        self.ui.set_syndrm_step_kick_level(syndrm_step_kick_level);
+        self.ui.set_syndrm_step_kick_filter_type(syndrm_step_kick_filter_type as i32);
+        self.ui
+            .set_syndrm_step_kick_filter_cutoff(syndrm_step_kick_filter_cutoff);
+        self.ui
+            .set_syndrm_step_kick_filter_resonance(syndrm_step_kick_filter_resonance);
+        self.ui.set_syndrm_step_snare_tone(syndrm_step_snare_tone);
+        self.ui.set_syndrm_step_snare_decay(syndrm_step_snare_decay);
+        self.ui.set_syndrm_step_snare_snappy(syndrm_step_snare_snappy);
+        self.ui.set_syndrm_step_snare_attack(syndrm_step_snare_attack);
+        self.ui.set_syndrm_step_snare_drive(syndrm_step_snare_drive);
+        self.ui.set_syndrm_step_snare_level(syndrm_step_snare_level);
+        self.ui
+            .set_syndrm_step_snare_filter_type(syndrm_step_snare_filter_type as i32);
+        self.ui
+            .set_syndrm_step_snare_filter_cutoff(syndrm_step_snare_filter_cutoff);
+        self.ui
+            .set_syndrm_step_snare_filter_resonance(syndrm_step_snare_filter_resonance);
 
         self.ui.set_void_base_freq(void_base_freq);
         self.ui.set_void_chaos_depth(void_chaos_depth);
@@ -6064,6 +7816,15 @@ impl BaseWindowHandler for SlintWindow {
     }
 }
 
+fn spawn_with_stack<F>(f: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    let _ = std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(f);
+}
+
 fn initialize_ui(
     ui: &TLBX1UI,
     gui_context: &Arc<dyn GuiContext>,
@@ -6086,6 +7847,7 @@ fn initialize_ui(
     current_path: &Arc<Mutex<PathBuf>>,
     library_folders_model: &std::rc::Rc<VecModel<SharedString>>,
     current_folder_content_model: &std::rc::Rc<VecModel<BrowserEntry>>,
+    animate_library: &Arc<AnimateLibrary>,
 ) {
     ui.set_output_devices(ModelRc::new(VecModel::from(
         output_devices
@@ -6148,10 +7910,16 @@ fn initialize_ui(
         SharedString::from("Major"),
         SharedString::from("Minor"),
     ])));
+    ui.set_syndrm_filter_types(ModelRc::new(VecModel::from(vec![
+        SharedString::from("Moog LP"),
+        SharedString::from("Lowpass"),
+        SharedString::from("Highpass"),
+        SharedString::from("Bandpass"),
+    ])));
     ui.set_engine_types(ModelRc::new(VecModel::from(vec![
         SharedString::from("Tape-Deck"),
         SharedString::from("Animate"),
-        SharedString::from("Simp Kick"),
+        SharedString::from("SynDRM"),
         SharedString::from("Void Seed"),
     ])));
     ui.set_engine_index(0);
@@ -6265,7 +8033,7 @@ fn initialize_ui(
     ui.on_add_library_folder(move || {
         let ui_weak = ui_add_folder.clone();
         let library_folders = library_folders_add.clone();
-        std::thread::spawn(move || {
+        spawn_with_stack(move || {
             if let Some(path) = rfd::FileDialog::new().pick_folder() {
                 slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_weak.upgrade() {
@@ -6326,7 +8094,7 @@ fn initialize_ui(
         let title = title.to_string();
         let description = description.to_string();
         let project_dialog_tx = project_dialog_tx_save.clone();
-        std::thread::spawn(move || {
+        spawn_with_stack(move || {
             if let Some(path) = rfd::FileDialog::new()
                 .set_title("Select Project Folder")
                 .pick_folder()
@@ -6345,7 +8113,7 @@ fn initialize_ui(
         let title = title.to_string();
         let description = description.to_string();
         let project_dialog_tx = project_dialog_tx_export.clone();
-        std::thread::spawn(move || {
+        spawn_with_stack(move || {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Zip Archive", &["zip"])
                 .save_file()
@@ -6800,7 +8568,7 @@ fn initialize_ui(
             return;
         }
         let sample_dialog_tx = sample_dialog_tx_load.clone();
-        std::thread::spawn(move || {
+        spawn_with_stack(move || {
             let path = rfd::FileDialog::new()
                 .add_filter("Audio", &["wav", "flac", "mp3", "ogg"])
                 .pick_file();
@@ -6816,7 +8584,7 @@ fn initialize_ui(
             return;
         }
         let sample_dialog_tx = sample_dialog_tx_save.clone();
-        std::thread::spawn(move || {
+        spawn_with_stack(move || {
             let path = rfd::FileDialog::new()
                 .add_filter("WAV", &["wav"])
                 .save_file();
@@ -7515,7 +9283,7 @@ fn initialize_ui(
         let project_dialog_tx = project_dialog_tx.clone();
         move || {
             let project_dialog_tx = project_dialog_tx.clone();
-            std::thread::spawn(move || {
+            spawn_with_stack(move || {
                 let path = rfd::FileDialog::new()
                     .add_filter("TLBX-1 Project", &["json"])
                     .save_file();
@@ -7530,7 +9298,7 @@ fn initialize_ui(
         let project_dialog_tx = project_dialog_tx.clone();
         move || {
             let project_dialog_tx = project_dialog_tx.clone();
-            std::thread::spawn(move || {
+            spawn_with_stack(move || {
                 let path = rfd::FileDialog::new()
                     .add_filter("TLBX-1 Project", &["json"])
                     .pick_file();
@@ -7580,6 +9348,10 @@ fn initialize_ui(
 
         let tracks_animate = Arc::clone(tracks);
         let params_animate = Arc::clone(params);
+        let animate_library_a = Arc::clone(&animate_library);
+        let animate_library_b = Arc::clone(&animate_library);
+        let animate_library_c = Arc::clone(&animate_library);
+        let animate_library_d = Arc::clone(&animate_library);
         match i {
             0 => ui.on_animate_slot_a_wavetable_changed(move |index| {
                 let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
@@ -7587,6 +9359,7 @@ fn initialize_ui(
                     tracks_animate[track_idx].animate_slot_wavetables[slot_idx]
                         .store(index as u32, Ordering::Relaxed);
                 }
+                animate_library_a.ensure_wavetable_loaded(index as usize);
             }),
             1 => ui.on_animate_slot_b_wavetable_changed(move |index| {
                 let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
@@ -7594,6 +9367,7 @@ fn initialize_ui(
                     tracks_animate[track_idx].animate_slot_wavetables[slot_idx]
                         .store(index as u32, Ordering::Relaxed);
                 }
+                animate_library_b.ensure_wavetable_loaded(index as usize);
             }),
             2 => ui.on_animate_slot_c_wavetable_changed(move |index| {
                 let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
@@ -7601,6 +9375,7 @@ fn initialize_ui(
                     tracks_animate[track_idx].animate_slot_wavetables[slot_idx]
                         .store(index as u32, Ordering::Relaxed);
                 }
+                animate_library_c.ensure_wavetable_loaded(index as usize);
             }),
             3 => ui.on_animate_slot_d_wavetable_changed(move |index| {
                 let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
@@ -7608,12 +9383,17 @@ fn initialize_ui(
                     tracks_animate[track_idx].animate_slot_wavetables[slot_idx]
                         .store(index as u32, Ordering::Relaxed);
                 }
+                animate_library_d.ensure_wavetable_loaded(index as usize);
             }),
             _ => (),
         }
 
         let tracks_animate = Arc::clone(tracks);
         let params_animate = Arc::clone(params);
+        let animate_library_a = Arc::clone(&animate_library);
+        let animate_library_b = Arc::clone(&animate_library);
+        let animate_library_c = Arc::clone(&animate_library);
+        let animate_library_d = Arc::clone(&animate_library);
         match i {
             0 => ui.on_animate_slot_a_sample_changed(move |index| {
                 let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
@@ -7621,6 +9401,7 @@ fn initialize_ui(
                     tracks_animate[track_idx].animate_slot_samples[slot_idx]
                         .store(index as u32, Ordering::Relaxed);
                 }
+                animate_library_a.ensure_sample_loaded(index as usize);
             }),
             1 => ui.on_animate_slot_b_sample_changed(move |index| {
                 let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
@@ -7628,6 +9409,7 @@ fn initialize_ui(
                     tracks_animate[track_idx].animate_slot_samples[slot_idx]
                         .store(index as u32, Ordering::Relaxed);
                 }
+                animate_library_b.ensure_sample_loaded(index as usize);
             }),
             2 => ui.on_animate_slot_c_sample_changed(move |index| {
                 let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
@@ -7635,6 +9417,7 @@ fn initialize_ui(
                     tracks_animate[track_idx].animate_slot_samples[slot_idx]
                         .store(index as u32, Ordering::Relaxed);
                 }
+                animate_library_c.ensure_sample_loaded(index as usize);
             }),
             3 => ui.on_animate_slot_d_sample_changed(move |index| {
                 let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
@@ -7642,6 +9425,7 @@ fn initialize_ui(
                     tracks_animate[track_idx].animate_slot_samples[slot_idx]
                         .store(index as u32, Ordering::Relaxed);
                 }
+                animate_library_d.ensure_sample_loaded(index as usize);
             }),
             _ => (),
         }
@@ -8210,6 +9994,20 @@ fn initialize_ui(
 
     let tracks_animate = Arc::clone(tracks);
     let params_animate = Arc::clone(params);
+    ui.global::<RDSKeybedBus>().on_note_triggered(move |note| {
+        let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_animate[track_idx]
+                .animate_keybed_note
+                .store(note, Ordering::Relaxed);
+            tracks_animate[track_idx]
+                .animate_keybed_trigger
+                .store(true, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_animate = Arc::clone(tracks);
+    let params_animate = Arc::clone(params);
     ui.on_animate_sequencer_grid_toggled(move |row, step| {
         let track_idx = params_animate.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -8278,14 +10076,729 @@ fn initialize_ui(
 
     let tracks_kick = Arc::clone(tracks);
     let params_kick = Arc::clone(params);
+    ui.on_kick_filter_type_changed(move |index| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_filter_type
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_filter_cutoff_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_filter_cutoff
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_filter_resonance_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_filter_resonance
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
     ui.on_kick_sequencer_grid_toggled(move |step| {
         let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             let index = step as usize;
-            if index < 16 {
+            if index < SYNDRM_STEPS {
                 let current = tracks_kick[track_idx].kick_sequencer_grid[index].load(Ordering::Relaxed);
                 tracks_kick[track_idx].kick_sequencer_grid[index].store(!current, Ordering::Relaxed);
             }
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_tone_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_tone
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_decay_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_decay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_snappy_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_snappy
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_attack_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_attack
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_drive_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_drive
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_level_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_level
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_filter_type_changed(move |index| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_filter_type
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_filter_cutoff_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_filter_cutoff
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_filter_resonance_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_filter_resonance
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_sequencer_grid_toggled(move |step| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let index = step as usize;
+            if index < SYNDRM_STEPS {
+                let current = tracks_snare[track_idx].snare_sequencer_grid[index].load(Ordering::Relaxed);
+                tracks_snare[track_idx].snare_sequencer_grid[index].store(!current, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_page_changed(move |page| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = page.clamp(0, (SYNDRM_PAGES - 1) as i32) as u32;
+            tracks_syndrm[track_idx]
+                .syndrm_page
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_edit_lane_changed(move |lane| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = lane.clamp(0, (SYNDRM_LANES - 1) as i32) as u32;
+            tracks_syndrm[track_idx]
+                .syndrm_edit_lane
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_edit_step_changed(move |step| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = step.clamp(0, (SYNDRM_STEPS - 1) as i32) as u32;
+            tracks_syndrm[track_idx]
+                .syndrm_edit_step
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hold_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_syndrm[track_idx]
+                .syndrm_step_hold
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_override_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let edit_lane =
+                    tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+                if edit_lane == 0 {
+                    tracks_syndrm[track_idx].kick_step_override_enabled[edit_step]
+                        .store(value, Ordering::Relaxed);
+                } else if edit_lane == 1 {
+                    tracks_syndrm[track_idx].snare_step_override_enabled[edit_step]
+                        .store(value, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_pitch_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].kick_step_pitch[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_decay_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].kick_step_decay[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_attack_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].kick_step_attack[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_drive_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].kick_step_drive[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_level_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].kick_step_level[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_filter_type_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].kick_step_filter_type[edit_step]
+                    .store(index as u32, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_filter_cutoff_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].kick_step_filter_cutoff[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_filter_resonance_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].kick_step_filter_resonance[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_tone_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_tone[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_decay_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_decay[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_snappy_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_snappy[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_attack_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_attack[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_drive_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_drive[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_level_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_level[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_filter_type_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_filter_type[edit_step]
+                    .store(index as u32, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_filter_cutoff_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_filter_cutoff[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_filter_resonance_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_filter_resonance[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_steps_lane_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_steps_lane_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_steps_all_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_steps_all_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_params_lane_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, false, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_params_lane_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, false, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_params_all_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, false, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_params_all_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, false, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_both_lane_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_both_lane_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_both_all_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, true, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_both_all_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, true, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_steps_lane_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_steps_lane_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_steps_all_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_steps_all_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_params_lane_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, false, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_params_lane_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, false, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_params_all_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, false, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_params_all_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, false, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_both_lane_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_both_lane_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_both_all_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, true, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_clear_both_all_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, true, true);
         }
     });
 

@@ -54,10 +54,12 @@ export component StepperReadout inherits Rectangle {
     in property <float> max-value;
     in property <string> font-family: Theme.active.font_readout;
     in property <int> pad-digits: 3;
+    in property <bool> allow-editing: true;
     in-out property <bool> editing;
     in-out property <length> drag-start-y;
     in-out property <float> drag-start-value;
     callback value-changed(float);
+    callback double-clicked();
 
     private property <int> rounded-value: Math.round(root.value);
     private property <int> clamped-pad: Math.max(0, Math.min(3, root.pad-digits));
@@ -109,7 +111,10 @@ export component StepperReadout inherits Rectangle {
         }
 
         double-clicked => {
-            root.editing = true;
+            root.double-clicked();
+            if (root.allow-editing) {
+                root.editing = true;
+            }
         }
 
         moved => {
@@ -298,8 +303,10 @@ export component RDSNumStepper {
     in property <string> font-family: Theme.active.font_readout;
     in property <int> pad-digits: 3;
     in property <bool> button-tog: true;
+    in property <bool> allow-editing: true;
     in-out property <string> button-pos: "top-bottom"; // "top-bottom" or "left-right"
     callback value-changed(float);
+    callback readout-double-clicked();
 
     private property <bool> editing: false;
     private property <length> drag-start-y: 0px;
@@ -333,10 +340,12 @@ export component RDSNumStepper {
                 max-value: root.max-value;
                 font-family: root.font-family;
                 pad-digits: root.pad-digits;
+                allow-editing: root.allow-editing;
                 editing <=> root.editing;
                 drag-start-y <=> root.drag-start-y;
                 drag-start-value <=> root.drag-start-value;
                 value-changed(v) => { root.value-changed(v); }
+                double-clicked() => { root.readout-double-clicked(); }
             }
 
             if (root.button-tog) : StepperButton {
@@ -370,10 +379,12 @@ export component RDSNumStepper {
                 max-value: root.max-value;
                 font-family: root.font-family;
                 pad-digits: root.pad-digits;
+                allow-editing: root.allow-editing;
                 editing <=> root.editing;
                 drag-start-y <=> root.drag-start-y;
                 drag-start-value <=> root.drag-start-value;
                 value-changed(v) => { root.value-changed(v); }
+                double-clicked() => { root.readout-double-clicked(); }
             }
 
             if (root.button-tog) : StepperButton {

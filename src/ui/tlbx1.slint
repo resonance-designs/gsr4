@@ -9,6 +9,8 @@
 
 import "./assets/fonts/Quad_Light.otf";
 
+export { RDSKeybedBus } from "./globals.slint";
+
 import {
     Button,
     ScrollView
@@ -27,12 +29,13 @@ import {
     RDSComboBox,
     RDSOscilloscopeViz,
     RDSSpectrumViz,
-    RDSVectorscopeViz
+    RDSVectorscopeViz,
+    RDSNumericKeypad,
 } from "./components/index.slint";
 
 import { TapeEngine } from "./engines/tape_engine.slint";
 import { AnimateEngine } from "./engines/animate_engine.slint";
-import { SimpKickEngine } from "./engines/simpkick_engine.slint";
+import { SynDRMEngine } from "./engines/syndrm_engine.slint";
 import { VoidSeedEngine } from "./engines/void_seed_engine.slint";
 import { Browser, BrowserEntry } from "./browser.slint";
 
@@ -123,7 +126,7 @@ export component TLBX1UI inherits Window {
     in property <string> metronome-count-in-label;
     in-out property <bool> show-engine-confirm: false;
     in property <string> engine-confirm-text;
-    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate, 3 = Simp Kick, 4 = Void Seed
+    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate, 3 = SynDRM, 4 = Void Seed
     in property <bool> is-software-renderer: false;
 
     // Browser Properties
@@ -228,14 +231,51 @@ export component TLBX1UI inherits Window {
     in property <int> animate-sequencer-rows: 10;
     in property <int> animate-sequencer-current-step: -1;
 
-    // Simp Kick Engine Properties
+    // SynDRM Engine Properties
+    in property <[string]> syndrm-filter-types;
     in-out property <float> kick-pitch: 0.5;
     in-out property <float> kick-decay: 0.5;
     in-out property <float> kick-attack: 0.0;
     in-out property <float> kick-drive: 0.0;
     in-out property <float> kick-level: 1.0;
+    in-out property <int> kick-filter-type: 0;
+    in-out property <float> kick-filter-cutoff: 0.6;
+    in-out property <float> kick-filter-resonance: 0.2;
     in-out property <[bool]> kick-sequencer-grid;
     in property <int> kick-sequencer-current-step: -1;
+    in-out property <float> snare-tone: 0.5;
+    in-out property <float> snare-decay: 0.4;
+    in-out property <float> snare-snappy: 0.6;
+    in-out property <float> snare-attack: 0.0;
+    in-out property <float> snare-drive: 0.0;
+    in-out property <float> snare-level: 0.8;
+    in-out property <int> snare-filter-type: 0;
+    in-out property <float> snare-filter-cutoff: 0.6;
+    in-out property <float> snare-filter-resonance: 0.2;
+    in-out property <[bool]> snare-sequencer-grid;
+    in property <int> snare-sequencer-current-step: -1;
+    in-out property <int> syndrm-page: 0;
+    in-out property <int> syndrm-edit-lane: 0;
+    in-out property <int> syndrm-edit-step: 0;
+    in-out property <bool> syndrm-step-hold: false;
+    in-out property <bool> syndrm-step-override: false;
+    in-out property <float> syndrm-step-kick-pitch: 0.5;
+    in-out property <float> syndrm-step-kick-decay: 0.5;
+    in-out property <float> syndrm-step-kick-attack: 0.0;
+    in-out property <float> syndrm-step-kick-drive: 0.0;
+    in-out property <float> syndrm-step-kick-level: 1.0;
+    in-out property <int> syndrm-step-kick-filter-type: 0;
+    in-out property <float> syndrm-step-kick-filter-cutoff: 0.6;
+    in-out property <float> syndrm-step-kick-filter-resonance: 0.2;
+    in-out property <float> syndrm-step-snare-tone: 0.5;
+    in-out property <float> syndrm-step-snare-decay: 0.4;
+    in-out property <float> syndrm-step-snare-snappy: 0.6;
+    in-out property <float> syndrm-step-snare-attack: 0.0;
+    in-out property <float> syndrm-step-snare-drive: 0.0;
+    in-out property <float> syndrm-step-snare-level: 0.8;
+    in-out property <int> syndrm-step-snare-filter-type: 0;
+    in-out property <float> syndrm-step-snare-filter-cutoff: 0.6;
+    in-out property <float> syndrm-step-snare-filter-resonance: 0.2;
 
     // Void Seed Engine Properties
     in-out property <float> void-base-freq: 40.0;
@@ -248,6 +288,8 @@ export component TLBX1UI inherits Window {
     in property <bool> void-enabled: false;
 
     in-out property <bool> show-settings: false;
+    in-out property <bool> show-bpm-keypad: false;
+    in-out property <string> bpm-keypad-input: "";
     in property <[string]> output-devices;
     in-out property <int> output-device-index: 0;
     in property <[string]> input-devices;
@@ -435,7 +477,66 @@ export component TLBX1UI inherits Window {
     callback kick-attack-changed(value: float);
     callback kick-drive-changed(value: float);
     callback kick-level-changed(value: float);
+    callback kick-filter-type-changed(index: int);
+    callback kick-filter-cutoff-changed(value: float);
+    callback kick-filter-resonance-changed(value: float);
     callback kick-sequencer-grid-toggled(step: int);
+    callback snare-tone-changed(value: float);
+    callback snare-decay-changed(value: float);
+    callback snare-snappy-changed(value: float);
+    callback snare-attack-changed(value: float);
+    callback snare-drive-changed(value: float);
+    callback snare-level-changed(value: float);
+    callback snare-filter-type-changed(index: int);
+    callback snare-filter-cutoff-changed(value: float);
+    callback snare-filter-resonance-changed(value: float);
+    callback snare-sequencer-grid-toggled(step: int);
+    callback syndrm-page-changed(page: int);
+    callback syndrm-edit-lane-changed(lane: int);
+    callback syndrm-edit-step-changed(step: int);
+    callback syndrm-step-hold-changed(value: bool);
+    callback syndrm-step-override-changed(value: bool);
+    callback syndrm-step-kick-pitch-changed(value: float);
+    callback syndrm-step-kick-decay-changed(value: float);
+    callback syndrm-step-kick-attack-changed(value: float);
+    callback syndrm-step-kick-drive-changed(value: float);
+    callback syndrm-step-kick-level-changed(value: float);
+    callback syndrm-step-kick-filter-type-changed(index: int);
+    callback syndrm-step-kick-filter-cutoff-changed(value: float);
+    callback syndrm-step-kick-filter-resonance-changed(value: float);
+    callback syndrm-step-snare-tone-changed(value: float);
+    callback syndrm-step-snare-decay-changed(value: float);
+    callback syndrm-step-snare-snappy-changed(value: float);
+    callback syndrm-step-snare-attack-changed(value: float);
+    callback syndrm-step-snare-drive-changed(value: float);
+    callback syndrm-step-snare-level-changed(value: float);
+    callback syndrm-step-snare-filter-type-changed(index: int);
+    callback syndrm-step-snare-filter-cutoff-changed(value: float);
+    callback syndrm-step-snare-filter-resonance-changed(value: float);
+    callback syndrm-randomize-steps-lane-page();
+    callback syndrm-randomize-steps-lane-all();
+    callback syndrm-randomize-steps-all-page();
+    callback syndrm-randomize-steps-all-all();
+    callback syndrm-randomize-params-lane-page();
+    callback syndrm-randomize-params-lane-all();
+    callback syndrm-randomize-params-all-page();
+    callback syndrm-randomize-params-all-all();
+    callback syndrm-randomize-both-lane-page();
+    callback syndrm-randomize-both-lane-all();
+    callback syndrm-randomize-both-all-page();
+    callback syndrm-randomize-both-all-all();
+    callback syndrm-clear-steps-lane-page();
+    callback syndrm-clear-steps-lane-all();
+    callback syndrm-clear-steps-all-page();
+    callback syndrm-clear-steps-all-all();
+    callback syndrm-clear-params-lane-page();
+    callback syndrm-clear-params-lane-all();
+    callback syndrm-clear-params-all-page();
+    callback syndrm-clear-params-all-all();
+    callback syndrm-clear-both-lane-page();
+    callback syndrm-clear-both-lane-all();
+    callback syndrm-clear-both-all-page();
+    callback syndrm-clear-both-all-all();
 
     // Void Seed Engine Callbacks
     callback void-base-freq-changed(value: float);
@@ -461,6 +562,10 @@ export component TLBX1UI inherits Window {
                 if (event.text == "\u{001b}") {
                     if (root.show-settings) {
                         root.show-settings = false;
+                        return accept;
+                    }
+                    if (root.show-bpm-keypad) {
+                        root.show-bpm-keypad = false;
                         return accept;
                     }
                     if (root.show-engine-confirm) {
@@ -518,9 +623,14 @@ export component TLBX1UI inherits Window {
                                 button-pos: "left-right";
                                 button-tog: true;
                                 step: 1;
+                                allow-editing: false;
                                 value-changed(v) => {
                                     root.tape-tempo = v;
                                     root.tape-tempo-changed(v);
+                                }
+                                readout-double-clicked() => {
+                                    root.bpm-keypad-input = "";
+                                    root.show-bpm-keypad = true;
                                 }
                             }
                         }
@@ -1033,31 +1143,127 @@ export component TLBX1UI inherits Window {
                                     }
                                 }
                             }
-                            simpkick-section := Rectangle {
+                            syndrm-section := Rectangle {
                                 width: parent.width;
-                                height: root.active-engine-type == 3 ? simpkick-content.preferred-height : 0px;
+                                height: root.active-engine-type == 3 ? syndrm-content.preferred-height : 0px;
                                 clip: true;
                                 visible: root.active-engine-type == 3;
 
-                                simpkick-content := VerticalLayout {
+                                syndrm-content := VerticalLayout {
                                     spacing: 8px;
                                     width: parent.width;
 
-                                    SimpKickEngine {
+                                    SynDRMEngine {
                                         width: parent.width;
+                                        filter-types: root.syndrm-filter-types;
                                         kick-pitch <=> root.kick-pitch;
                                         kick-decay <=> root.kick-decay;
                                         kick-attack <=> root.kick-attack;
                                         kick-drive <=> root.kick-drive;
                                         kick-level <=> root.kick-level;
+                                        kick-filter-type <=> root.kick-filter-type;
+                                        kick-filter-cutoff <=> root.kick-filter-cutoff;
+                                        kick-filter-resonance <=> root.kick-filter-resonance;
                                         kick-sequencer-grid <=> root.kick-sequencer-grid;
                                         kick-sequencer-current-step: root.kick-sequencer-current-step;
+                                        snare-tone <=> root.snare-tone;
+                                        snare-decay <=> root.snare-decay;
+                                        snare-snappy <=> root.snare-snappy;
+                                        snare-attack <=> root.snare-attack;
+                                        snare-drive <=> root.snare-drive;
+                                        snare-level <=> root.snare-level;
+                                        snare-filter-type <=> root.snare-filter-type;
+                                        snare-filter-cutoff <=> root.snare-filter-cutoff;
+                                        snare-filter-resonance <=> root.snare-filter-resonance;
+                                        snare-sequencer-grid <=> root.snare-sequencer-grid;
+                                        snare-sequencer-current-step: root.snare-sequencer-current-step;
+                                        syndrm-page <=> root.syndrm-page;
+                                        syndrm-edit-lane <=> root.syndrm-edit-lane;
+                                        syndrm-edit-step <=> root.syndrm-edit-step;
+                                        syndrm-step-hold <=> root.syndrm-step-hold;
+                                        syndrm-step-override <=> root.syndrm-step-override;
+                                        syndrm-step-kick-pitch <=> root.syndrm-step-kick-pitch;
+                                        syndrm-step-kick-decay <=> root.syndrm-step-kick-decay;
+                                        syndrm-step-kick-attack <=> root.syndrm-step-kick-attack;
+                                        syndrm-step-kick-drive <=> root.syndrm-step-kick-drive;
+                                        syndrm-step-kick-level <=> root.syndrm-step-kick-level;
+                                        syndrm-step-kick-filter-type <=> root.syndrm-step-kick-filter-type;
+                                        syndrm-step-kick-filter-cutoff <=> root.syndrm-step-kick-filter-cutoff;
+                                        syndrm-step-kick-filter-resonance <=> root.syndrm-step-kick-filter-resonance;
+                                        syndrm-step-snare-tone <=> root.syndrm-step-snare-tone;
+                                        syndrm-step-snare-decay <=> root.syndrm-step-snare-decay;
+                                        syndrm-step-snare-snappy <=> root.syndrm-step-snare-snappy;
+                                        syndrm-step-snare-attack <=> root.syndrm-step-snare-attack;
+                                        syndrm-step-snare-drive <=> root.syndrm-step-snare-drive;
+                                        syndrm-step-snare-level <=> root.syndrm-step-snare-level;
+                                        syndrm-step-snare-filter-type <=> root.syndrm-step-snare-filter-type;
+                                        syndrm-step-snare-filter-cutoff <=> root.syndrm-step-snare-filter-cutoff;
+                                        syndrm-step-snare-filter-resonance <=> root.syndrm-step-snare-filter-resonance;
                                         kick-pitch-changed(value) => { root.kick-pitch-changed(value); }
                                         kick-decay-changed(value) => { root.kick-decay-changed(value); }
                                         kick-attack-changed(value) => { root.kick-attack-changed(value); }
                                         kick-drive-changed(value) => { root.kick-drive-changed(value); }
                                         kick-level-changed(value) => { root.kick-level-changed(value); }
+                                        kick-filter-type-changed(index) => { root.kick-filter-type-changed(index); }
+                                        kick-filter-cutoff-changed(value) => { root.kick-filter-cutoff-changed(value); }
+                                        kick-filter-resonance-changed(value) => { root.kick-filter-resonance-changed(value); }
                                         kick-sequencer-grid-toggled(step) => { root.kick-sequencer-grid-toggled(step); }
+                                        snare-tone-changed(value) => { root.snare-tone-changed(value); }
+                                        snare-decay-changed(value) => { root.snare-decay-changed(value); }
+                                        snare-snappy-changed(value) => { root.snare-snappy-changed(value); }
+                                        snare-attack-changed(value) => { root.snare-attack-changed(value); }
+                                        snare-drive-changed(value) => { root.snare-drive-changed(value); }
+                                        snare-level-changed(value) => { root.snare-level-changed(value); }
+                                        snare-filter-type-changed(index) => { root.snare-filter-type-changed(index); }
+                                        snare-filter-cutoff-changed(value) => { root.snare-filter-cutoff-changed(value); }
+                                        snare-filter-resonance-changed(value) => { root.snare-filter-resonance-changed(value); }
+                                        snare-sequencer-grid-toggled(step) => { root.snare-sequencer-grid-toggled(step); }
+                                        syndrm-page-changed(page) => { root.syndrm-page-changed(page); }
+                                        syndrm-edit-lane-changed(lane) => { root.syndrm-edit-lane-changed(lane); }
+                                        syndrm-edit-step-changed(step) => { root.syndrm-edit-step-changed(step); }
+                                        syndrm-step-hold-changed(value) => { root.syndrm-step-hold-changed(value); }
+                                        syndrm-step-override-changed(value) => { root.syndrm-step-override-changed(value); }
+                                        syndrm-step-kick-pitch-changed(value) => { root.syndrm-step-kick-pitch-changed(value); }
+                                        syndrm-step-kick-decay-changed(value) => { root.syndrm-step-kick-decay-changed(value); }
+                                        syndrm-step-kick-attack-changed(value) => { root.syndrm-step-kick-attack-changed(value); }
+                                        syndrm-step-kick-drive-changed(value) => { root.syndrm-step-kick-drive-changed(value); }
+                                        syndrm-step-kick-level-changed(value) => { root.syndrm-step-kick-level-changed(value); }
+                                        syndrm-step-kick-filter-type-changed(index) => { root.syndrm-step-kick-filter-type-changed(index); }
+                                        syndrm-step-kick-filter-cutoff-changed(value) => { root.syndrm-step-kick-filter-cutoff-changed(value); }
+                                        syndrm-step-kick-filter-resonance-changed(value) => { root.syndrm-step-kick-filter-resonance-changed(value); }
+                                        syndrm-step-snare-tone-changed(value) => { root.syndrm-step-snare-tone-changed(value); }
+                                        syndrm-step-snare-decay-changed(value) => { root.syndrm-step-snare-decay-changed(value); }
+                                        syndrm-step-snare-snappy-changed(value) => { root.syndrm-step-snare-snappy-changed(value); }
+                                        syndrm-step-snare-attack-changed(value) => { root.syndrm-step-snare-attack-changed(value); }
+                                        syndrm-step-snare-drive-changed(value) => { root.syndrm-step-snare-drive-changed(value); }
+                                        syndrm-step-snare-level-changed(value) => { root.syndrm-step-snare-level-changed(value); }
+                                        syndrm-step-snare-filter-type-changed(index) => { root.syndrm-step-snare-filter-type-changed(index); }
+                                        syndrm-step-snare-filter-cutoff-changed(value) => { root.syndrm-step-snare-filter-cutoff-changed(value); }
+                                        syndrm-step-snare-filter-resonance-changed(value) => { root.syndrm-step-snare-filter-resonance-changed(value); }
+                                        syndrm-randomize-steps-lane-page() => { root.syndrm-randomize-steps-lane-page(); }
+                                        syndrm-randomize-steps-lane-all() => { root.syndrm-randomize-steps-lane-all(); }
+                                        syndrm-randomize-steps-all-page() => { root.syndrm-randomize-steps-all-page(); }
+                                        syndrm-randomize-steps-all-all() => { root.syndrm-randomize-steps-all-all(); }
+                                        syndrm-randomize-params-lane-page() => { root.syndrm-randomize-params-lane-page(); }
+                                        syndrm-randomize-params-lane-all() => { root.syndrm-randomize-params-lane-all(); }
+                                        syndrm-randomize-params-all-page() => { root.syndrm-randomize-params-all-page(); }
+                                        syndrm-randomize-params-all-all() => { root.syndrm-randomize-params-all-all(); }
+                                        syndrm-randomize-both-lane-page() => { root.syndrm-randomize-both-lane-page(); }
+                                        syndrm-randomize-both-lane-all() => { root.syndrm-randomize-both-lane-all(); }
+                                        syndrm-randomize-both-all-page() => { root.syndrm-randomize-both-all-page(); }
+                                        syndrm-randomize-both-all-all() => { root.syndrm-randomize-both-all-all(); }
+                                        syndrm-clear-steps-lane-page() => { root.syndrm-clear-steps-lane-page(); }
+                                        syndrm-clear-steps-lane-all() => { root.syndrm-clear-steps-lane-all(); }
+                                        syndrm-clear-steps-all-page() => { root.syndrm-clear-steps-all-page(); }
+                                        syndrm-clear-steps-all-all() => { root.syndrm-clear-steps-all-all(); }
+                                        syndrm-clear-params-lane-page() => { root.syndrm-clear-params-lane-page(); }
+                                        syndrm-clear-params-lane-all() => { root.syndrm-clear-params-lane-all(); }
+                                        syndrm-clear-params-all-page() => { root.syndrm-clear-params-all-page(); }
+                                        syndrm-clear-params-all-all() => { root.syndrm-clear-params-all-all(); }
+                                        syndrm-clear-both-lane-page() => { root.syndrm-clear-both-lane-page(); }
+                                        syndrm-clear-both-lane-all() => { root.syndrm-clear-both-lane-all(); }
+                                        syndrm-clear-both-all-page() => { root.syndrm-clear-both-all-page(); }
+                                        syndrm-clear-both-all-all() => { root.syndrm-clear-both-all-all(); }
                                     }
                                 }
                             }
@@ -1234,6 +1440,70 @@ export component TLBX1UI inherits Window {
                                 text: root.settings-status;
                                 color: #d0a7ff;
                                 font-size: 12px;
+                            }
+                        }
+                    }
+                }
+
+                if (root.show-bpm-keypad) : Rectangle {
+                    width: parent.width;
+                    height: parent.height;
+                    background: #00000080;
+
+                    TouchArea {
+                        width: parent.width;
+                        height: parent.height;
+                        clicked => { root.show-bpm-keypad = false; }
+                    }
+
+                    Rectangle {
+                        width: Math.min(320px, parent.width - 40px);
+                        height: Math.min(420px, parent.height - 40px);
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        background: #15151c;
+                        border-color: #2a2a35;
+                        border-width: 1px;
+                        border-radius: 8px;
+
+                        VerticalLayout {
+                            padding: 16px;
+                            spacing: 10px;
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    text: "Set BPM";
+                                    color: #e4e4ea;
+                                    font-size: 16px;
+                                    horizontal-stretch: 1;
+                                }
+                                Button {
+                                    text: "Okay";
+                                    clicked => {
+                                        let clamped = Math.max(20.0, Math.min(240.0, bpm-keypad.parsed-value));
+                                        root.tape-tempo = clamped;
+                                        root.tape-tempo-changed(clamped);
+                                        root.show-bpm-keypad = false;
+                                    }
+                                }
+                                Button {
+                                    text: "Close";
+                                    clicked => { root.show-bpm-keypad = false; }
+                                }
+                            }
+
+                            bpm-keypad := RDSNumericKeypad {
+                                current-value: root.tape-tempo;
+                                input-text <=> root.bpm-keypad-input;
+                                num-only: true;
+                                allow-negative: false;
+                                committed(v) => {
+                                    let clamped = Math.max(20.0, Math.min(240.0, v));
+                                    root.tape-tempo = clamped;
+                                    root.tape-tempo-changed(clamped);
+                                    root.show-bpm-keypad = false;
+                                }
                             }
                         }
                     }

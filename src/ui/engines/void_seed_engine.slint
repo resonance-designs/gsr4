@@ -3,7 +3,8 @@ import {
     RDSKnob,
     RDSToggle,
     RDSSpectrumViz,
-    RDSSlider
+    RDSSlider,
+    RDSXYPad
 } from "../components/index.slint";
 
 export component VoidSeedEngine {
@@ -14,7 +15,7 @@ export component VoidSeedEngine {
     in-out property <float> void-diffusion: 0.5;
     in-out property <float> void-mod-rate: 0.1;
     in-out property <float> void-level: 0.8;
-    
+
     in property <bool> void-enabled: false;
     in property <[float]> spectrum;
 
@@ -29,7 +30,7 @@ export component VoidSeedEngine {
 
     HorizontalLayout {
         spacing: 20px;
-        
+
         // Left Side: Gain Slider + Chaos Pad
         VerticalLayout {
             spacing: 8px;
@@ -68,75 +69,32 @@ export component VoidSeedEngine {
                         font-weight: 700;
                         letter-spacing: 0.5px;
                     }
-                    
-                    Rectangle {
+
+                    RDSXYPad {
                         width: 200px;
                         height: 200px;
-                        background: #000000;
+                        value-x <=> root.void-chaos-depth;
+                        value-y <=> root.void-entropy;
+                        pad-background: #000000;
+                        pad-border-color: #f0629233;
+                        grid-color: #f0629211;
+                        handle-color: #f06292;
+                        glow-color: #f0629233;
                         border-radius: 8px;
-                        border-color: #f0629233;
-                        border-width: 1px;
-                        clip: true;
-
-                        // Grid lines
-                        for i in 4 : Rectangle {
-                            x: parent.width * (i + 1) / 5;
-                            width: 1px;
-                            height: parent.height;
-                            background: #f0629211;
-                        }
-                        for i in 4 : Rectangle {
-                            y: parent.height * (i + 1) / 5;
-                            width: parent.width;
-                            height: 1px;
-                            background: #f0629211;
-                        }
-
-                        // Handle
-                        Rectangle {
-                            width: 14px;
-                            height: 14px;
-                            background: #f06292;
-                            border-radius: 7px;
-                            x: root.void-chaos-depth * (parent.width - 14px);
-                            y: (1.0 - root.void-entropy) * (parent.height - 14px);
-                            
-                            // Glow
-                            Rectangle {
-                                width: 30px;
-                                height: 30px;
-                                background: #f0629233;
-                                border-radius: 15px;
-                                x: -8px;
-                                y: -8px;
-                            }
-                        }
-
-                        TouchArea {
-                            moved => {
-                                root.void-chaos-depth = Math.max(0.0, Math.min(1.0, self.mouse-x / parent.width));
-                                root.void-entropy = 1.0 - Math.max(0.0, Math.min(1.0, self.mouse-y / parent.height));
-                                root.void-chaos-depth-changed(root.void-chaos-depth);
-                                root.void-entropy-changed(root.void-entropy);
-                            }
-                            clicked => {
-                                root.void-chaos-depth = Math.max(0.0, Math.min(1.0, self.mouse-x / parent.width));
-                                root.void-entropy = 1.0 - Math.max(0.0, Math.min(1.0, self.mouse-y / parent.height));
-                                root.void-chaos-depth-changed(root.void-chaos-depth);
-                                root.void-entropy-changed(root.void-entropy);
-                            }
-                        }
+                        handle-size: 14px;
+                        value-x-changed(v) => { root.void-chaos-depth-changed(v); }
+                        value-y-changed(v) => { root.void-entropy-changed(v); }
                     }
                 }
             }
-            
+
             Rectangle {
                 height: 40px;
                 background: root.void-enabled ? #f06292 : #1e1e26;
                 border-radius: 4px;
                 border-color: #f0629266;
                 border-width: 1px;
-                
+
                 Text {
                     text: root.void-enabled ? "CLOSE_VOID" : "OPEN_VOID";
                     color: root.void-enabled ? #ffffff : #f0629266;
@@ -144,13 +102,13 @@ export component VoidSeedEngine {
                     font-weight: 900;
                     letter-spacing: 2px;
                 }
-                
+
                 TouchArea {
                     clicked => {
                         root.toggle-void();
                     }
                 }
-                
+
                 animate background { duration: 250ms; }
             }
         }
