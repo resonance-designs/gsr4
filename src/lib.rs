@@ -595,20 +595,34 @@ struct Track {
     snare_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
     /// Void Seed base frequency.
     void_base_freq: AtomicU32,
+    /// Smoothed void base frequency.
+    void_base_freq_smooth: AtomicU32,
     /// Void Seed chaos depth (X).
     void_chaos_depth: AtomicU32,
+    /// Smoothed void chaos depth.
+    void_chaos_depth_smooth: AtomicU32,
     /// Void Seed entropy (Y).
     void_entropy: AtomicU32,
+    /// Smoothed void entropy.
+    void_entropy_smooth: AtomicU32,
     /// Whether the void seed engine is enabled and active.
     void_enabled: AtomicBool,
     /// Void Seed feedback.
     void_feedback: AtomicU32,
+    /// Smoothed void feedback.
+    void_feedback_smooth: AtomicU32,
     /// Void Seed diffusion (wet).
     void_diffusion: AtomicU32,
+    /// Smoothed void diffusion.
+    void_diffusion_smooth: AtomicU32,
     /// Void Seed modulation rate.
     void_mod_rate: AtomicU32,
+    /// Smoothed void modulation rate.
+    void_mod_rate_smooth: AtomicU32,
     /// Void Seed level.
     void_level: AtomicU32,
+    /// Smoothed void level.
+    void_level_smooth: AtomicU32,
     /// Void Seed oscillator phases.
     void_osc_phases: [AtomicU32; 12],
     /// Void Seed detune LFO phases.
@@ -883,13 +897,20 @@ impl Default for Track {
             snare_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.6f32.to_bits()))),
             snare_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits()))),
             void_base_freq: AtomicU32::new(40.0f32.to_bits()),
+            void_base_freq_smooth: AtomicU32::new(40.0f32.to_bits()),
             void_enabled: AtomicBool::new(false),
             void_chaos_depth: AtomicU32::new(0.5f32.to_bits()),
+            void_chaos_depth_smooth: AtomicU32::new(0.5f32.to_bits()),
             void_entropy: AtomicU32::new(0.2f32.to_bits()),
+            void_entropy_smooth: AtomicU32::new(0.2f32.to_bits()),
             void_feedback: AtomicU32::new(0.8f32.to_bits()),
+            void_feedback_smooth: AtomicU32::new(0.8f32.to_bits()),
             void_diffusion: AtomicU32::new(0.5f32.to_bits()),
+            void_diffusion_smooth: AtomicU32::new(0.5f32.to_bits()),
             void_mod_rate: AtomicU32::new(0.1f32.to_bits()),
+            void_mod_rate_smooth: AtomicU32::new(0.1f32.to_bits()),
             void_level: AtomicU32::new(0.8f32.to_bits()),
+            void_level_smooth: AtomicU32::new(0.8f32.to_bits()),
             void_osc_phases: Default::default(),
             void_lfo_phases: Default::default(),
             void_lfo_freqs: [
@@ -1601,6 +1622,27 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.void_diffusion.store(0.5f32.to_bits(), Ordering::Relaxed);
     track.void_mod_rate.store(0.1f32.to_bits(), Ordering::Relaxed);
     track.void_level.store(0.8f32.to_bits(), Ordering::Relaxed);
+    track
+        .void_base_freq_smooth
+        .store(40.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .void_chaos_depth_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .void_entropy_smooth
+        .store(0.2f32.to_bits(), Ordering::Relaxed);
+    track
+        .void_feedback_smooth
+        .store(0.8f32.to_bits(), Ordering::Relaxed);
+    track
+        .void_diffusion_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .void_mod_rate_smooth
+        .store(0.1f32.to_bits(), Ordering::Relaxed);
+    track
+        .void_level_smooth
+        .store(0.8f32.to_bits(), Ordering::Relaxed);
     track.void_internal_gain.store(0.0f32.to_bits(), Ordering::Relaxed);
     for i in 0..12 {
         track.void_osc_phases[i].store(0.0f32.to_bits(), Ordering::Relaxed);
@@ -3229,14 +3271,57 @@ impl TLBX1 {
     ) {
         let sr = sample_rate.max(1.0);
         const VOID_SEED_DB_BOOST: f32 = 1.4125375; // +3 dB
-        let base_freq = f32::from_bits(track.void_base_freq.load(Ordering::Relaxed));
-        let chaos_depth = f32::from_bits(track.void_chaos_depth.load(Ordering::Relaxed));
-        let entropy = f32::from_bits(track.void_entropy.load(Ordering::Relaxed));
-        let feedback = f32::from_bits(track.void_feedback.load(Ordering::Relaxed));
-        let diffusion = f32::from_bits(track.void_diffusion.load(Ordering::Relaxed));
-        let mod_rate = f32::from_bits(track.void_mod_rate.load(Ordering::Relaxed));
+        let target_base_freq = f32::from_bits(track.void_base_freq.load(Ordering::Relaxed));
+        let target_chaos_depth = f32::from_bits(track.void_chaos_depth.load(Ordering::Relaxed));
+        let target_entropy = f32::from_bits(track.void_entropy.load(Ordering::Relaxed));
+        let target_feedback = f32::from_bits(track.void_feedback.load(Ordering::Relaxed));
+        let target_diffusion = f32::from_bits(track.void_diffusion.load(Ordering::Relaxed));
+        let target_mod_rate = f32::from_bits(track.void_mod_rate.load(Ordering::Relaxed));
+        let target_void_level = f32::from_bits(track.void_level.load(Ordering::Relaxed));
+
+        let base_freq = smooth_param(
+            f32::from_bits(track.void_base_freq_smooth.load(Ordering::Relaxed)),
+            target_base_freq,
+            num_buffer_samples,
+            sr,
+        );
+        let chaos_depth = smooth_param(
+            f32::from_bits(track.void_chaos_depth_smooth.load(Ordering::Relaxed)),
+            target_chaos_depth,
+            num_buffer_samples,
+            sr,
+        );
+        let entropy = smooth_param(
+            f32::from_bits(track.void_entropy_smooth.load(Ordering::Relaxed)),
+            target_entropy,
+            num_buffer_samples,
+            sr,
+        );
+        let feedback = smooth_param(
+            f32::from_bits(track.void_feedback_smooth.load(Ordering::Relaxed)),
+            target_feedback,
+            num_buffer_samples,
+            sr,
+        );
+        let diffusion = smooth_param(
+            f32::from_bits(track.void_diffusion_smooth.load(Ordering::Relaxed)),
+            target_diffusion,
+            num_buffer_samples,
+            sr,
+        );
+        let mod_rate = smooth_param(
+            f32::from_bits(track.void_mod_rate_smooth.load(Ordering::Relaxed)),
+            target_mod_rate,
+            num_buffer_samples,
+            sr,
+        );
         let void_level =
-            f32::from_bits(track.void_level.load(Ordering::Relaxed)) * VOID_SEED_DB_BOOST;
+            smooth_param(
+                f32::from_bits(track.void_level_smooth.load(Ordering::Relaxed)),
+                target_void_level,
+                num_buffer_samples,
+                sr,
+            ) * VOID_SEED_DB_BOOST;
 
         let mut osc_phases = [0.0f32; 12];
         let mut lfo_phases = [0.0f32; 12];
@@ -3349,6 +3434,28 @@ impl TLBX1 {
             track.void_lfo_phases[i].store(lfo_phases[i].to_bits(), Ordering::Relaxed);
         }
         track.void_lfo_chaos_phase.store(chaos_phase.to_bits(), Ordering::Relaxed);
+        track
+            .void_base_freq_smooth
+            .store(base_freq.to_bits(), Ordering::Relaxed);
+        track
+            .void_chaos_depth_smooth
+            .store(chaos_depth.to_bits(), Ordering::Relaxed);
+        track
+            .void_entropy_smooth
+            .store(entropy.to_bits(), Ordering::Relaxed);
+        track
+            .void_feedback_smooth
+            .store(feedback.to_bits(), Ordering::Relaxed);
+        track
+            .void_diffusion_smooth
+            .store(diffusion.to_bits(), Ordering::Relaxed);
+        track
+            .void_mod_rate_smooth
+            .store(mod_rate.to_bits(), Ordering::Relaxed);
+        track
+            .void_level_smooth
+            .store((void_level / VOID_SEED_DB_BOOST).to_bits(), Ordering::Relaxed);
+
         track.void_filter_v1[0].store(filter_v1[0].to_bits(), Ordering::Relaxed);
         track.void_filter_v1[1].store(filter_v1[1].to_bits(), Ordering::Relaxed);
         track.void_filter_v2[0].store(filter_v2[0].to_bits(), Ordering::Relaxed);

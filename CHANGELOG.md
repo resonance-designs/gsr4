@@ -5,6 +5,13 @@
 - Cleaned build warnings by removing unused fields/helpers and tightening follow_host_tempo field usage across TLBX1/SlintEditor/SlintWindow, plus simplified loops.
 - Removed unused project serialization structs/helpers. Fixed browser panel padding by wrapping in a layout.
 - Adjusted the spectrum display to be less “wide” and show more movement.
+- Per-engine mute toggles for Animate, SynDRM, Void Seed, and Tape UI.
+- Transport decoupling to allow synth voice tails after transport stops.
+- Void Seed output boost (+3 dB).
+- Non-tape engine mixing fix (un-nesting track mix block).
+- Added a public commit() function on RDSNumericKeypad and wired the modal “Okay” button to call it, so it uses the same committed path as the keypad.
+- Removed "Quit" button and relocated "Browser" button.
+- Reintroduced Void Seed smoothing in the DSP path and synced the reset/init path so the smooth atoms track the raw values again.
 
 ## [0.1.14] - 2026-01-23
 

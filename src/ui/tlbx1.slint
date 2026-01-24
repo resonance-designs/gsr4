@@ -597,7 +597,7 @@ export component TLBX1UI inherits Window {
                         VerticalLayout {
                             padding-top: 12px;
                             Text {
-                                text: "MMIStudios";
+                                text: "MMI Studios";
                                 font-family: "Quad Light";
                                 color: #f0f0f2;
                                 font-size: 48px;
@@ -715,7 +715,7 @@ export component TLBX1UI inherits Window {
 
                         VerticalLayout {
                             spacing: 4px;
-                            width: 200px;
+                            width: 100px;
                             alignment: center;
                             HorizontalLayout {
                                 spacing: 8px;
@@ -729,12 +729,15 @@ export component TLBX1UI inherits Window {
                                     icon-size: 22px;
                                     clicked => root.toggle-play();
                                 }
-                                Button {
-                                    text: "BROWSER";
-                                    height: 32px;
-                                    clicked => { root.toggle-browser(); }
-                                }
                             }
+                        }
+
+                        VerticalLayout {
+                            Button { text: "Browser"; clicked => root.toggle-browser(); }
+                            Button { text: "Save Project"; clicked => root.save-project(); }
+                            Button { text: "Load Project"; clicked => root.load-project(); }
+                            Button { text: "Settings"; clicked => root.toggle-settings(); }
+                            Button { text: "Docs"; clicked => root.open-docs(); }
                         }
 
                         Rectangle {
@@ -825,13 +828,7 @@ export component TLBX1UI inherits Window {
                         }
                         Button { text: "Load Engine"; clicked => root.load-engine(); }
                         Rectangle { width: 1px; background: #2a2a35; }
-                        Button { text: "Save Project"; clicked => root.save-project(); }
-                        Button { text: "Load Project"; clicked => root.load-project(); }
-                        Button { text: "Settings"; clicked => root.toggle-settings(); }
-                        Button { text: "Docs"; clicked => root.open-docs(); }
-                        Button { text: "Quit"; clicked => root.quit(); }
                     }
-
 
                     Rectangle {
                         border-color: #e06e26;
@@ -1487,10 +1484,7 @@ export component TLBX1UI inherits Window {
                                 Button {
                                     text: "Okay";
                                     clicked => {
-                                        let clamped = Math.max(20.0, Math.min(240.0, bpm-keypad.parsed-value));
-                                        root.tape-tempo = clamped;
-                                        root.tape-tempo-changed(clamped);
-                                        root.show-bpm-keypad = false;
+                                        bpm-keypad.commit();
                                     }
                                 }
                                 Button {
