@@ -8726,6 +8726,16 @@ fn initialize_ui(
                 .store(!muted, Ordering::Relaxed);
         }
     });
+    let tracks_mute_for = Arc::clone(tracks);
+    ui.on_toggle_track_mute_for(move |track: i32| {
+        let track_idx = track.max(1) as usize - 1;
+        if track_idx < NUM_TRACKS {
+            let muted = tracks_mute_for[track_idx].is_muted.load(Ordering::Relaxed);
+            tracks_mute_for[track_idx]
+                .is_muted
+                .store(!muted, Ordering::Relaxed);
+        }
+    });
 
     let tracks_loop = Arc::clone(tracks);
     let params_loop = Arc::clone(params);

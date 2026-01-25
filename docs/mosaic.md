@@ -1,10 +1,10 @@
-import { Meta } from '@storybook/blocks';
-
-<Meta title="End User/Mosaic" />
+---
+title: Mosaic Granular Device
+---
 
 # Mosaic Granular Device
 
-The Mosaic device is a post‑tape granular processor fed by a 4‑second buffer.
+The Mosaic device is a post-tape granular processor fed by a 4-second buffer.
 
 ## Controls
 
@@ -16,7 +16,7 @@ The Mosaic device is a post‑tape granular processor fed by a 4‑second buffer
 - **Wet**: dry/wet mix.
 - **Detune**: random pitch spread.
 - **Rand Rate / Rand Size**: randomization depth.
-- **SOS**: sound‑on‑sound feedback into the buffer.
+- **SOS**: sound-on-sound feedback into the buffer.
 
 ## Notes
 

@@ -53,7 +53,10 @@ export component RDSSelectButton {
     in property <bool> active;
     in property <length> button-width: 80px;
     in property <length> button-height: 28px;
+    private property <bool> shift-armed: false;
+    private property <bool> suppress-click: false;
     callback clicked();
+    callback shift-clicked();
 
     width: root.button-width;
     height: root.button-height;
@@ -91,7 +94,24 @@ export component RDSSelectButton {
         TouchArea {
             width: parent.width;
             height: parent.height;
-            clicked => root.clicked();
+            pointer-event(event) => {
+                if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                    root.shift-armed = event.modifiers.shift;
+                    if (root.shift-armed) {
+                        root.suppress-click = true;
+                        root.shift-clicked();
+                    } else {
+                        root.suppress-click = false;
+                    }
+                }
+            }
+            clicked => {
+                if (!root.suppress-click) {
+                    root.clicked();
+                }
+                root.shift-armed = false;
+                root.suppress-click = false;
+            }
         }
     }
 }

@@ -1,10 +1,10 @@
-import { Meta } from '@storybook/blocks';
-
-<Meta title="End User/Overview" />
+---
+title: End User Overview
+---
 
 # TLBX-1 End User Guide
 
-This Storybook space is reserved for end‑user walkthroughs of the UI. Add more MDX files here to document workflows and controls.
+This space is reserved for end-user walkthroughs of the UI. Add more docs here to cover workflows and controls.
 
 ## Suggested Sections
 
