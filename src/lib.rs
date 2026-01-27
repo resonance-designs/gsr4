@@ -80,7 +80,7 @@ pub const RECORD_MAX_SAMPLES: usize = RECORD_MAX_SECONDS * RECORD_MAX_SAMPLE_RAT
 pub const MOSAIC_BUFFER_SECONDS: usize = 4;
 pub const MOSAIC_BUFFER_SAMPLES: usize = MOSAIC_BUFFER_SECONDS * RECORD_MAX_SAMPLE_RATE;
 pub const MOSAIC_BUFFER_CHANNELS: usize = 2;
-pub const MOSAIC_OUTPUT_GAIN: f32 = 1.0;
+pub const MOSAIC_OUTPUT_GAIN: f32 = 1.5;
 const MOSAIC_RATE_MIN: f32 = 2.0;
 const MOSAIC_RATE_MAX: f32 = 60.0;
 const MOSAIC_SIZE_MIN_MS: f32 = 10.0;
@@ -1759,14 +1759,14 @@ impl TLBX1 {
             (tempo / 60.0) / beats
         } else {
             ANIMATE_LFO_RATE_MIN_HZ
-                + lfo_x_rate * (ANIMATE_LFO_RATE_MAX_HZ - ANIMATE_LFO_RATE_MIN_HZ)
+                * (ANIMATE_LFO_RATE_MAX_HZ / ANIMATE_LFO_RATE_MIN_HZ).powf(lfo_x_rate)
         };
         let lfo_y_rate_hz = if lfo_y_sync {
             let beats = lfo_division_beats(lfo_y_division);
             (tempo / 60.0) / beats
         } else {
             ANIMATE_LFO_RATE_MIN_HZ
-                + lfo_y_rate * (ANIMATE_LFO_RATE_MAX_HZ - ANIMATE_LFO_RATE_MIN_HZ)
+                * (ANIMATE_LFO_RATE_MAX_HZ / ANIMATE_LFO_RATE_MIN_HZ).powf(lfo_y_rate)
         };
         let wt_lfo_amount = [
             f32::from_bits(
@@ -1832,28 +1832,28 @@ impl TLBX1 {
                 (tempo / 60.0) / beats
             } else {
                 ANIMATE_LFO_RATE_MIN_HZ
-                    + wt_lfo_rate[0] * (ANIMATE_LFO_RATE_MAX_HZ - ANIMATE_LFO_RATE_MIN_HZ)
+                    * (ANIMATE_LFO_RATE_MAX_HZ / ANIMATE_LFO_RATE_MIN_HZ).powf(wt_lfo_rate[0])
             },
             if wt_lfo_sync[1] {
                 let beats = lfo_division_beats(wt_lfo_division[1]);
                 (tempo / 60.0) / beats
             } else {
                 ANIMATE_LFO_RATE_MIN_HZ
-                    + wt_lfo_rate[1] * (ANIMATE_LFO_RATE_MAX_HZ - ANIMATE_LFO_RATE_MIN_HZ)
+                    * (ANIMATE_LFO_RATE_MAX_HZ / ANIMATE_LFO_RATE_MIN_HZ).powf(wt_lfo_rate[1])
             },
             if wt_lfo_sync[2] {
                 let beats = lfo_division_beats(wt_lfo_division[2]);
                 (tempo / 60.0) / beats
             } else {
                 ANIMATE_LFO_RATE_MIN_HZ
-                    + wt_lfo_rate[2] * (ANIMATE_LFO_RATE_MAX_HZ - ANIMATE_LFO_RATE_MIN_HZ)
+                    * (ANIMATE_LFO_RATE_MAX_HZ / ANIMATE_LFO_RATE_MIN_HZ).powf(wt_lfo_rate[2])
             },
             if wt_lfo_sync[3] {
                 let beats = lfo_division_beats(wt_lfo_division[3]);
                 (tempo / 60.0) / beats
             } else {
                 ANIMATE_LFO_RATE_MIN_HZ
-                    + wt_lfo_rate[3] * (ANIMATE_LFO_RATE_MAX_HZ - ANIMATE_LFO_RATE_MIN_HZ)
+                    * (ANIMATE_LFO_RATE_MAX_HZ / ANIMATE_LFO_RATE_MIN_HZ).powf(wt_lfo_rate[3])
             },
         ];
         let sample_start = [
@@ -3527,6 +3527,7 @@ impl TLBX1 {
         track: &Track,
         track_output: &mut [Vec<f32>],
         num_buffer_samples: usize,
+        global_tempo: f32,
     ) {
         if track.granular_type.load(Ordering::Relaxed) != 1 {
             return;
@@ -3679,7 +3680,30 @@ impl TLBX1 {
             .store(mosaic_rand_size.to_bits(), Ordering::Relaxed);
         let pitch_bipolar = mosaic_cc_bipolar(mosaic_pitch);
         let contour_bipolar = mosaic_cc_bipolar(mosaic_contour);
-        let base_rate = MOSAIC_RATE_MIN + (MOSAIC_RATE_MAX - MOSAIC_RATE_MIN) * mosaic_rate;
+        let tempo = if global_tempo.is_finite() {
+            global_tempo.clamp(20.0, 240.0)
+        } else {
+            120.0
+        };
+        let base_rate = if mosaic_rate <= 0.5 {
+            let divisions = [
+                4.0_f32,
+                2.0,
+                1.0,
+                0.5,
+                0.25,
+                0.125,
+                0.0625,
+                0.03125,
+            ];
+            let t = (mosaic_rate / 0.5).clamp(0.0, 1.0);
+            let idx = (t * (divisions.len().saturating_sub(1)) as f32).round() as usize;
+            let beats = divisions[idx.min(divisions.len() - 1)];
+            ((tempo / 60.0) / beats).clamp(MOSAIC_RATE_MIN, MOSAIC_RATE_MAX)
+        } else {
+            let free = ((mosaic_rate - 0.5) / 0.5).clamp(0.0, 1.0);
+            MOSAIC_RATE_MIN + (MOSAIC_RATE_MAX - MOSAIC_RATE_MIN) * free
+        };
         let base_size_ms =
             MOSAIC_SIZE_MIN_MS + (MOSAIC_SIZE_MAX_MS - MOSAIC_SIZE_MIN_MS) * mosaic_size;
         let semitones = pitch_bipolar * MOSAIC_PITCH_SEMITONES;
@@ -5089,7 +5113,12 @@ impl Plugin for TLBX1 {
             }
 
             // Apply track effects
-            Self::process_track_mosaic(track, &mut self.track_buffer, buffer.samples());
+            Self::process_track_mosaic(
+                track,
+                &mut self.track_buffer,
+                buffer.samples(),
+                global_tempo,
+            );
             Self::process_track_ring(track, &mut self.track_buffer, buffer.samples(), global_tempo);
 
             let mix_gain = if track_muted && engine_type != 1 { 0.0 } else { 1.0 };
@@ -9231,6 +9260,50 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             tracks_ring[track_idx]
                 .ring_detune
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_ring = Arc::clone(tracks);
+    let params_ring = Arc::clone(params);
+    ui.on_ring_waves_changed(move |value| {
+        let track_idx = params_ring.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_ring[track_idx]
+                .ring_waves
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_ring = Arc::clone(tracks);
+    let params_ring = Arc::clone(params);
+    ui.on_ring_waves_rate_changed(move |value| {
+        let track_idx = params_ring.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_ring[track_idx]
+                .ring_waves_rate
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_ring = Arc::clone(tracks);
+    let params_ring = Arc::clone(params);
+    ui.on_ring_noise_changed(move |value| {
+        let track_idx = params_ring.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_ring[track_idx]
+                .ring_noise
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_ring = Arc::clone(tracks);
+    let params_ring = Arc::clone(params);
+    ui.on_ring_noise_rate_changed(move |value| {
+        let track_idx = params_ring.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_ring[track_idx]
+                .ring_noise_rate
                 .store(value.to_bits(), Ordering::Relaxed);
         }
     });

@@ -1174,6 +1174,20 @@ export component TLBX1UI inherits Window {
                                             animate-filter-types: root.animate-filter-types;
                                             animate-sequencer-grid <=> root.animate-sequencer-grid;
                                             animate-sequencer-current-step: root.animate-sequencer-current-step;
+                                            mosaic-enabled <=> root.mosaic-enabled;
+                                            mosaic-pitch <=> root.mosaic-pitch;
+                                            mosaic-rate <=> root.mosaic-rate;
+                                            mosaic-size <=> root.mosaic-size;
+                                            mosaic-contour <=> root.mosaic-contour;
+                                            mosaic-warp <=> root.mosaic-warp;
+                                            mosaic-spray <=> root.mosaic-spray;
+                                            mosaic-pattern <=> root.mosaic-pattern;
+                                            mosaic-wet <=> root.mosaic-wet;
+                                            mosaic-detune <=> root.mosaic-detune;
+                                            mosaic-spatial <=> root.mosaic-spatial;
+                                            mosaic-rand-rate <=> root.mosaic-rand-rate;
+                                            mosaic-rand-size <=> root.mosaic-rand-size;
+                                            mosaic-sos <=> root.mosaic-sos;
                                             animate-slot-a-type-changed(index) => { root.animate-slot-a-type-changed(index); }
                                             animate-slot-b-type-changed(index) => { root.animate-slot-b-type-changed(index); }
                                             animate-slot-c-type-changed(index) => { root.animate-slot-c-type-changed(index); }
@@ -1248,6 +1262,20 @@ export component TLBX1UI inherits Window {
                                             animate-lfo-y-division-changed(index) => { root.animate-lfo-y-division-changed(index); }
                                             animate-lfo-y-rate-changed(value) => { root.animate-lfo-y-rate-changed(value); }
                                             animate-lfo-y-amount-changed(value) => { root.animate-lfo-y-amount-changed(value); }
+                                            toggle-mosaic-enabled => root.toggle-mosaic-enabled();
+                                            mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
+                                            mosaic-rate-changed(value) => { root.mosaic-rate-changed(value); }
+                                            mosaic-size-changed(value) => { root.mosaic-size-changed(value); }
+                                            mosaic-contour-changed(value) => { root.mosaic-contour-changed(value); }
+                                            mosaic-warp-changed(value) => { root.mosaic-warp-changed(value); }
+                                            mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
+                                            mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
+                                            mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                                            mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
+                                            mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
+                                            mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
+                                            mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
+                                            mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
                                             animate-sequencer-grid-toggled(row, step) => { root.animate-sequencer-grid-toggled(row, step); }
                                             toggle-track-mute => root.toggle-track-mute();
                                         }

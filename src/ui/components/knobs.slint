@@ -52,7 +52,10 @@ Example usage:
 export component RDSKnob inherits Rectangle {
     // Public properties
     in-out property <float> value: 0;
-    property <angle> rotation-angle: root.is-infinite ? root.value * 1deg : -135deg + ((root.value - root.min-value) / Math.max(0.01, root.max-value - root.min-value)) * 270deg;
+    property <angle> rotation-angle:
+        (root.is-infinite || root.infinite-rotary)
+            ? root.rotary-value * 1deg
+            : -135deg + ((root.value - root.min-value) / Math.max(0.01, root.max-value - root.min-value)) * 270deg;
     in-out property <length> size: 60px;
     in-out property <length> indicator-position: 15px;
     in-out property <float> sensitivity: 0.5;
@@ -83,12 +86,15 @@ export component RDSKnob inherits Rectangle {
 
     in-out property <float> min-value: 0;
     in-out property <float> max-value: 0;
+    in-out property <bool> infinite-rotary: false;
 
     callback value-changed(float);
 
     private property <length> drag-start-y: 0px;
     private property <float> drag-start-value: 0;
+    private property <float> drag-start-rotary: 0;
     private property <bool> is-infinite: root.min-value == root.max-value;
+    private property <float> rotary-value: root.value;
 
     private property <length> label-x:
         root.label-pos == "top-left" || root.label-pos == "center-left" || root.label-pos == "bottom-left"
@@ -242,13 +248,20 @@ export component RDSKnob inherits Rectangle {
             if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
                 root.drag-start-y = self.mouse-y;
                 root.drag-start-value = root.value;
+                root.drag-start-rotary = root.rotary-value;
             }
         }
 
         moved => {
             if (self.pressed) {
-                root.value = root.drag-start-value + (root.drag-start-y - self.mouse-y) / 1px * root.sensitivity;
-                if (!root.is-infinite) {
+                let delta = (root.drag-start-y - self.mouse-y) / 1px * root.sensitivity;
+                if (root.is-infinite || root.infinite-rotary) {
+                    root.rotary-value = root.drag-start-rotary + delta;
+                }
+                if (root.is-infinite) {
+                    root.value = root.rotary-value;
+                } else {
+                    root.value = root.drag-start-value + delta;
                     root.value = Math.max(root.min-value, Math.min(root.max-value, root.value));
                 }
                 root.value-changed(root.value);
@@ -256,8 +269,14 @@ export component RDSKnob inherits Rectangle {
         }
 
         scroll-event(event) => {
-            root.value = root.value - (event.delta-y / 1px) * root.scroll-sensitivity;
-            if (!root.is-infinite) {
+            let delta = -(event.delta-y / 1px) * root.scroll-sensitivity;
+            if (root.is-infinite || root.infinite-rotary) {
+                root.rotary-value = root.rotary-value + delta;
+            }
+            if (root.is-infinite) {
+                root.value = root.rotary-value;
+            } else {
+                root.value = root.value + delta;
                 root.value = Math.max(root.min-value, Math.min(root.max-value, root.value));
             }
             root.value-changed(root.value);
