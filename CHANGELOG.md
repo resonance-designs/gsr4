@@ -1,10 +1,15 @@
 # Changelog
 
+## [0.1.18] - 2026-01-29
+
+- Void Seed: added Moog filter + drive with pre/post toggle, Close Decay, and stereo width control.
+- Void Seed now feeds the downstream device chain (Granulator, Silk, G8).
+
 ## [0.1.17] - 2026-01-29
 
 - Added G8 trance gate device (32-step per-track gate) with UI and DSP, placed after Ring in the downstream chain.
 - Added Granulator rate sync behavior: first half of the control locks to BPM divisions (1, 1/2, 1/4, 1/8, 1/16); second half is free-rate.
-- Documentation updates for G8 and Mosaic rate sync.
+- Documentation updates for G8 and Granulator rate sync.
 
 ## [0.1.16] - 2026-01-27
 

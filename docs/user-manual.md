@@ -44,12 +44,14 @@ This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
 
 - Load the Void Seed engine per track via the Engine selector + Load Engine.
 - **Chaos / Entropy Map**: An X-Y pad that controls **Chaos Depth** (X-axis) and **Entropy** (Y-axis) for the generative swarm.
+- **Pan / Width Map**: An X-Y pad that controls stereo panning (X-axis) and width (Y-axis).
 - **Gain**: A vertical slider to control the final output level of the drone.
-- **Open/Close Void**: A large toggle button to activate or deactivate the engine output.
+- **Open/Close Void**: A large toggle button to activate or deactivate the engine output. **Close Decay** controls how long the signal fades out after closing.
 - **Base Freq**: Sets the fundamental frequency of the oscillator swarm.
 - **Mod Rate**: Adjusts the rate of the internal chaotic LFOs.
 - **Feedback & Diffusion**: Controls the feedback and wetness of the integrated delay and diffusion network.
-- **Spectrum Viz**: Provides a real-time frequency analysis of the engine's output.
+- **Moog Filter + Drive**: Cutoff/Resonance plus Drive, with a PRE/POST toggle to place the filter before or after the drive.
+- Void Seed can also feed the downstream devices (Mosaic, Ring, G8) per track.
 
 ## Mosaic Device (Granulator)
 
