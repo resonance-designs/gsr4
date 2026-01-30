@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.17
+ * Version: 0.1.18
  * Component: UI Definitions
  */
 
@@ -297,6 +297,13 @@ export component TLBX1UI inherits Window {
     in-out property <float> void-base-freq: 40.0;
     in-out property <float> void-chaos-depth: 0.5;
     in-out property <float> void-entropy: 0.2;
+    in-out property <float> void-pan: 0.5;
+    in-out property <float> void-width: 1.0;
+    in-out property <float> void-close-decay: 4.0;
+    in-out property <float> void-filter-cutoff: 0.5;
+    in-out property <float> void-filter-resonance: 0.2;
+    in-out property <float> void-drive: 0.0;
+    in-out property <bool> void-filter-pre-drive: true;
     in-out property <float> void-feedback: 0.8;
     in-out property <float> void-diffusion: 0.5;
     in-out property <float> void-mod-rate: 0.1;
@@ -565,6 +572,13 @@ export component TLBX1UI inherits Window {
     callback void-base-freq-changed(value: float);
     callback void-chaos-depth-changed(value: float);
     callback void-entropy-changed(value: float);
+    callback void-pan-changed(value: float);
+    callback void-width-changed(value: float);
+    callback void-close-decay-changed(value: float);
+    callback void-filter-cutoff-changed(value: float);
+    callback void-filter-resonance-changed(value: float);
+    callback void-drive-changed(value: float);
+    callback void-filter-pre-drive-changed(value: bool);
     callback void-feedback-changed(value: float);
     callback void-diffusion-changed(value: float);
     callback void-mod-rate-changed(value: float);
@@ -1455,20 +1469,99 @@ export component TLBX1UI inherits Window {
                                             void-base-freq <=> root.void-base-freq;
                                             void-chaos-depth <=> root.void-chaos-depth;
                                             void-entropy <=> root.void-entropy;
+                                            void-pan <=> root.void-pan;
+                                            void-width <=> root.void-width;
+                                            void-close-decay <=> root.void-close-decay;
+                                            void-filter-cutoff <=> root.void-filter-cutoff;
+                                            void-filter-resonance <=> root.void-filter-resonance;
+                                            void-drive <=> root.void-drive;
+                                            void-filter-pre-drive <=> root.void-filter-pre-drive;
                                             void-feedback <=> root.void-feedback;
                                             void-diffusion <=> root.void-diffusion;
                                             void-mod-rate <=> root.void-mod-rate;
                                             void-level <=> root.void-level;
                                             void-enabled: root.void-enabled;
                                             spectrum: root.spectrum;
+                                            mosaic-enabled <=> root.mosaic-enabled;
+                                            mosaic-pitch <=> root.mosaic-pitch;
+                                            mosaic-rate <=> root.mosaic-rate;
+                                            mosaic-size <=> root.mosaic-size;
+                                            mosaic-contour <=> root.mosaic-contour;
+                                            mosaic-warp <=> root.mosaic-warp;
+                                            mosaic-spray <=> root.mosaic-spray;
+                                            mosaic-pattern <=> root.mosaic-pattern;
+                                            mosaic-wet <=> root.mosaic-wet;
+                                            mosaic-detune <=> root.mosaic-detune;
+                                            mosaic-spatial <=> root.mosaic-spatial;
+                                            mosaic-rand-rate <=> root.mosaic-rand-rate;
+                                            mosaic-rand-size <=> root.mosaic-rand-size;
+                                            mosaic-sos <=> root.mosaic-sos;
+                                            g8-enabled <=> root.g8-enabled;
+                                            g8-rate-index <=> root.g8-rate-index;
+                                            g8-steps <=> root.g8-steps;
+                                            ring-enabled <=> root.ring-enabled;
+                                            ring-cutoff <=> root.ring-cutoff;
+                                            ring-resonance <=> root.ring-resonance;
+                                            ring-decay <=> root.ring-decay;
+                                            ring-pitch <=> root.ring-pitch;
+                                            ring-decay-modes: root.ring-decay-modes;
+                                            ring-decay-mode <=> root.ring-decay-mode;
+                                            ring-slope <=> root.ring-slope;
+                                            ring-tone <=> root.ring-tone;
+                                            ring-tilt <=> root.ring-tilt;
+                                            ring-wet <=> root.ring-wet;
+                                            ring-detune <=> root.ring-detune;
+                                            ring-waves <=> root.ring-waves;
+                                            ring-waves-rate <=> root.ring-waves-rate;
+                                            ring-noise <=> root.ring-noise;
+                                            ring-noise-rate <=> root.ring-noise-rate;
                                             void-base-freq-changed(value) => { root.void-base-freq-changed(value); }
                                             void-chaos-depth-changed(value) => { root.void-chaos-depth-changed(value); }
                                             void-entropy-changed(value) => { root.void-entropy-changed(value); }
+                                            void-pan-changed(value) => { root.void-pan-changed(value); }
+                                            void-width-changed(value) => { root.void-width-changed(value); }
+                                            void-close-decay-changed(value) => { root.void-close-decay-changed(value); }
+                                            void-filter-cutoff-changed(value) => { root.void-filter-cutoff-changed(value); }
+                                            void-filter-resonance-changed(value) => { root.void-filter-resonance-changed(value); }
+                                            void-drive-changed(value) => { root.void-drive-changed(value); }
+                                            void-filter-pre-drive-changed(value) => { root.void-filter-pre-drive-changed(value); }
                                             void-feedback-changed(value) => { root.void-feedback-changed(value); }
                                             void-diffusion-changed(value) => { root.void-diffusion-changed(value); }
                                             void-mod-rate-changed(value) => { root.void-mod-rate-changed(value); }
                                             void-level-changed(value) => { root.void-level-changed(value); }
                                             toggle-void() => { root.toggle-void(); }
+                                            toggle-mosaic-enabled => root.toggle-mosaic-enabled();
+                                            mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
+                                            mosaic-rate-changed(value) => { root.mosaic-rate-changed(value); }
+                                            mosaic-size-changed(value) => { root.mosaic-size-changed(value); }
+                                            mosaic-contour-changed(value) => { root.mosaic-contour-changed(value); }
+                                            mosaic-warp-changed(value) => { root.mosaic-warp-changed(value); }
+                                            mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
+                                            mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
+                                            mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                                            mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
+                                            mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
+                                            mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
+                                            mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
+                                            mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
+                                            toggle-g8-enabled => root.toggle-g8-enabled();
+                                            g8-rate-selected(index) => { root.g8-rate-selected(index); }
+                                            g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
+                                            toggle-ring-enabled => root.toggle-ring-enabled();
+                                            ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
+                                            ring-resonance-changed(value) => { root.ring-resonance-changed(value); }
+                                            ring-decay-changed(value) => { root.ring-decay-changed(value); }
+                                            ring-pitch-changed(value) => { root.ring-pitch-changed(value); }
+                                            ring-decay-mode-selected(index) => { root.ring-decay-mode-selected(index); }
+                                            ring-slope-changed(value) => { root.ring-slope-changed(value); }
+                                            ring-tone-changed(value) => { root.ring-tone-changed(value); }
+                                            ring-tilt-changed(value) => { root.ring-tilt-changed(value); }
+                                            ring-wet-changed(value) => { root.ring-wet-changed(value); }
+                                            ring-detune-changed(value) => { root.ring-detune-changed(value); }
+                                            ring-waves-changed(value) => { root.ring-waves-changed(value); }
+                                            ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
+                                            ring-noise-changed(value) => { root.ring-noise-changed(value); }
+                                            ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
                                             toggle-track-mute => { root.toggle-track-mute(); }
                                         }
                                     }

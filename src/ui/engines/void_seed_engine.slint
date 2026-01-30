@@ -7,12 +7,22 @@ import {
     RDSXYPad,
     RDSCircleToggle
 } from "../components/index.slint";
+import { GranulatorDevice } from "../devices/granulator_device.slint";
+import { SilkDevice } from "../devices/silk_device.slint";
+import { G8Device } from "../devices/g8_device.slint";
 
 export component VoidSeedEngine {
     in-out property <bool> track-muted: false;
     in-out property <float> void-base-freq: 40.0;
     in-out property <float> void-chaos-depth: 0.5;
     in-out property <float> void-entropy: 0.2;
+    in-out property <float> void-pan: 0.5;
+    in-out property <float> void-width: 1.0;
+    in-out property <float> void-close-decay: 4.0;
+    in-out property <float> void-filter-cutoff: 0.5;
+    in-out property <float> void-filter-resonance: 0.2;
+    in-out property <float> void-drive: 0.0;
+    in-out property <bool> void-filter-pre-drive: true;
     in-out property <float> void-feedback: 0.8;
     in-out property <float> void-diffusion: 0.5;
     in-out property <float> void-mod-rate: 0.1;
@@ -20,16 +30,91 @@ export component VoidSeedEngine {
 
     in property <bool> void-enabled: false;
     in property <[float]> spectrum;
+    in property <[string]> ring-decay-modes;
+
+    in-out property <bool> mosaic-enabled: true;
+    in-out property <float> mosaic-pitch: 0.0;
+    in-out property <float> mosaic-rate: 0.5;
+    in-out property <float> mosaic-size: 0.5;
+    in-out property <float> mosaic-contour: 0.5;
+    in-out property <float> mosaic-warp: 0.0;
+    in-out property <float> mosaic-spray: 0.0;
+    in-out property <float> mosaic-pattern: 0.0;
+    in-out property <float> mosaic-wet: 0.0;
+    in-out property <float> mosaic-detune: 0.0;
+    in-out property <float> mosaic-spatial: 0.0;
+    in-out property <float> mosaic-rand-rate: 0.0;
+    in-out property <float> mosaic-rand-size: 0.0;
+    in-out property <float> mosaic-sos: 0.0;
+
+    in-out property <bool> ring-enabled: false;
+    in-out property <float> ring-cutoff: 0.5;
+    in-out property <float> ring-resonance: 0.0;
+    in-out property <float> ring-decay: 0.0;
+    in-out property <float> ring-pitch: 0.5;
+    in-out property <int> ring-decay-mode: 0;
+    in-out property <float> ring-slope: 0.5;
+    in-out property <float> ring-tone: 0.5;
+    in-out property <float> ring-tilt: 0.5;
+    in-out property <float> ring-wet: 0.0;
+    in-out property <float> ring-detune: 0.0;
+    in-out property <float> ring-waves: 0.0;
+    in-out property <float> ring-waves-rate: 0.5;
+    in-out property <float> ring-noise: 0.0;
+    in-out property <float> ring-noise-rate: 0.5;
+
+    in-out property <bool> g8-enabled: true;
+    in-out property <int> g8-rate-index: 0;
+    in-out property <[float]> g8-steps;
 
     callback void-base-freq-changed(float);
     callback void-chaos-depth-changed(float);
     callback void-entropy-changed(float);
+    callback void-pan-changed(float);
+    callback void-width-changed(float);
+    callback void-close-decay-changed(float);
+    callback void-filter-cutoff-changed(float);
+    callback void-filter-resonance-changed(float);
+    callback void-drive-changed(float);
+    callback void-filter-pre-drive-changed(bool);
     callback void-feedback-changed(float);
     callback void-diffusion-changed(float);
     callback void-mod-rate-changed(float);
     callback void-level-changed(float);
     callback toggle-void();
     callback toggle-track-mute();
+    callback toggle-mosaic-enabled();
+    callback mosaic-pitch-changed(float);
+    callback mosaic-rate-changed(float);
+    callback mosaic-size-changed(float);
+    callback mosaic-contour-changed(float);
+    callback mosaic-warp-changed(float);
+    callback mosaic-spray-changed(float);
+    callback mosaic-pattern-changed(float);
+    callback mosaic-wet-changed(float);
+    callback mosaic-detune-changed(float);
+    callback mosaic-spatial-changed(float);
+    callback mosaic-rand-rate-changed(float);
+    callback mosaic-rand-size-changed(float);
+    callback mosaic-sos-changed(float);
+    callback toggle-ring-enabled();
+    callback ring-cutoff-changed(float);
+    callback ring-resonance-changed(float);
+    callback ring-decay-changed(float);
+    callback ring-pitch-changed(float);
+    callback ring-decay-mode-selected(int);
+    callback ring-slope-changed(float);
+    callback ring-tone-changed(float);
+    callback ring-tilt-changed(float);
+    callback ring-wet-changed(float);
+    callback ring-detune-changed(float);
+    callback ring-waves-changed(float);
+    callback ring-waves-rate-changed(float);
+    callback ring-noise-changed(float);
+    callback ring-noise-rate-changed(float);
+    callback toggle-g8-enabled();
+    callback g8-rate-selected(int);
+    callback g8-step-changed(int, float);
 
     VerticalLayout {
         spacing: 12px;
@@ -112,6 +197,34 @@ export component VoidSeedEngine {
                         handle-size: 14px;
                         value-x-changed(v) => { root.void-chaos-depth-changed(v); }
                         value-y-changed(v) => { root.void-entropy-changed(v); }
+                    }
+                }
+
+                // Pan / Width Pad
+                VerticalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: "Pan / Width";
+                        color: #f06292;
+                        font-size: 11px;
+                        font-weight: 700;
+                        letter-spacing: 0.5px;
+                    }
+
+                    RDSXYPad {
+                        width: 200px;
+                        height: 200px;
+                        value-x <=> root.void-pan;
+                        value-y <=> root.void-width;
+                        pad-background: #000000;
+                        pad-border-color: #f0629233;
+                        grid-color: #f0629211;
+                        handle-color: #f06292;
+                        glow-color: #f0629233;
+                        border-radius: 8px;
+                        handle-size: 14px;
+                        value-x-changed(v) => { root.void-pan-changed(v); }
+                        value-y-changed(v) => { root.void-width-changed(v); }
                     }
                 }
             }
@@ -198,21 +311,171 @@ export component VoidSeedEngine {
                         }
                     }
                 }
-            }
-
-            Rectangle {
-                height: 60px;
-                background: #000000;
-                border-radius: 4px;
-                border-color: #333333;
-                border-width: 1px;
-                RDSSpectrumViz {
-                    width: parent.width - 4px;
-                    height: parent.height - 4px;
-                    spectrum: root.spectrum;
+                Row {
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Close Decay"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-close-decay;
+                            min-value: 1.0; max-value: 20.0;
+                            size: 50px;
+                            value-changed(v) => { root.void-close-decay = v; root.void-close-decay-changed(v); }
+                        }
+                    }
+                    Rectangle { }
+                }
+                Row {
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Moog Cut"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-filter-cutoff;
+                            min-value: 0.0; max-value: 1.0;
+                            size: 50px;
+                            value-changed(v) => {
+                                root.void-filter-cutoff = v;
+                                root.void-filter-cutoff-changed(v);
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Moog Res"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-filter-resonance;
+                            min-value: 0.0; max-value: 1.0;
+                            size: 50px;
+                            value-changed(v) => {
+                                root.void-filter-resonance = v;
+                                root.void-filter-resonance-changed(v);
+                            }
+                        }
+                    }
+                }
+                Row {
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; }
+                        RDSKnob {
+                            value: root.void-drive;
+                            min-value: 0.0; max-value: 1.0;
+                            size: 50px;
+                            value-changed(v) => { root.void-drive = v; root.void-drive-changed(v); }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 6px;
+                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                        RDSCircleToggle {
+                            active: root.void-filter-pre-drive;
+                            label: "POST";
+                            label-active: "PRE";
+                            label-pos: "right";
+                            clicked => { root.void-filter-pre-drive = !root.void-filter-pre-drive; root.void-filter-pre-drive-changed(root.void-filter-pre-drive); }
+                        }
+                    }
                 }
             }
+
         }
+        }
+
+        // Downstream Devices
+        VerticalLayout {
+            width: parent.width;
+            HorizontalLayout {
+                spacing: 22px;
+
+                // Granulator Device
+                Rectangle {
+                    width: (parent.width - 16px) / 2 - 15px;
+                    height: 250px;
+                    GranulatorDevice {
+                        mosaic-enabled <=> root.mosaic-enabled;
+                        mosaic-pitch <=> root.mosaic-pitch;
+                        mosaic-rate <=> root.mosaic-rate;
+                        mosaic-size <=> root.mosaic-size;
+                        mosaic-contour <=> root.mosaic-contour;
+                        mosaic-warp <=> root.mosaic-warp;
+                        mosaic-spray <=> root.mosaic-spray;
+                        mosaic-pattern <=> root.mosaic-pattern;
+                        mosaic-wet <=> root.mosaic-wet;
+                        mosaic-detune <=> root.mosaic-detune;
+                        mosaic-spatial <=> root.mosaic-spatial;
+                        mosaic-rand-rate <=> root.mosaic-rand-rate;
+                        mosaic-rand-size <=> root.mosaic-rand-size;
+                        mosaic-sos <=> root.mosaic-sos;
+                        toggle-mosaic-enabled => root.toggle-mosaic-enabled();
+                        mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
+                        mosaic-rate-changed(value) => { root.mosaic-rate-changed(value); }
+                        mosaic-size-changed(value) => { root.mosaic-size-changed(value); }
+                        mosaic-contour-changed(value) => { root.mosaic-contour-changed(value); }
+                        mosaic-warp-changed(value) => { root.mosaic-warp-changed(value); }
+                        mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
+                        mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
+                        mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                        mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
+                        mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
+                        mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
+                        mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
+                        mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
+                    }
+                }
+
+                // Silk Device
+                Rectangle {
+                    width: (parent.width - 16px) / 2 - 15px;
+                    SilkDevice {
+                        ring-enabled <=> root.ring-enabled;
+                        ring-cutoff <=> root.ring-cutoff;
+                        ring-resonance <=> root.ring-resonance;
+                        ring-decay <=> root.ring-decay;
+                        ring-pitch <=> root.ring-pitch;
+                        ring-decay-modes: root.ring-decay-modes;
+                        ring-decay-mode <=> root.ring-decay-mode;
+                        ring-slope <=> root.ring-slope;
+                        ring-tone <=> root.ring-tone;
+                        ring-tilt <=> root.ring-tilt;
+                        ring-wet <=> root.ring-wet;
+                        ring-detune <=> root.ring-detune;
+                        ring-waves <=> root.ring-waves;
+                        ring-waves-rate <=> root.ring-waves-rate;
+                        ring-noise <=> root.ring-noise;
+                        ring-noise-rate <=> root.ring-noise-rate;
+                        toggle-ring-enabled => root.toggle-ring-enabled();
+                        ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
+                        ring-resonance-changed(value) => { root.ring-resonance-changed(value); }
+                        ring-decay-changed(value) => { root.ring-decay-changed(value); }
+                        ring-pitch-changed(value) => { root.ring-pitch-changed(value); }
+                        ring-decay-mode-selected(index) => { root.ring-decay-mode-selected(index); }
+                        ring-slope-changed(value) => { root.ring-slope-changed(value); }
+                        ring-tone-changed(value) => { root.ring-tone-changed(value); }
+                        ring-tilt-changed(value) => { root.ring-tilt-changed(value); }
+                        ring-wet-changed(value) => { root.ring-wet-changed(value); }
+                        ring-detune-changed(value) => { root.ring-detune-changed(value); }
+                        ring-waves-changed(value) => { root.ring-waves-changed(value); }
+                        ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
+                        ring-noise-changed(value) => { root.ring-noise-changed(value); }
+                        ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 22px;
+                Rectangle {
+                    width: parent.width;
+                    height: 200px;
+                    G8Device {
+                        gate-enabled <=> root.g8-enabled;
+                        gate-rate-index <=> root.g8-rate-index;
+                        gate-steps <=> root.g8-steps;
+                        toggle-gate-enabled => root.toggle-g8-enabled();
+                        gate-rate-selected(index) => { root.g8-rate-selected(index); }
+                        gate-step-changed(index, value) => { root.g8-step-changed(index, value); }
+                    }
+                }
+            }
         }
     }
 }
