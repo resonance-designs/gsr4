@@ -7349,17 +7349,8 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("void_width".to_string(), f(&track.void_width));
     params.insert("void_close_decay".to_string(), f(&track.void_close_decay));
     params.insert("void_filter_cutoff".to_string(), f(&track.void_filter_cutoff));
-    params.insert(
-        "void_filter_cutoff_smooth".to_string(),
-        f(&track.void_filter_cutoff_smooth),
-    );
     params.insert("void_filter_resonance".to_string(), f(&track.void_filter_resonance));
-    params.insert(
-        "void_filter_resonance_smooth".to_string(),
-        f(&track.void_filter_resonance_smooth),
-    );
     params.insert("void_drive".to_string(), f(&track.void_drive));
-    params.insert("void_drive_smooth".to_string(), f(&track.void_drive_smooth));
     params.insert("void_filter_pre_drive".to_string(), b(&track.void_filter_pre_drive));
     params.insert("void_enabled".to_string(), b(&track.void_enabled));
 }
@@ -7579,16 +7570,21 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.void_width, "void_width");
     sf(&track.void_close_decay, "void_close_decay");
     sf(&track.void_filter_cutoff, "void_filter_cutoff");
-    sf(&track.void_filter_cutoff_smooth, "void_filter_cutoff_smooth");
     sf(&track.void_filter_resonance, "void_filter_resonance");
-    sf(
-        &track.void_filter_resonance_smooth,
-        "void_filter_resonance_smooth",
-    );
     sf(&track.void_drive, "void_drive");
-    sf(&track.void_drive_smooth, "void_drive_smooth");
     sb(&track.void_filter_pre_drive, "void_filter_pre_drive");
     sb(&track.void_enabled, "void_enabled");
+
+    // Smoothing state should derive from targets on load, not persisted.
+    track
+        .void_filter_cutoff_smooth
+        .store(track.void_filter_cutoff.load(Ordering::Relaxed).to_bits(), Ordering::Relaxed);
+    track
+        .void_filter_resonance_smooth
+        .store(track.void_filter_resonance.load(Ordering::Relaxed).to_bits(), Ordering::Relaxed);
+    track
+        .void_drive_smooth
+        .store(track.void_drive.load(Ordering::Relaxed).to_bits(), Ordering::Relaxed);
 }
 
 struct VoidSeedDspState {
