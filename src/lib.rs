@@ -2644,6 +2644,7 @@ impl TLBX1 {
                     let filter_f =
                         (2.0 * (std::f32::consts::PI * cutoff_hz / sr).sin()).clamp(0.0, 0.99);
                     let filter_q = 1.0 - filter_resonance;
+                    let filter_moog_q = 0.1 + filter_resonance * 0.9;
                     let filter_v1 = f32::from_bits(
                         track.animate_slot_filter_v1[row][slot].load(Ordering::Relaxed),
                     );
@@ -2674,7 +2675,7 @@ impl TLBX1 {
                         4 => {
                             let mut out = [0.0f32];
                             dsp_state.moog[row][slot]
-                                .tick(&[slot_sample, cutoff_hz, filter_resonance], &mut out);
+                                .tick(&[slot_sample, cutoff_hz, filter_moog_q], &mut out);
                             out[0]
                         }
                         _ => filter_low,
@@ -2819,6 +2820,7 @@ impl TLBX1 {
                     let filter_f =
                         (2.0 * (std::f32::consts::PI * cutoff_hz / sr).sin()).clamp(0.0, 0.99);
                     let filter_q = 1.0 - filter_resonance;
+                    let filter_moog_q = 0.1 + filter_resonance * 0.9;
                     let mut filter_v1 = keybed_filter_v1[slot];
                     let mut filter_v2 = keybed_filter_v2[slot];
                     let mut filter_v1_stage2 = keybed_filter_v1_stage2[slot];
@@ -2838,7 +2840,7 @@ impl TLBX1 {
                         4 => {
                             let mut out = [0.0f32];
                             dsp_state.moog_keybed[slot]
-                                .tick(&[slot_sample, cutoff_hz, filter_resonance], &mut out);
+                                .tick(&[slot_sample, cutoff_hz, filter_moog_q], &mut out);
                             out[0]
                         }
                         _ => filter_low,
@@ -4798,9 +4800,9 @@ impl TLBX1 {
                     let noise_mod =
                         (1.0 - ring_noise) + ring_noise * (0.5 + 0.5 * noise_value);
                     let pre_modulated = if ring_pre_post {
-                        input
-                    } else {
                         input * waves_mod * noise_mod
+                    } else {
+                        input
                     };
                     let v1 = (pre_modulated - low - r * band) * g_detune;
                     let v2 = band + v1;
@@ -4825,9 +4827,9 @@ impl TLBX1 {
                     }
                     let tone_mix = filtered + tone_bipolar * (high - low) * 0.5;
                     let post_modulated = if ring_pre_post {
-                        tone_mix * waves_mod * noise_mod
-                    } else {
                         tone_mix
+                    } else {
+                        tone_mix * waves_mod * noise_mod
                     };
                     output[channel_idx][sample_idx] =
                         input * (1.0 - ring_wet) + post_modulated * ring_wet;

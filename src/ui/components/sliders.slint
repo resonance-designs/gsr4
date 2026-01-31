@@ -288,8 +288,14 @@ export component RDSSimpSlider inherits Rectangle {
     callback value-changed(float);
 
     private property <bool> is-horizontal: root.orientation == "horizontal";
-    private property <float> normalized:
-        (root.value - root.min-value) / Math.max(0.0001, root.max-value - root.min-value);
+    private property <float> normalized: Math.max(
+        0.0,
+        Math.min(
+            1.0,
+            (root.value - root.min-value)
+                / Math.max(0.0001, root.max-value - root.min-value)
+        )
+    );
 
     width: root.slider-width;
     height: root.slider-height;
