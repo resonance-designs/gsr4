@@ -3993,10 +3993,14 @@ impl TLBX1 {
                     channel_samples[1] = channel_samples[0];
                 }
                 if num_channels >= 2 {
-                    let decorrelation =
-                        (chaos_phase * 2.0 * PI).sin() * (0.01 * (0.25 + entropy));
-                    channel_samples[0] -= decorrelation;
-                    channel_samples[1] += decorrelation;
+                    let decorrelation_depth =
+                        void_width * (0.01 * (0.25 + entropy) + 0.06);
+                    if decorrelation_depth > 0.0 {
+                        let decorrelation =
+                            (chaos_phase * 2.0 * PI).sin() * decorrelation_depth;
+                        channel_samples[0] -= decorrelation;
+                        channel_samples[1] += decorrelation;
+                    }
                 }
 
                 let mid = 0.5 * (channel_samples[0] + channel_samples[1]);
