@@ -10,6 +10,7 @@ import {
 import { GranulatorDevice } from "../devices/granulator_device.slint";
 import { SilkDevice } from "../devices/silk_device.slint";
 import { G8Device } from "../devices/g8_device.slint";
+import { TextureDevice } from "../devices/texture_device.slint";
 
 export component VoidSeedEngine {
     in-out property <bool> track-muted: false;
@@ -64,6 +65,16 @@ export component VoidSeedEngine {
     in-out property <float> ring-noise: 0.0;
     in-out property <float> ring-noise-rate: 0.5;
     in-out property <bool> ring-pre-post: true;
+    in-out property <bool> texture-enabled: false;
+    in-out property <bool> texture-gate: false;
+    in-out property <float> texture-drive: 0.0;
+    in-out property <float> texture-compress: 0.0;
+    in-out property <float> texture-crush: 0.0;
+    in-out property <float> texture-tilt: 0.0;
+    in-out property <float> texture-noise: 0.0;
+    in-out property <float> texture-noise-decay: 0.0;
+    in-out property <float> texture-noise-color: 0.0;
+    in-out property <float> texture-wet: 1.0;
 
     in-out property <bool> g8-enabled: true;
     in-out property <int> g8-rate-index: 0;
@@ -119,6 +130,16 @@ export component VoidSeedEngine {
     callback toggle-g8-enabled();
     callback g8-rate-selected(int);
     callback g8-step-changed(int, float);
+    callback toggle-texture-enabled();
+    callback toggle-texture-gate();
+    callback texture-drive-changed(float);
+    callback texture-compress-changed(float);
+    callback texture-crush-changed(float);
+    callback texture-tilt-changed(float);
+    callback texture-noise-changed(float);
+    callback texture-noise-decay-changed(float);
+    callback texture-noise-color-changed(float);
+    callback texture-wet-changed(float);
 
     VerticalLayout {
         spacing: 12px;
@@ -466,6 +487,38 @@ export component VoidSeedEngine {
                         ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
                         ring-noise-changed(value) => { root.ring-noise-changed(value); }
                         ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 22px;
+                Rectangle {
+                    width: parent.width;
+                    height: 250px;
+                    TextureDevice {
+                        width: parent.width;
+                        height: parent.height;
+                        texture-enabled <=> root.texture-enabled;
+                        texture-gate <=> root.texture-gate;
+                        texture-drive <=> root.texture-drive;
+                        texture-compress <=> root.texture-compress;
+                        texture-crush <=> root.texture-crush;
+                        texture-tilt <=> root.texture-tilt;
+                        texture-noise <=> root.texture-noise;
+                        texture-noise-decay <=> root.texture-noise-decay;
+                        texture-noise-color <=> root.texture-noise-color;
+                        texture-wet <=> root.texture-wet;
+                        toggle-texture-enabled => root.toggle-texture-enabled();
+                        toggle-texture-gate => root.toggle-texture-gate();
+                        texture-drive-changed(value) => { root.texture-drive-changed(value); }
+                        texture-compress-changed(value) => { root.texture-compress-changed(value); }
+                        texture-crush-changed(value) => { root.texture-crush-changed(value); }
+                        texture-tilt-changed(value) => { root.texture-tilt-changed(value); }
+                        texture-noise-changed(value) => { root.texture-noise-changed(value); }
+                        texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
+                        texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
+                        texture-wet-changed(value) => { root.texture-wet-changed(value); }
                     }
                 }
             }

@@ -1,0 +1,198 @@
+import { Theme } from "../theme/index.slint";
+import { RDSKnob, RDSHeaderLabel, RDSCircleToggle, RDSButton } from "../components/index.slint";
+
+/*
+Component: TextureDevice
+Description: Texture (Color/Deform) device inspired by Torso S-4.
+Public members:
+- texture-enabled: bool - Device on/off
+- texture-drive: float - Drive amount
+- texture-compress: float - Compressor amount
+- texture-crush: float - Bit crush amount
+- texture-tilt: float - Dual-band tilt
+- texture-noise: float - Noise amount
+- texture-noise-decay: float - Noise decay
+- texture-noise-color: float - Noise color (BP cutoff)
+- texture-wet: float - Wet/Dry
+- texture-gate: bool - Noise gate on/off
+*/
+export component TextureDevice {
+    in-out property <bool> texture-enabled: false;
+    in-out property <float> texture-drive: 0.0;
+    in-out property <float> texture-compress: 0.0;
+    in-out property <float> texture-crush: 0.0;
+    in-out property <float> texture-tilt: 0.5;
+    in-out property <float> texture-noise: 0.0;
+    in-out property <float> texture-noise-decay: 0.0;
+    in-out property <float> texture-noise-color: 0.5;
+    in-out property <float> texture-wet: 0.0;
+    in-out property <bool> texture-gate: false;
+
+    callback toggle-texture-enabled();
+    callback toggle-texture-gate();
+    callback texture-drive-changed(value: float);
+    callback texture-compress-changed(value: float);
+    callback texture-crush-changed(value: float);
+    callback texture-tilt-changed(value: float);
+    callback texture-noise-changed(value: float);
+    callback texture-noise-decay-changed(value: float);
+    callback texture-noise-color-changed(value: float);
+    callback texture-wet-changed(value: float);
+
+    VerticalLayout {
+        spacing: 8px;
+
+        RDSHeaderLabel {
+            text: "Texture";
+            horizontal-alignment: left;
+            padding-horizontal: 12px;
+            padding-vertical: 6px;
+            right-padding: 12px;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: center;
+                RDSCircleToggle {
+                    active: root.texture-enabled;
+                    label: "Bypass";
+                    label-active: "On";
+                    label-pos: "left";
+                    label-color: #b9b9bf;
+                    label-active-color: Theme.active.text_primary;
+                    label-font-size: 11px;
+                    label-font-weight: 500;
+                    clicked => root.toggle-texture-enabled();
+                }
+            }
+        }
+
+        Rectangle {
+            background: #3a1e1e33;
+            border-width: 2px;
+            border-radius: 6px;
+            border-color: Theme.active.border-strong;
+            GridLayout {
+                padding-top: 30px;
+                padding-right: 12px;
+                padding-bottom: 12px;
+                padding-left: 12px;
+                spacing-horizontal: 10px;
+                spacing-vertical: 30px;
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.texture-drive;
+                        min-value: 0; max-value: 1;
+                        size: 70px; indicator-position: 25px;
+                        label: "Drive";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        label-font-weight: 500;
+                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                        value-changed(v) => { root.texture-drive = v; root.texture-drive-changed(v); }
+                    }
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.texture-compress;
+                        min-value: 0; max-value: 1;
+                        size: 70px; indicator-position: 25px;
+                        label: "Compress";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        label-font-weight: 500;
+                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                        value-changed(v) => { root.texture-compress = v; root.texture-compress-changed(v); }
+                    }
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.texture-crush;
+                        min-value: 0; max-value: 1;
+                        size: 70px; indicator-position: 25px;
+                        label: "Crush";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        label-font-weight: 500;
+                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                        value-changed(v) => { root.texture-crush = v; root.texture-crush-changed(v); }
+                    }
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.texture-tilt;
+                        min-value: 0; max-value: 1;
+                        size: 70px; indicator-position: 25px;
+                        label: "Tilt";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        label-font-weight: 500;
+                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                        value-changed(v) => { root.texture-tilt = v; root.texture-tilt-changed(v); }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.texture-noise;
+                        min-value: 0; max-value: 1;
+                        size: 70px; indicator-position: 25px;
+                        label: "Noise";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        label-font-weight: 500;
+                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                        value-changed(v) => { root.texture-noise = v; root.texture-noise-changed(v); }
+                    }
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.texture-noise-decay;
+                        min-value: 0; max-value: 1;
+                        size: 70px; indicator-position: 25px;
+                        label: "Noise Decay";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        label-font-weight: 500;
+                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                        value-changed(v) => { root.texture-noise-decay = v; root.texture-noise-decay-changed(v); }
+                    }
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.texture-noise-color;
+                        min-value: 0; max-value: 1;
+                        size: 70px; indicator-position: 25px;
+                        label: "Noise Color";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        label-font-weight: 500;
+                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                        value-changed(v) => { root.texture-noise-color = v; root.texture-noise-color-changed(v); }
+                    }
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.texture-wet;
+                        min-value: 0; max-value: 1;
+                        size: 70px; indicator-position: 25px;
+                        label: "Wet";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        label-font-weight: 500;
+                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                        value-changed(v) => { root.texture-wet = v; root.texture-wet-changed(v); }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    RDSButton {
+                        label: "Gate";
+                        active: root.texture-gate;
+                        button-width: 64px;
+                        button-height: 28px;
+                        clicked => root.toggle-texture-gate();
+                    }
+                }
+            }
+        }
+    }
+}
