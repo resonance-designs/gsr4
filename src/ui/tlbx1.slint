@@ -111,6 +111,17 @@ export component TLBX1UI inherits Window {
     in-out property <float> texture-noise-decay: 0.0;
     in-out property <float> texture-noise-color: 0.0;
     in-out property <float> texture-wet: 1.0;
+    in-out property <bool> reflect-enabled: false;
+    in-out property <bool> reflect-freeze: false;
+    in-out property <float> reflect-delay: 0.0;
+    in-out property <float> reflect-time: 0.5;
+    in-out property <int> reflect-time-mode: 0;
+    in-out property <float> reflect-reverb: 0.0;
+    in-out property <float> reflect-size: 0.5;
+    in-out property <float> reflect-feedback: 0.0;
+    in-out property <float> reflect-spread: 0.0;
+    in-out property <float> reflect-damp: 0.5;
+    in-out property <float> reflect-decay: 0.5;
     in-out property <float> loop-start: 0.0;
     in-out property <float> trigger-start: 0.0;
     in-out property <float> loop-length: 1.0;
@@ -407,6 +418,18 @@ export component TLBX1UI inherits Window {
     callback texture-noise-decay-changed(value: float);
     callback texture-noise-color-changed(value: float);
     callback texture-wet-changed(value: float);
+    callback toggle-reflect-enabled();
+    callback toggle-reflect-freeze();
+    callback reflect-clear();
+    callback reflect-delay-changed(value: float);
+    callback reflect-time-changed(value: float);
+    callback reflect-time-mode-selected(index: int);
+    callback reflect-reverb-changed(value: float);
+    callback reflect-size-changed(value: float);
+    callback reflect-feedback-changed(value: float);
+    callback reflect-spread-changed(value: float);
+    callback reflect-damp-changed(value: float);
+    callback reflect-decay-changed(value: float);
     callback toggle-g8-enabled();
     callback g8-rate-selected(index: int);
     callback g8-step-changed(index: int, value: float);
@@ -1105,6 +1128,17 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay <=> root.texture-noise-decay;
                                             texture-noise-color <=> root.texture-noise-color;
                                             texture-wet <=> root.texture-wet;
+                                            reflect-enabled <=> root.reflect-enabled;
+                                            reflect-freeze <=> root.reflect-freeze;
+                                            reflect-delay <=> root.reflect-delay;
+                                            reflect-time <=> root.reflect-time;
+                                            reflect-time-mode <=> root.reflect-time-mode;
+                                            reflect-reverb <=> root.reflect-reverb;
+                                            reflect-size <=> root.reflect-size;
+                                            reflect-feedback <=> root.reflect-feedback;
+                                            reflect-spread <=> root.reflect-spread;
+                                            reflect-damp <=> root.reflect-damp;
+                                            reflect-decay <=> root.reflect-decay;
                                             load-sample => root.load-sample();
                                             save-sample => root.save-sample();
                                             toggle-record => root.toggle-record();
@@ -1172,6 +1206,18 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                                             texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                                             texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                                            toggle-reflect-enabled => root.toggle-reflect-enabled();
+                                            toggle-reflect-freeze => root.toggle-reflect-freeze();
+                                            reflect-clear => root.reflect-clear();
+                                            reflect-delay-changed(value) => { root.reflect-delay-changed(value); }
+                                            reflect-time-changed(value) => { root.reflect-time-changed(value); }
+                                            reflect-time-mode-selected(index) => { root.reflect-time-mode-selected(index); }
+                                            reflect-reverb-changed(value) => { root.reflect-reverb-changed(value); }
+                                            reflect-size-changed(value) => { root.reflect-size-changed(value); }
+                                            reflect-feedback-changed(value) => { root.reflect-feedback-changed(value); }
+                                            reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
+                                            reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
+                                            reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
                                         }
                                     }
                                 }
@@ -1181,12 +1227,13 @@ export component TLBX1UI inherits Window {
                                     height: root.active-engine-type == 2 ? animate-content.preferred-height : 0px;
                                     clip: true;
                                     visible: root.active-engine-type == 2;
+
                                     animate-content := VerticalLayout {
-                                        spacing: 12px;
+                                        spacing: 8px;
                                         width: parent.width;
+
                                         AnimateEngine {
                                             width: parent.width;
-                                            track-muted <=> root.track-muted;
                                             animate-slot-types: root.animate-slot-types;
                                             animate-slot-a-type <=> root.animate-slot-a-type;
                                             animate-slot-b-type <=> root.animate-slot-b-type;
@@ -1272,10 +1319,9 @@ export component TLBX1UI inherits Window {
                                             animate-lfo-y-rate <=> root.animate-lfo-y-rate;
                                             animate-lfo-y-amount <=> root.animate-lfo-y-amount;
                                             animate-filter-types: root.animate-filter-types;
+                                            track-muted <=> root.track-muted;
                                             animate-sequencer-grid <=> root.animate-sequencer-grid;
                                             animate-sequencer-current-step: root.animate-sequencer-current-step;
-                                            mosaic-enabled <=> root.mosaic-enabled;
-                                            mosaic-loop-lock <=> root.mosaic-loop-lock;
                                             mosaic-pitch <=> root.mosaic-pitch;
                                             mosaic-rate <=> root.mosaic-rate;
                                             mosaic-size <=> root.mosaic-size;
@@ -1289,6 +1335,11 @@ export component TLBX1UI inherits Window {
                                             mosaic-rand-rate <=> root.mosaic-rand-rate;
                                             mosaic-rand-size <=> root.mosaic-rand-size;
                                             mosaic-sos <=> root.mosaic-sos;
+                                            mosaic-enabled <=> root.mosaic-enabled;
+                                            mosaic-loop-lock <=> root.mosaic-loop-lock;
+                                            g8-enabled <=> root.g8-enabled;
+                                            g8-rate-index <=> root.g8-rate-index;
+                                            g8-steps <=> root.g8-steps;
                                             ring-enabled <=> root.ring-enabled;
                                             ring-cutoff <=> root.ring-cutoff;
                                             ring-resonance <=> root.ring-resonance;
@@ -1316,6 +1367,17 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay <=> root.texture-noise-decay;
                                             texture-noise-color <=> root.texture-noise-color;
                                             texture-wet <=> root.texture-wet;
+                                            reflect-enabled <=> root.reflect-enabled;
+                                            reflect-freeze <=> root.reflect-freeze;
+                                            reflect-delay <=> root.reflect-delay;
+                                            reflect-time <=> root.reflect-time;
+                                            reflect-time-mode <=> root.reflect-time-mode;
+                                            reflect-reverb <=> root.reflect-reverb;
+                                            reflect-size <=> root.reflect-size;
+                                            reflect-feedback <=> root.reflect-feedback;
+                                            reflect-spread <=> root.reflect-spread;
+                                            reflect-damp <=> root.reflect-damp;
+                                            reflect-decay <=> root.reflect-decay;
                                             animate-slot-a-type-changed(index) => { root.animate-slot-a-type-changed(index); }
                                             animate-slot-b-type-changed(index) => { root.animate-slot-b-type-changed(index); }
                                             animate-slot-c-type-changed(index) => { root.animate-slot-c-type-changed(index); }
@@ -1394,6 +1456,8 @@ export component TLBX1UI inherits Window {
                                             animate-lfo-y-division-changed(index) => { root.animate-lfo-y-division-changed(index); }
                                             animate-lfo-y-rate-changed(value) => { root.animate-lfo-y-rate-changed(value); }
                                             animate-lfo-y-amount-changed(value) => { root.animate-lfo-y-amount-changed(value); }
+                                            animate-sequencer-grid-toggled(row, step) => { root.animate-sequencer-grid-toggled(row, step); }
+                                            toggle-track-mute => root.toggle-track-mute();
                                             toggle-mosaic-enabled => root.toggle-mosaic-enabled();
                                             toggle-mosaic-loop-lock => root.toggle-mosaic-loop-lock();
                                             mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
@@ -1409,6 +1473,9 @@ export component TLBX1UI inherits Window {
                                             mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
                                             mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
                                             mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
+                                            toggle-g8-enabled => root.toggle-g8-enabled();
+                                            g8-rate-selected(index) => { root.g8-rate-selected(index); }
+                                            g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
                                             toggle-ring-enabled => root.toggle-ring-enabled();
                                             toggle-ring-pre-post => root.toggle-ring-pre-post();
                                             ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
@@ -1435,8 +1502,18 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                                             texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                                             texture-wet-changed(value) => { root.texture-wet-changed(value); }
-                                            animate-sequencer-grid-toggled(row, step) => { root.animate-sequencer-grid-toggled(row, step); }
-                                            toggle-track-mute => root.toggle-track-mute();
+                                            toggle-reflect-enabled => root.toggle-reflect-enabled();
+                                            toggle-reflect-freeze => root.toggle-reflect-freeze();
+                                            reflect-clear => root.reflect-clear();
+                                            reflect-delay-changed(value) => { root.reflect-delay-changed(value); }
+                                            reflect-time-changed(value) => { root.reflect-time-changed(value); }
+                                            reflect-time-mode-selected(index) => { root.reflect-time-mode-selected(index); }
+                                            reflect-reverb-changed(value) => { root.reflect-reverb-changed(value); }
+                                            reflect-size-changed(value) => { root.reflect-size-changed(value); }
+                                            reflect-feedback-changed(value) => { root.reflect-feedback-changed(value); }
+                                            reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
+                                            reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
+                                            reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
                                         }
                                     }
                                 }
@@ -1511,6 +1588,17 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay <=> root.texture-noise-decay;
                                             texture-noise-color <=> root.texture-noise-color;
                                             texture-wet <=> root.texture-wet;
+                                            reflect-enabled <=> root.reflect-enabled;
+                                            reflect-freeze <=> root.reflect-freeze;
+                                            reflect-delay <=> root.reflect-delay;
+                                            reflect-time <=> root.reflect-time;
+                                            reflect-time-mode <=> root.reflect-time-mode;
+                                            reflect-reverb <=> root.reflect-reverb;
+                                            reflect-size <=> root.reflect-size;
+                                            reflect-feedback <=> root.reflect-feedback;
+                                            reflect-spread <=> root.reflect-spread;
+                                            reflect-damp <=> root.reflect-damp;
+                                            reflect-decay <=> root.reflect-decay;
                                             kick-pitch-changed(value) => { root.kick-pitch-changed(value); }
                                             kick-decay-changed(value) => { root.kick-decay-changed(value); }
                                             kick-attack-changed(value) => { root.kick-attack-changed(value); }
@@ -1565,6 +1653,18 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                                             texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                                             texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                                            toggle-reflect-enabled => root.toggle-reflect-enabled();
+                                            toggle-reflect-freeze => root.toggle-reflect-freeze();
+                                            reflect-clear => root.reflect-clear();
+                                            reflect-delay-changed(value) => { root.reflect-delay-changed(value); }
+                                            reflect-time-changed(value) => { root.reflect-time-changed(value); }
+                                            reflect-time-mode-selected(index) => { root.reflect-time-mode-selected(index); }
+                                            reflect-reverb-changed(value) => { root.reflect-reverb-changed(value); }
+                                            reflect-size-changed(value) => { root.reflect-size-changed(value); }
+                                            reflect-feedback-changed(value) => { root.reflect-feedback-changed(value); }
+                                            reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
+                                            reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
+                                            reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
                                             syndrm-randomize-steps-lane-page() => { root.syndrm-randomize-steps-lane-page(); }
                                             syndrm-randomize-steps-lane-all() => { root.syndrm-randomize-steps-lane-all(); }
                                             syndrm-randomize-steps-all-page() => { root.syndrm-randomize-steps-all-page(); }
@@ -1667,6 +1767,17 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay <=> root.texture-noise-decay;
                                             texture-noise-color <=> root.texture-noise-color;
                                             texture-wet <=> root.texture-wet;
+                                            reflect-enabled <=> root.reflect-enabled;
+                                            reflect-freeze <=> root.reflect-freeze;
+                                            reflect-delay <=> root.reflect-delay;
+                                            reflect-time <=> root.reflect-time;
+                                            reflect-time-mode <=> root.reflect-time-mode;
+                                            reflect-reverb <=> root.reflect-reverb;
+                                            reflect-size <=> root.reflect-size;
+                                            reflect-feedback <=> root.reflect-feedback;
+                                            reflect-spread <=> root.reflect-spread;
+                                            reflect-damp <=> root.reflect-damp;
+                                            reflect-decay <=> root.reflect-decay;
                                             void-base-freq-changed(value) => { root.void-base-freq-changed(value); }
                                             void-chaos-depth-changed(value) => { root.void-chaos-depth-changed(value); }
                                             void-entropy-changed(value) => { root.void-entropy-changed(value); }
