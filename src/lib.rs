@@ -5781,7 +5781,7 @@ impl TLBX1 {
             for ch in 0..channel_count {
                 let input = track_output[ch][sample_idx];
                 let delay_out = delay_buffers[ch][read_pos];
-                let mut fb = delay_out * feedback_amt;
+                let fb = delay_out * feedback_amt;
                 damp_delay[ch] += (fb - damp_delay[ch]) * damp_alpha;
                 let delay_in = if freeze {
                     damp_delay[ch]
@@ -5796,7 +5796,7 @@ impl TLBX1 {
                     let pos = comb_pos[ch][i];
                     let buf = &mut comb_buffers[ch][i];
                     let comb_out = buf[pos];
-                    let mut comb_fb = comb_out * comb_feedback;
+                    let comb_fb = comb_out * comb_feedback;
                     damp_reverb[ch] += (comb_fb - damp_reverb[ch]) * damp_alpha;
                     let comb_in = if freeze {
                         damp_reverb[ch]
