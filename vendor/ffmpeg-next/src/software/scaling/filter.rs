@@ -60,19 +60,19 @@ impl Filter {
     }
 
     pub fn chroma_horizontal(&self) -> Vector<'_> {
-        unsafe { Vector::wrap((*self.as_ptr()).lumV) }
+        unsafe { Vector::wrap((*self.as_ptr()).chrH) }
     }
 
     pub fn chroma_horizontal_mut(&mut self) -> Vector<'_> {
-        unsafe { Vector::wrap((*self.as_mut_ptr()).lumV) }
+        unsafe { Vector::wrap((*self.as_mut_ptr()).chrH) }
     }
 
     pub fn chroma_vertical(&self) -> Vector<'_> {
-        unsafe { Vector::wrap((*self.as_ptr()).lumV) }
+        unsafe { Vector::wrap((*self.as_ptr()).chrV) }
     }
 
     pub fn chroma_vertical_mut(&mut self) -> Vector<'_> {
-        unsafe { Vector::wrap((*self.as_mut_ptr()).lumV) }
+        unsafe { Vector::wrap((*self.as_mut_ptr()).chrV) }
     }
 }
 

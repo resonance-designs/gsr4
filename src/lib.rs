@@ -1979,78 +1979,6 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
             }
         }
     }
-    track.reflect_enabled.store(false, Ordering::Relaxed);
-    track.reflect_freeze.store(false, Ordering::Relaxed);
-    track.reflect_delay.store(0.0f32.to_bits(), Ordering::Relaxed);
-    track
-        .reflect_delay_smooth
-        .store(0.0f32.to_bits(), Ordering::Relaxed);
-    track.reflect_time.store(0.5f32.to_bits(), Ordering::Relaxed);
-    track
-        .reflect_time_smooth
-        .store(0.5f32.to_bits(), Ordering::Relaxed);
-    track.reflect_time_mode.store(0, Ordering::Relaxed);
-    track.reflect_reverb.store(0.0f32.to_bits(), Ordering::Relaxed);
-    track
-        .reflect_reverb_smooth
-        .store(0.0f32.to_bits(), Ordering::Relaxed);
-    track.reflect_size.store(0.5f32.to_bits(), Ordering::Relaxed);
-    track
-        .reflect_size_smooth
-        .store(0.5f32.to_bits(), Ordering::Relaxed);
-    track
-        .reflect_feedback
-        .store(0.0f32.to_bits(), Ordering::Relaxed);
-    track
-        .reflect_feedback_smooth
-        .store(0.0f32.to_bits(), Ordering::Relaxed);
-    track.reflect_spread.store(0.0f32.to_bits(), Ordering::Relaxed);
-    track
-        .reflect_spread_smooth
-        .store(0.0f32.to_bits(), Ordering::Relaxed);
-    track.reflect_damp.store(0.5f32.to_bits(), Ordering::Relaxed);
-    track
-        .reflect_damp_smooth
-        .store(0.5f32.to_bits(), Ordering::Relaxed);
-    track.reflect_decay.store(0.5f32.to_bits(), Ordering::Relaxed);
-    track
-        .reflect_decay_smooth
-        .store(0.5f32.to_bits(), Ordering::Relaxed);
-    track.reflect_clear.store(false, Ordering::Relaxed);
-    track.reflect_delay_write_pos.store(0, Ordering::Relaxed);
-    for idx in 0..track.reflect_reverb_comb_pos.len() {
-        track.reflect_reverb_comb_pos[idx].store(0, Ordering::Relaxed);
-    }
-    for idx in 0..track.reflect_reverb_ap_pos.len() {
-        track.reflect_reverb_ap_pos[idx].store(0, Ordering::Relaxed);
-    }
-    for channel in 0..2 {
-        track
-            .reflect_damp_state_delay[channel]
-            .store(0.0f32.to_bits(), Ordering::Relaxed);
-        track
-            .reflect_damp_state_reverb[channel]
-            .store(0.0f32.to_bits(), Ordering::Relaxed);
-    }
-    if let Some(mut buffer) = track.reflect_delay_buffer.try_lock() {
-        for channel in buffer.iter_mut() {
-            channel.fill(0.0);
-        }
-    }
-    if let Some(mut buffer) = track.reflect_reverb_comb_buffers.try_lock() {
-        for channel in buffer.iter_mut() {
-            for comb in channel.iter_mut() {
-                comb.fill(0.0);
-            }
-        }
-    }
-    if let Some(mut buffer) = track.reflect_reverb_ap_buffers.try_lock() {
-        for channel in buffer.iter_mut() {
-            for ap in channel.iter_mut() {
-                ap.fill(0.0);
-            }
-        }
-    }
     if let Some(mut buffer) = track.mosaic_buffer.try_lock() {
         for channel in buffer.iter_mut() {
             channel.fill(0.0);
@@ -5827,6 +5755,17 @@ impl TLBX1 {
 
                 delay_wet[ch] = delay_out * delay_mix;
                 reverb_wet[ch] = ap_signal * reverb_mix;
+            }
+
+            let total_mix = delay_mix + reverb_mix;
+            let wet_scale = if total_mix > 1.0 {
+                1.0 / total_mix
+            } else {
+                1.0
+            };
+            for ch in 0..channel_count {
+                delay_wet[ch] *= wet_scale;
+                reverb_wet[ch] *= wet_scale;
             }
 
             if channel_count == 2 {
