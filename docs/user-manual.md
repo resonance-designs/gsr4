@@ -20,7 +20,7 @@ This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
 ## Tracks
 
 - Use the Track 1–4 buttons to select the active track.
-- Each track can load a sample and run the Tape engine + downstream devices (Mosaic, Ring, G8), or load Animate/SynDRM/Void Seed.
+- Each track can load a sample and run the Tape engine + downstream devices (Mosaic, Ring, G8, Texture, Reflect), or load Animate/SynDRM/Void Seed.
 
 ## Tape Engine
 
@@ -51,7 +51,7 @@ This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
 - **Mod Rate**: Adjusts the rate of the internal chaotic LFOs.
 - **Feedback & Diffusion**: Controls the feedback and wetness of the integrated delay and diffusion network.
 - **Moog Filter + Drive**: Cutoff/Resonance plus Drive, with a PRE/POST toggle to place the filter before or after the drive.
-- Void Seed can also feed the downstream devices (Mosaic, Ring, G8) per track.
+- Void Seed can also feed the downstream devices (Mosaic, Ring, G8, Texture, Reflect) per track.
 
 ## Mosaic Device (Granulator)
 
@@ -71,6 +71,16 @@ This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
 - G8 runs after Ring at the end of the per‑track device chain.
 - 32 steps per track, with a selectable rate division (1, 1/2, 1/4, 1/8, 1/16).
 - Each step sets a level from 0%–100% and gates the signal to that level.
+
+## Texture Device (Deform)
+
+- Texture runs after the earlier downstream devices and adds drive/compress/crush/tilt/noise with a gate and wet/dry mix.
+- Use Gate to clamp noise and Wet to blend the processed signal back into the track.
+
+## Reflect Device (Vast)
+
+- Reflect runs after Texture and adds delay + reverb.
+- Time can be free or BPM‑synced via division lists; Clear resets the buffers and Freeze holds the tail.
 
 ## Audio Settings (Standalone)
 

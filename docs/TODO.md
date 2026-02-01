@@ -50,8 +50,8 @@
 
 #### Phase 5: Space Device (Vast / Reflect)
 
-- [ ] Implement delay + reverb chain
-- [ ] Add clear/freeze actions
+- [x] Implement delay + reverb chain
+- [x] Add clear/freeze actions
 
 #### Phase 6: Modulation
 
