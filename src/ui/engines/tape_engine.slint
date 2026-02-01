@@ -15,6 +15,7 @@ import { GranulatorDevice } from "../devices/granulator_device.slint";
 import { SilkDevice } from "../devices/silk_device.slint";
 import { G8Device } from "../devices/g8_device.slint";
 import { TextureDevice } from "../devices/texture_device.slint";
+import { ReflectDevice } from "../devices/reflect_device.slint";
 
 export component TapeEngine inherits Rectangle {
     in property <bool> is-recording: false;
@@ -182,6 +183,17 @@ export component TapeEngine inherits Rectangle {
     in-out property <float> texture-noise-decay: 0.0;
     in-out property <float> texture-noise-color: 0.0;
     in-out property <float> texture-wet: 1.0;
+    in-out property <bool> reflect-enabled: false;
+    in-out property <bool> reflect-freeze: false;
+    in-out property <float> reflect-delay: 0.0;
+    in-out property <float> reflect-time: 0.5;
+    in-out property <int> reflect-time-mode: 0;
+    in-out property <float> reflect-reverb: 0.0;
+    in-out property <float> reflect-size: 0.5;
+    in-out property <float> reflect-feedback: 0.0;
+    in-out property <float> reflect-spread: 0.0;
+    in-out property <float> reflect-damp: 0.5;
+    in-out property <float> reflect-decay: 0.5;
 
     in-out property <bool> g8-enabled: true;
     in-out property <int> g8-rate-index: 0;
@@ -260,6 +272,18 @@ export component TapeEngine inherits Rectangle {
     callback texture-noise-decay-changed(value: float);
     callback texture-noise-color-changed(value: float);
     callback texture-wet-changed(value: float);
+    callback toggle-reflect-enabled();
+    callback toggle-reflect-freeze();
+    callback reflect-clear();
+    callback reflect-delay-changed(value: float);
+    callback reflect-time-changed(value: float);
+    callback reflect-time-mode-selected(index: int);
+    callback reflect-reverb-changed(value: float);
+    callback reflect-size-changed(value: float);
+    callback reflect-feedback-changed(value: float);
+    callback reflect-spread-changed(value: float);
+    callback reflect-damp-changed(value: float);
+    callback reflect-decay-changed(value: float);
     callback toggle-g8-enabled();
     callback g8-rate-selected(index: int);
     callback g8-step-changed(index: int, value: float);
@@ -716,7 +740,7 @@ export component TapeEngine inherits Rectangle {
             HorizontalLayout {
                 spacing: 22px;
                 Rectangle {
-                    width: parent.width;
+                    width: (parent.width - 22px) / 2;
                     height: 250px;
                     TextureDevice {
                         texture-enabled <=> root.texture-enabled;
@@ -739,6 +763,35 @@ export component TapeEngine inherits Rectangle {
                         texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                         texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                         texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                    }
+                }
+                Rectangle {
+                    width: (parent.width - 22px) / 2;
+                    height: 250px;
+                    ReflectDevice {
+                        reflect-enabled <=> root.reflect-enabled;
+                        reflect-freeze <=> root.reflect-freeze;
+                        reflect-delay <=> root.reflect-delay;
+                        reflect-time <=> root.reflect-time;
+                        reflect-time-mode <=> root.reflect-time-mode;
+                        reflect-reverb <=> root.reflect-reverb;
+                        reflect-size <=> root.reflect-size;
+                        reflect-feedback <=> root.reflect-feedback;
+                        reflect-spread <=> root.reflect-spread;
+                        reflect-damp <=> root.reflect-damp;
+                        reflect-decay <=> root.reflect-decay;
+                        toggle-reflect-enabled => root.toggle-reflect-enabled();
+                        toggle-reflect-freeze => root.toggle-reflect-freeze();
+                        reflect-clear => root.reflect-clear();
+                        reflect-delay-changed(value) => { root.reflect-delay-changed(value); }
+                        reflect-time-changed(value) => { root.reflect-time-changed(value); }
+                        reflect-time-mode-selected(index) => { root.reflect-time-mode-selected(index); }
+                        reflect-reverb-changed(value) => { root.reflect-reverb-changed(value); }
+                        reflect-size-changed(value) => { root.reflect-size-changed(value); }
+                        reflect-feedback-changed(value) => { root.reflect-feedback-changed(value); }
+                        reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
+                        reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
+                        reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
                     }
                 }
             }

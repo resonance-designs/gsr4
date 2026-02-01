@@ -75,33 +75,33 @@ Frame references below are from `ref/torso_docs/s4_video_frames_min/`:
   - UI: `src/ui/devices/texture_device.slint` exposes Drive, Compress, Crush, Tilt, Noise, Noise Decay, Noise Color, Wet, plus Gate.
   - DSP: `src/lib.rs` includes `texture_*` parameters with smoothing and a drive/compress/crush/tilt/noise chain.
 
+- Reflect (Vast/Space) device UI and DSP are present (named `ReflectDevice`).
+  - UI: `src/ui/devices/reflect_device.slint` exposes Delay, Time (free/divisions), Reverb, Size, Feedback, Spread, Damp, Decay, plus Clear/Freeze.
+  - DSP: `src/lib.rs` includes `reflect_*` parameters with delay + reverb processing and time-division handling.
+
 ### Partially implemented / missing UI
 
 - Ring Scale control exists in DSP (`ring_scale` in `src/lib.rs`) and is wired in UI state (`src/ui/tlbx1.slint` properties), **but no UI control** in `src/ui/devices/silk_device.slint` exposes it.
 
 ## Gaps vs video (features visible in S-4 video but not in code)
 
-1. **Vast reverb device**
-   - Video shows a Vast page with Reverb/Delay/Time/Step/Decay/Feedback/Spread/Damp.
-   - No Vast device or DSP in `src/ui` or `src/lib.rs`.
-
-2. **Random mod source page**
+1. **Random mod source page**
    - Video shows a Random mod page (Rate/Amount/Phase/Offset/Length/Variation/Smooth/Spread).
    - No Random mod device/page exists in `src/ui` or `src/lib.rs`.
 
-3. **Wave mod source page**
+2. **Wave mod source page**
    - Video shows a Wave mod page (Rate/Amount/Phase/Offset/Skew/Curve/Spread).
    - No Wave mod device/page exists in `src/ui` or `src/lib.rs`.
 
-4. **Mapping / Mod matrix page**
+3. **Mapping / Mod matrix page**
    - Video shows “MAPPING: MOD 1” with MOD 1–4 selection.
    - No mod-mapping UI or mod matrix implementation in `src/ui` or `src/lib.rs`.
 
-5. **Mix page (per-track levels/filters/mute)**
+4. **Mix page (per-track levels/filters/mute)**
    - Video shows a Mix page with per-track Level + Filter and Mute.
    - No equivalent “Mix” page UI found in `src/ui`.
 
-6. **Ring Scale control missing in UI**
+5. **Ring Scale control missing in UI**
    - Video explicitly shows “Scale” on the Ring page.
    - Code has `ring_scale`, but UI lacks a Scale control in `src/ui/devices/silk_device.slint`.
 
