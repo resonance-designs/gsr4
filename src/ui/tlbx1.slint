@@ -106,11 +106,11 @@ export component TLBX1UI inherits Window {
     in-out property <float> texture-drive: 0.0;
     in-out property <float> texture-compress: 0.0;
     in-out property <float> texture-crush: 0.0;
-    in-out property <float> texture-tilt: 0.5;
+    in-out property <float> texture-tilt: 0.0;
     in-out property <float> texture-noise: 0.0;
     in-out property <float> texture-noise-decay: 0.0;
-    in-out property <float> texture-noise-color: 0.5;
-    in-out property <float> texture-wet: 0.0;
+    in-out property <float> texture-noise-color: 0.0;
+    in-out property <float> texture-wet: 1.0;
     in-out property <float> loop-start: 0.0;
     in-out property <float> trigger-start: 0.0;
     in-out property <float> loop-length: 1.0;
@@ -1306,6 +1306,16 @@ export component TLBX1UI inherits Window {
                                             ring-noise <=> root.ring-noise;
                                             ring-noise-rate <=> root.ring-noise-rate;
                                             ring-pre-post <=> root.ring-pre-post;
+                                            texture-enabled <=> root.texture-enabled;
+                                            texture-gate <=> root.texture-gate;
+                                            texture-drive <=> root.texture-drive;
+                                            texture-compress <=> root.texture-compress;
+                                            texture-crush <=> root.texture-crush;
+                                            texture-tilt <=> root.texture-tilt;
+                                            texture-noise <=> root.texture-noise;
+                                            texture-noise-decay <=> root.texture-noise-decay;
+                                            texture-noise-color <=> root.texture-noise-color;
+                                            texture-wet <=> root.texture-wet;
                                             animate-slot-a-type-changed(index) => { root.animate-slot-a-type-changed(index); }
                                             animate-slot-b-type-changed(index) => { root.animate-slot-b-type-changed(index); }
                                             animate-slot-c-type-changed(index) => { root.animate-slot-c-type-changed(index); }
@@ -1647,6 +1657,16 @@ export component TLBX1UI inherits Window {
                                             ring-waves-rate <=> root.ring-waves-rate;
                                             ring-noise <=> root.ring-noise;
                                             ring-noise-rate <=> root.ring-noise-rate;
+                                            texture-enabled <=> root.texture-enabled;
+                                            texture-gate <=> root.texture-gate;
+                                            texture-drive <=> root.texture-drive;
+                                            texture-compress <=> root.texture-compress;
+                                            texture-crush <=> root.texture-crush;
+                                            texture-tilt <=> root.texture-tilt;
+                                            texture-noise <=> root.texture-noise;
+                                            texture-noise-decay <=> root.texture-noise-decay;
+                                            texture-noise-color <=> root.texture-noise-color;
+                                            texture-wet <=> root.texture-wet;
                                             void-base-freq-changed(value) => { root.void-base-freq-changed(value); }
                                             void-chaos-depth-changed(value) => { root.void-chaos-depth-changed(value); }
                                             void-entropy-changed(value) => { root.void-entropy-changed(value); }

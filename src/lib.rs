@@ -5198,31 +5198,50 @@ impl TLBX1 {
         let mut noise_rng = track.texture_noise_rng.load(Ordering::Relaxed);
         let mut crush_phase = track.texture_crush_phase.load(Ordering::Relaxed);
 
-        for channel_idx in 0..track_output.len() {
-            let mut noise_lp =
-                f32::from_bits(track.texture_noise_lp[channel_idx].load(Ordering::Relaxed));
-            let mut tilt_lp =
-                f32::from_bits(track.texture_tilt_lp[channel_idx].load(Ordering::Relaxed));
-            let mut crush_hold =
-                f32::from_bits(track.texture_crush_hold[channel_idx].load(Ordering::Relaxed));
-            for sample_idx in 0..num_buffer_samples {
-                let input = track_output[channel_idx][sample_idx];
-                let abs_in = input.abs();
-                if gate {
-                    if abs_in > 0.01 {
-                        noise_env = 1.0;
-                    } else {
-                        noise_env *= noise_decay_factor;
-                    }
-                } else {
-                    noise_env = 1.0;
-                }
+        let channel_count = track_output.len().min(2);
+        let mut noise_lp = [0.0f32; 2];
+        let mut tilt_lp = [0.0f32; 2];
+        let mut crush_hold = [0.0f32; 2];
+        for idx in 0..channel_count {
+            noise_lp[idx] =
+                f32::from_bits(track.texture_noise_lp[idx].load(Ordering::Relaxed));
+            tilt_lp[idx] = f32::from_bits(track.texture_tilt_lp[idx].load(Ordering::Relaxed));
+            crush_hold[idx] =
+                f32::from_bits(track.texture_crush_hold[idx].load(Ordering::Relaxed));
+        }
 
-                noise_rng = noise_rng
-                    .wrapping_mul(1664525)
-                    .wrapping_add(1013904223);
-                let noise_sample = (noise_rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
-                noise_lp += (noise_sample - noise_lp) * noise_alpha;
+        for sample_idx in 0..num_buffer_samples {
+            let mut abs_in = 0.0f32;
+            if gate {
+                for channel_idx in 0..channel_count {
+                    let input = track_output[channel_idx][sample_idx].abs();
+                    if input > abs_in {
+                        abs_in = input;
+                    }
+                }
+                if abs_in > 0.01 {
+                    noise_env = 1.0;
+                } else {
+                    noise_env *= noise_decay_factor;
+                }
+            } else {
+                noise_env = 1.0;
+            }
+
+            noise_rng = noise_rng
+                .wrapping_mul(1664525)
+                .wrapping_add(1013904223);
+            let noise_sample = (noise_rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
+
+            let mut crush_update = false;
+            if crush > 0.0 {
+                crush_phase = crush_phase.wrapping_add(1);
+                crush_update = crush_phase % 2 == 0;
+            }
+
+            for channel_idx in 0..channel_count {
+                let input = track_output[channel_idx][sample_idx];
+                noise_lp[channel_idx] += (noise_sample - noise_lp[channel_idx]) * noise_alpha;
                 let mut sample = input * drive_gain;
                 sample = sample.tanh();
                 let comp_amount = compress * 4.0;
@@ -5230,29 +5249,31 @@ impl TLBX1 {
                     sample = sample / (1.0 + comp_amount * sample.abs());
                 }
                 if crush > 0.0 {
-                    crush_phase = crush_phase.wrapping_add(1);
-                    if crush_phase % 2 == 0 {
-                        crush_hold = sample;
+                    if crush_update {
+                        crush_hold[channel_idx] = sample;
                     }
-                    sample = (crush_hold / crush_step).round() * crush_step;
+                    sample = (crush_hold[channel_idx] / crush_step).round() * crush_step;
                 }
-                tilt_lp += (sample - tilt_lp) * tilt_alpha;
-                let low = tilt_lp;
+                tilt_lp[channel_idx] += (sample - tilt_lp[channel_idx]) * tilt_alpha;
+                let low = tilt_lp[channel_idx];
                 let high = sample - low;
                 let tilted = low * tilt_low_gain + high * tilt_high_gain;
-                let noisy = tilted + noise_lp * noise * noise_env;
+                let noisy = tilted + noise_lp[channel_idx] * noise * noise_env;
                 track_output[channel_idx][sample_idx] =
                     input * (1.0 - wet) + noisy * wet;
             }
+        }
+
+        for channel_idx in 0..channel_count {
             track
                 .texture_noise_lp[channel_idx]
-                .store(noise_lp.to_bits(), Ordering::Relaxed);
+                .store(noise_lp[channel_idx].to_bits(), Ordering::Relaxed);
             track
                 .texture_tilt_lp[channel_idx]
-                .store(tilt_lp.to_bits(), Ordering::Relaxed);
+                .store(tilt_lp[channel_idx].to_bits(), Ordering::Relaxed);
             track
                 .texture_crush_hold[channel_idx]
-                .store(crush_hold.to_bits(), Ordering::Relaxed);
+                .store(crush_hold[channel_idx].to_bits(), Ordering::Relaxed);
         }
 
         track
@@ -7834,6 +7855,38 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.texture_noise_decay, "texture_noise_decay");
     sf(&track.texture_noise_color, "texture_noise_color");
     sf(&track.texture_wet, "texture_wet");
+    track.texture_drive_smooth.store(
+        track.texture_drive.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_compress_smooth.store(
+        track.texture_compress.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_crush_smooth.store(
+        track.texture_crush.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_tilt_smooth.store(
+        track.texture_tilt.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_noise_smooth.store(
+        track.texture_noise.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_noise_decay_smooth.store(
+        track.texture_noise_decay.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_noise_color_smooth.store(
+        track.texture_noise_color.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_wet_smooth.store(
+        track.texture_wet.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
     track.g8_enabled.store(false, Ordering::Relaxed);
     track.g8_rate_index.store(0, Ordering::Relaxed);
     for step in track.g8_steps.iter() {
