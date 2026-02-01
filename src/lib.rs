@@ -4788,6 +4788,10 @@ impl TLBX1 {
                     base_rate * (1.0 + mosaic_rand_rate * rand_rate * 0.5)
                 };
                 rate = rate.clamp(MOSAIC_RATE_MIN, MOSAIC_RATE_MAX);
+                if !sync_rate {
+                    // Use randomized rate for free mode so rand rate affects spawn interval.
+                    spawn_phase = (sr as f32 / rate).max(1.0);
+                }
                 let mut size_ms = base_size_ms * (1.0 + mosaic_rand_size * rand_size * 0.5);
                 size_ms = size_ms.clamp(MOSAIC_SIZE_MIN_MS, MOSAIC_SIZE_MAX_MS);
                 grain_len[slot] = ((size_ms / 1000.0) * sr as f32).round() as usize;
