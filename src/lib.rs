@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.18
+ * Version: 0.1.19
  * Component: Core Logic
  */
 
@@ -420,6 +420,54 @@ struct Track {
     g8_steps: Arc<[AtomicU32; 32]>,
     /// Smoothed G8 gate gain.
     g8_gain_smooth: AtomicU32,
+    /// Texture device enabled.
+    texture_enabled: AtomicBool,
+    /// Texture noise gate enabled.
+    texture_gate: AtomicBool,
+    /// Texture drive amount.
+    texture_drive: AtomicU32,
+    /// Smoothed texture drive.
+    texture_drive_smooth: AtomicU32,
+    /// Texture compress amount.
+    texture_compress: AtomicU32,
+    /// Smoothed texture compress.
+    texture_compress_smooth: AtomicU32,
+    /// Texture crush amount.
+    texture_crush: AtomicU32,
+    /// Smoothed texture crush.
+    texture_crush_smooth: AtomicU32,
+    /// Texture tilt amount.
+    texture_tilt: AtomicU32,
+    /// Smoothed texture tilt.
+    texture_tilt_smooth: AtomicU32,
+    /// Texture noise amount.
+    texture_noise: AtomicU32,
+    /// Smoothed texture noise.
+    texture_noise_smooth: AtomicU32,
+    /// Texture noise decay.
+    texture_noise_decay: AtomicU32,
+    /// Smoothed texture noise decay.
+    texture_noise_decay_smooth: AtomicU32,
+    /// Texture noise color.
+    texture_noise_color: AtomicU32,
+    /// Smoothed texture noise color.
+    texture_noise_color_smooth: AtomicU32,
+    /// Texture wet mix.
+    texture_wet: AtomicU32,
+    /// Smoothed texture wet mix.
+    texture_wet_smooth: AtomicU32,
+    /// Texture noise envelope.
+    texture_noise_env: AtomicU32,
+    /// Texture noise RNG state.
+    texture_noise_rng: AtomicU32,
+    /// Texture noise filter state per channel.
+    texture_noise_lp: [AtomicU32; 2],
+    /// Texture tilt filter state per channel.
+    texture_tilt_lp: [AtomicU32; 2],
+    /// Texture crush phase.
+    texture_crush_phase: AtomicU32,
+    /// Texture crush hold value per channel.
+    texture_crush_hold: [AtomicU32; 2],
     /// Animate slot types (0 = wavetable, 1 = sample).
     animate_slot_types: [AtomicU32; 4],
     /// Animate slot wavetable indices.
@@ -902,6 +950,30 @@ impl Default for Track {
             g8_rate_index: AtomicU32::new(0),
             g8_steps: Arc::new(std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits()))),
             g8_gain_smooth: AtomicU32::new(1.0f32.to_bits()),
+            texture_enabled: AtomicBool::new(false),
+            texture_gate: AtomicBool::new(false),
+            texture_drive: AtomicU32::new(0.0f32.to_bits()),
+            texture_drive_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_compress: AtomicU32::new(0.0f32.to_bits()),
+            texture_compress_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_crush: AtomicU32::new(0.0f32.to_bits()),
+            texture_crush_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_tilt: AtomicU32::new(0.5f32.to_bits()),
+            texture_tilt_smooth: AtomicU32::new(0.5f32.to_bits()),
+            texture_noise: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_decay: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_decay_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_color: AtomicU32::new(0.5f32.to_bits()),
+            texture_noise_color_smooth: AtomicU32::new(0.5f32.to_bits()),
+            texture_wet: AtomicU32::new(0.0f32.to_bits()),
+            texture_wet_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_env: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_rng: AtomicU32::new(0x2468_1357),
+            texture_noise_lp: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            texture_tilt_lp: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            texture_crush_phase: AtomicU32::new(0),
+            texture_crush_hold: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
             animate_slot_types: std::array::from_fn(|_| AtomicU32::new(0)),
             animate_slot_wavetables: std::array::from_fn(|_| AtomicU32::new(0)),
             animate_slot_samples: std::array::from_fn(|_| AtomicU32::new(0)),
@@ -1676,6 +1748,62 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track
         .g8_gain_smooth
         .store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_enabled.store(false, Ordering::Relaxed);
+    track.texture_gate.store(false, Ordering::Relaxed);
+    track.texture_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_drive_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_compress
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_compress_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_crush.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_crush_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_tilt.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_tilt_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.texture_noise.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_decay
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_decay_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_color
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_color_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.texture_wet.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_wet_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_env
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_noise_rng.store(0x2468_1357, Ordering::Relaxed);
+    track.texture_crush_phase.store(0, Ordering::Relaxed);
+    for channel in 0..2 {
+        track
+            .texture_noise_lp[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .texture_tilt_lp[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .texture_crush_hold[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+    }
     if let Some(mut buffer) = track.mosaic_buffer.try_lock() {
         for channel in buffer.iter_mut() {
             channel.fill(0.0);
@@ -4941,6 +5069,198 @@ impl TLBX1 {
             .g8_gain_smooth
             .store(smooth_gain.to_bits(), Ordering::Relaxed);
     }
+
+    fn process_track_texture(
+        track: &Track,
+        track_output: &mut [Vec<f32>],
+        num_buffer_samples: usize,
+    ) {
+        if !track.texture_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        if num_buffer_samples == 0 || track_output.is_empty() {
+            return;
+        }
+        let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as f32;
+
+        let target_drive =
+            f32::from_bits(track.texture_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_compress =
+            f32::from_bits(track.texture_compress.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_crush =
+            f32::from_bits(track.texture_crush.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_tilt =
+            f32::from_bits(track.texture_tilt.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_noise =
+            f32::from_bits(track.texture_noise.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_noise_decay =
+            f32::from_bits(track.texture_noise_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_noise_color =
+            f32::from_bits(track.texture_noise_color.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_wet =
+            f32::from_bits(track.texture_wet.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let gate = track.texture_gate.load(Ordering::Relaxed);
+
+        let drive = smooth_param(
+            f32::from_bits(track.texture_drive_smooth.load(Ordering::Relaxed)),
+            target_drive,
+            num_buffer_samples,
+            sr,
+        );
+        let compress = smooth_param(
+            f32::from_bits(track.texture_compress_smooth.load(Ordering::Relaxed)),
+            target_compress,
+            num_buffer_samples,
+            sr,
+        );
+        let crush = smooth_param(
+            f32::from_bits(track.texture_crush_smooth.load(Ordering::Relaxed)),
+            target_crush,
+            num_buffer_samples,
+            sr,
+        );
+        let tilt = smooth_param(
+            f32::from_bits(track.texture_tilt_smooth.load(Ordering::Relaxed)),
+            target_tilt,
+            num_buffer_samples,
+            sr,
+        );
+        let noise = smooth_param(
+            f32::from_bits(track.texture_noise_smooth.load(Ordering::Relaxed)),
+            target_noise,
+            num_buffer_samples,
+            sr,
+        );
+        let noise_decay = smooth_param(
+            f32::from_bits(track.texture_noise_decay_smooth.load(Ordering::Relaxed)),
+            target_noise_decay,
+            num_buffer_samples,
+            sr,
+        );
+        let noise_color = smooth_param(
+            f32::from_bits(track.texture_noise_color_smooth.load(Ordering::Relaxed)),
+            target_noise_color,
+            num_buffer_samples,
+            sr,
+        );
+        let wet = smooth_param(
+            f32::from_bits(track.texture_wet_smooth.load(Ordering::Relaxed)),
+            target_wet,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+
+        track
+            .texture_drive_smooth
+            .store(drive.to_bits(), Ordering::Relaxed);
+        track
+            .texture_compress_smooth
+            .store(compress.to_bits(), Ordering::Relaxed);
+        track
+            .texture_crush_smooth
+            .store(crush.to_bits(), Ordering::Relaxed);
+        track
+            .texture_tilt_smooth
+            .store(tilt.to_bits(), Ordering::Relaxed);
+        track
+            .texture_noise_smooth
+            .store(noise.to_bits(), Ordering::Relaxed);
+        track
+            .texture_noise_decay_smooth
+            .store(noise_decay.to_bits(), Ordering::Relaxed);
+        track
+            .texture_noise_color_smooth
+            .store(noise_color.to_bits(), Ordering::Relaxed);
+        track
+            .texture_wet_smooth
+            .store(wet.to_bits(), Ordering::Relaxed);
+
+        if wet <= 0.0 {
+            return;
+        }
+
+        let drive_gain = 1.0 + drive * 8.0;
+        let crush_step = crush.clamp(0.01, 1.0);
+        let tilt_bipolar = tilt * 2.0 - 1.0;
+        let tilt_low_gain = (1.0 + tilt_bipolar * 0.5).max(0.0);
+        let tilt_high_gain = (1.0 - tilt_bipolar * 0.5).max(0.0);
+        let tilt_cutoff = 800.0;
+        let tilt_alpha = 1.0 - (-2.0 * PI * tilt_cutoff / sr).exp();
+
+        let noise_cutoff = 200.0 + noise_color * 12000.0;
+        let noise_alpha = 1.0 - (-2.0 * PI * noise_cutoff / sr).exp();
+        let noise_decay_sec = 0.02 + noise_decay * 2.0;
+        let noise_decay_factor = (-1.0 / (noise_decay_sec * sr)).exp();
+
+        let mut noise_env =
+            f32::from_bits(track.texture_noise_env.load(Ordering::Relaxed));
+        let mut noise_rng = track.texture_noise_rng.load(Ordering::Relaxed);
+        let mut crush_phase = track.texture_crush_phase.load(Ordering::Relaxed);
+
+        for channel_idx in 0..track_output.len() {
+            let mut noise_lp =
+                f32::from_bits(track.texture_noise_lp[channel_idx].load(Ordering::Relaxed));
+            let mut tilt_lp =
+                f32::from_bits(track.texture_tilt_lp[channel_idx].load(Ordering::Relaxed));
+            let mut crush_hold =
+                f32::from_bits(track.texture_crush_hold[channel_idx].load(Ordering::Relaxed));
+            for sample_idx in 0..num_buffer_samples {
+                let input = track_output[channel_idx][sample_idx];
+                let abs_in = input.abs();
+                if gate {
+                    if abs_in > 0.01 {
+                        noise_env = 1.0;
+                    } else {
+                        noise_env *= noise_decay_factor;
+                    }
+                } else {
+                    noise_env = 1.0;
+                }
+
+                noise_rng = noise_rng
+                    .wrapping_mul(1664525)
+                    .wrapping_add(1013904223);
+                let noise_sample = (noise_rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                noise_lp += (noise_sample - noise_lp) * noise_alpha;
+                let mut sample = input * drive_gain;
+                sample = sample.tanh();
+                let comp_amount = compress * 4.0;
+                if comp_amount > 0.0 {
+                    sample = sample / (1.0 + comp_amount * sample.abs());
+                }
+                if crush > 0.0 {
+                    crush_phase = crush_phase.wrapping_add(1);
+                    if crush_phase % 2 == 0 {
+                        crush_hold = sample;
+                    }
+                    sample = (crush_hold / crush_step).round() * crush_step;
+                }
+                tilt_lp += (sample - tilt_lp) * tilt_alpha;
+                let low = tilt_lp;
+                let high = sample - low;
+                let tilted = low * tilt_low_gain + high * tilt_high_gain;
+                let noisy = tilted + noise_lp * noise * noise_env;
+                track_output[channel_idx][sample_idx] =
+                    input * (1.0 - wet) + noisy * wet;
+            }
+            track
+                .texture_noise_lp[channel_idx]
+                .store(noise_lp.to_bits(), Ordering::Relaxed);
+            track
+                .texture_tilt_lp[channel_idx]
+                .store(tilt_lp.to_bits(), Ordering::Relaxed);
+            track
+                .texture_crush_hold[channel_idx]
+                .store(crush_hold.to_bits(), Ordering::Relaxed);
+        }
+
+        track
+            .texture_noise_env
+            .store(noise_env.to_bits(), Ordering::Relaxed);
+        track.texture_noise_rng.store(noise_rng, Ordering::Relaxed);
+        track.texture_crush_phase.store(crush_phase, Ordering::Relaxed);
+    }
 }
 
 impl Plugin for TLBX1 {
@@ -6088,6 +6408,7 @@ impl Plugin for TLBX1 {
                 samples_per_step,
                 master_sr,
             );
+            Self::process_track_texture(track, &mut self.track_buffer, buffer.samples());
 
             let mix_gain = if track_muted && engine_type != 1 { 0.0 } else { 1.0 };
             // Sum track buffer to master output and calculate final peaks
@@ -7215,6 +7536,22 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     for i in 0..32 {
         params.insert(format!("g8_step_{}", i), f(&track.g8_steps[i]));
     }
+    params.insert("texture_enabled".to_string(), b(&track.texture_enabled));
+    params.insert("texture_gate".to_string(), b(&track.texture_gate));
+    params.insert("texture_drive".to_string(), f(&track.texture_drive));
+    params.insert("texture_compress".to_string(), f(&track.texture_compress));
+    params.insert("texture_crush".to_string(), f(&track.texture_crush));
+    params.insert("texture_tilt".to_string(), f(&track.texture_tilt));
+    params.insert("texture_noise".to_string(), f(&track.texture_noise));
+    params.insert(
+        "texture_noise_decay".to_string(),
+        f(&track.texture_noise_decay),
+    );
+    params.insert(
+        "texture_noise_color".to_string(),
+        f(&track.texture_noise_color),
+    );
+    params.insert("texture_wet".to_string(), f(&track.texture_wet));
 
     for i in 0..4 {
         params.insert(format!("animate_slot_type_{}", i), u(&track.animate_slot_types[i]));
@@ -7431,6 +7768,72 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su(&track.ring_scale, "ring_scale");
     sb(&track.ring_pre_post, "ring_pre_post");
     sb(&track.ring_enabled, "ring_enabled");
+    track.texture_enabled.store(false, Ordering::Relaxed);
+    track.texture_gate.store(false, Ordering::Relaxed);
+    track.texture_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_drive_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_compress
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_compress_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_crush.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_crush_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_tilt.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_tilt_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.texture_noise.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_decay
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_decay_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_color
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_color_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.texture_wet.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_wet_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_env
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_noise_rng.store(0x2468_1357, Ordering::Relaxed);
+    track.texture_crush_phase.store(0, Ordering::Relaxed);
+    for channel in 0..2 {
+        track
+            .texture_noise_lp[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .texture_tilt_lp[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .texture_crush_hold[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+    }
+    sb(&track.texture_enabled, "texture_enabled");
+    sb(&track.texture_gate, "texture_gate");
+    sf(&track.texture_drive, "texture_drive");
+    sf(&track.texture_compress, "texture_compress");
+    sf(&track.texture_crush, "texture_crush");
+    sf(&track.texture_tilt, "texture_tilt");
+    sf(&track.texture_noise, "texture_noise");
+    sf(&track.texture_noise_decay, "texture_noise_decay");
+    sf(&track.texture_noise_color, "texture_noise_color");
+    sf(&track.texture_wet, "texture_wet");
     track.g8_enabled.store(false, Ordering::Relaxed);
     track.g8_rate_index.store(0, Ordering::Relaxed);
     for step in track.g8_steps.iter() {
@@ -8391,6 +8794,24 @@ impl SlintWindow {
         let ring_scale =
             self.tracks[track_idx].ring_scale.load(Ordering::Relaxed);
         let ring_pre_post = self.tracks[track_idx].ring_pre_post.load(Ordering::Relaxed);
+        let texture_enabled = self.tracks[track_idx].texture_enabled.load(Ordering::Relaxed);
+        let texture_gate = self.tracks[track_idx].texture_gate.load(Ordering::Relaxed);
+        let texture_drive =
+            f32::from_bits(self.tracks[track_idx].texture_drive.load(Ordering::Relaxed));
+        let texture_compress =
+            f32::from_bits(self.tracks[track_idx].texture_compress.load(Ordering::Relaxed));
+        let texture_crush =
+            f32::from_bits(self.tracks[track_idx].texture_crush.load(Ordering::Relaxed));
+        let texture_tilt =
+            f32::from_bits(self.tracks[track_idx].texture_tilt.load(Ordering::Relaxed));
+        let texture_noise =
+            f32::from_bits(self.tracks[track_idx].texture_noise.load(Ordering::Relaxed));
+        let texture_noise_decay =
+            f32::from_bits(self.tracks[track_idx].texture_noise_decay.load(Ordering::Relaxed));
+        let texture_noise_color =
+            f32::from_bits(self.tracks[track_idx].texture_noise_color.load(Ordering::Relaxed));
+        let texture_wet =
+            f32::from_bits(self.tracks[track_idx].texture_wet.load(Ordering::Relaxed));
         let loop_start =
             f32::from_bits(self.tracks[track_idx].loop_start.load(Ordering::Relaxed));
         let trigger_start =
@@ -8962,6 +9383,16 @@ impl SlintWindow {
         self.ui.set_ring_noise_rate_mode(ring_noise_rate_mode as i32);
         self.ui.set_ring_scale(ring_scale as i32);
         self.ui.set_ring_pre_post(ring_pre_post);
+        self.ui.set_texture_enabled(texture_enabled);
+        self.ui.set_texture_gate(texture_gate);
+        self.ui.set_texture_drive(texture_drive);
+        self.ui.set_texture_compress(texture_compress);
+        self.ui.set_texture_crush(texture_crush);
+        self.ui.set_texture_tilt(texture_tilt);
+        self.ui.set_texture_noise(texture_noise);
+        self.ui.set_texture_noise_decay(texture_noise_decay);
+        self.ui.set_texture_noise_color(texture_noise_color);
+        self.ui.set_texture_wet(texture_wet);
         self.ui.set_loop_start(loop_start);
         self.ui.set_trigger_start(trigger_start);
         self.ui.set_loop_length(loop_length);
@@ -10825,6 +11256,118 @@ fn initialize_ui(
             tracks_ring[track_idx]
                 .ring_pre_post
                 .store(!pre_post, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_toggle_texture_enabled(move || {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let enabled = tracks_texture[track_idx].texture_enabled.load(Ordering::Relaxed);
+            tracks_texture[track_idx]
+                .texture_enabled
+                .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_toggle_texture_gate(move || {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let enabled = tracks_texture[track_idx].texture_gate.load(Ordering::Relaxed);
+            tracks_texture[track_idx]
+                .texture_gate
+                .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_drive_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_drive
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_compress_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_compress
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_crush_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_crush
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_tilt_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_tilt
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_noise_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_noise
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_noise_decay_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_noise_decay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_noise_color_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_noise_color
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_wet_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_wet
+                .store(value.to_bits(), Ordering::Relaxed);
         }
     });
 

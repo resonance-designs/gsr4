@@ -40,8 +40,8 @@
 
 #### Phase 3: Filter Device (Ring / Silk)
 
-- [ ] Implement resonator/filter bank core controls
-- [ ] Add animation (waves/noise/tilt/detune) and pre/post mode
+- [x] Implement resonator/filter bank core controls
+- [x] Add animation (waves/noise/tilt/detune) and pre/post mode
 
 #### Phase 4: Color Device (Deform)
 

@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.1.19] - 2026-02-01
+
 ## [0.1.18] - 2026-01-29
 
 - Void Seed: added Moog filter + drive with pre/post toggle, Close Decay, and stereo width control.
