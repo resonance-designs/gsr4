@@ -1,6 +1,6 @@
 [package]
 name = "tlbx-1"
-version = "0.1.20"
+version = "0.1.21"
 edition = "2024"
 
 [lib]
@@ -57,5 +57,7 @@ renderer-vulkan = ["slint/renderer-skia-vulkan", "slint/std", "slint/backend-win
 opt-level = 1
 
 [patch.crates-io]
+# Replace unmaintained atty with a local shim using std::io::IsTerminal.
+atty = { path = "vendor/atty" }
 ffmpeg-sys-next = { path = "vendor/ffmpeg-sys-next" }
 ffmpeg-next = { path = "vendor/ffmpeg-next" }

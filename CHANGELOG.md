@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.21] - 2026-02-01
+
+- SynDRM: tweaked step editor layout so Page/Step/Lane sit on one row, and Clear actions are always visible.
+- UI components: added sizing/offset props for RDSNumStepper/RDSTextStepper and customizable RDSSequencerCell dimensions/text.
+- SynDRM: lane label alignment and readout font adjustments for clearer navigation.
+
 ## [0.1.20] - 2026-02-01
 
 - Added Reflect (Vast/Space) device with UI + DSP (delay + reverb chain, time divisions, clear/freeze).

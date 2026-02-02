@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.20
+ * Version: 0.1.21
  * Component: UI Definitions
  */
 
@@ -87,6 +87,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> mosaic-rand-rate: 0.0;
     in-out property <float> mosaic-rand-size: 0.0;
     in-out property <float> mosaic-sos: 0.0;
+    in-out property <float> mosaic-post-gain: 0.5;
     in-out property <float> ring-cutoff: 0.5;
     in-out property <float> ring-resonance: 0.0;
     in-out property <float> ring-decay: 0.0;
@@ -111,6 +112,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> texture-noise-decay: 0.0;
     in-out property <float> texture-noise-color: 0.0;
     in-out property <float> texture-wet: 1.0;
+    in-out property <float> texture-post-gain: 0.5;
     in-out property <bool> reflect-enabled: false;
     in-out property <bool> reflect-freeze: false;
     in-out property <float> reflect-delay: 0.0;
@@ -122,6 +124,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> reflect-spread: 0.0;
     in-out property <float> reflect-damp: 0.5;
     in-out property <float> reflect-decay: 0.5;
+    in-out property <float> reflect-post-gain: 0.5;
     in-out property <float> loop-start: 0.0;
     in-out property <float> trigger-start: 0.0;
     in-out property <float> loop-length: 1.0;
@@ -387,6 +390,7 @@ export component TLBX1UI inherits Window {
     callback mosaic-rand-rate-changed(value: float);
     callback mosaic-rand-size-changed(value: float);
     callback mosaic-sos-changed(value: float);
+    callback mosaic-post-gain-changed(value: float);
     callback toggle-mosaic-enabled();
     callback toggle-mosaic-loop-lock();
     callback ring-cutoff-changed(value: float);
@@ -418,6 +422,7 @@ export component TLBX1UI inherits Window {
     callback texture-noise-decay-changed(value: float);
     callback texture-noise-color-changed(value: float);
     callback texture-wet-changed(value: float);
+    callback texture-post-gain-changed(value: float);
     callback toggle-reflect-enabled();
     callback toggle-reflect-freeze();
     callback reflect-clear();
@@ -430,6 +435,7 @@ export component TLBX1UI inherits Window {
     callback reflect-spread-changed(value: float);
     callback reflect-damp-changed(value: float);
     callback reflect-decay-changed(value: float);
+    callback reflect-post-gain-changed(value: float);
     callback toggle-g8-enabled();
     callback g8-rate-selected(index: int);
     callback g8-step-changed(index: int, value: float);
@@ -1098,9 +1104,6 @@ export component TLBX1UI inherits Window {
                                             mosaic-rand-rate <=> root.mosaic-rand-rate;
                                             mosaic-rand-size <=> root.mosaic-rand-size;
                                             mosaic-sos <=> root.mosaic-sos;
-                                            g8-enabled <=> root.g8-enabled;
-                                            g8-rate-index <=> root.g8-rate-index;
-                                            g8-steps <=> root.g8-steps;
                                             ring-enabled <=> root.ring-enabled;
                                             ring-cutoff <=> root.ring-cutoff;
                                             ring-resonance <=> root.ring-resonance;
@@ -1118,6 +1121,10 @@ export component TLBX1UI inherits Window {
                                             ring-noise <=> root.ring-noise;
                                             ring-noise-rate <=> root.ring-noise-rate;
                                             ring-pre-post <=> root.ring-pre-post;
+                                            mosaic-post-gain <=> root.mosaic-post-gain;
+                                            g8-enabled <=> root.g8-enabled;
+                                            g8-rate-index <=> root.g8-rate-index;
+                                            g8-steps <=> root.g8-steps;
                                             texture-enabled <=> root.texture-enabled;
                                             texture-gate <=> root.texture-gate;
                                             texture-drive <=> root.texture-drive;
@@ -1128,6 +1135,7 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay <=> root.texture-noise-decay;
                                             texture-noise-color <=> root.texture-noise-color;
                                             texture-wet <=> root.texture-wet;
+                                            texture-post-gain <=> root.texture-post-gain;
                                             reflect-enabled <=> root.reflect-enabled;
                                             reflect-freeze <=> root.reflect-freeze;
                                             reflect-delay <=> root.reflect-delay;
@@ -1139,6 +1147,7 @@ export component TLBX1UI inherits Window {
                                             reflect-spread <=> root.reflect-spread;
                                             reflect-damp <=> root.reflect-damp;
                                             reflect-decay <=> root.reflect-decay;
+                                            reflect-post-gain <=> root.reflect-post-gain;
                                             load-sample => root.load-sample();
                                             save-sample => root.save-sample();
                                             toggle-record => root.toggle-record();
@@ -1177,9 +1186,6 @@ export component TLBX1UI inherits Window {
                                             mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
                                             mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
                                             mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
-                                            toggle-g8-enabled => root.toggle-g8-enabled();
-                                            g8-rate-selected(index) => { root.g8-rate-selected(index); }
-                                            g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
                                             toggle-ring-enabled => root.toggle-ring-enabled();
                                             toggle-ring-pre-post => root.toggle-ring-pre-post();
                                             ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
@@ -1196,6 +1202,10 @@ export component TLBX1UI inherits Window {
                                             ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
                                             ring-noise-changed(value) => { root.ring-noise-changed(value); }
                                             ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
+                                            mosaic-post-gain-changed(value) => { root.mosaic-post-gain-changed(value); }
+                                            toggle-g8-enabled => root.toggle-g8-enabled();
+                                            g8-rate-selected(index) => { root.g8-rate-selected(index); }
+                                            g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
                                             toggle-texture-enabled => root.toggle-texture-enabled();
                                             toggle-texture-gate => root.toggle-texture-gate();
                                             texture-drive-changed(value) => { root.texture-drive-changed(value); }
@@ -1206,6 +1216,7 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                                             texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                                             texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                                            texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                                             toggle-reflect-enabled => root.toggle-reflect-enabled();
                                             toggle-reflect-freeze => root.toggle-reflect-freeze();
                                             reflect-clear => root.reflect-clear();
@@ -1218,6 +1229,7 @@ export component TLBX1UI inherits Window {
                                             reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
                                             reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
                                             reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
+                                            reflect-post-gain-changed(value) => { root.reflect-post-gain-changed(value); }
                                         }
                                     }
                                 }
@@ -1335,6 +1347,7 @@ export component TLBX1UI inherits Window {
                                             mosaic-rand-rate <=> root.mosaic-rand-rate;
                                             mosaic-rand-size <=> root.mosaic-rand-size;
                                             mosaic-sos <=> root.mosaic-sos;
+                                            mosaic-post-gain <=> root.mosaic-post-gain;
                                             mosaic-enabled <=> root.mosaic-enabled;
                                             mosaic-loop-lock <=> root.mosaic-loop-lock;
                                             g8-enabled <=> root.g8-enabled;
@@ -1367,6 +1380,7 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay <=> root.texture-noise-decay;
                                             texture-noise-color <=> root.texture-noise-color;
                                             texture-wet <=> root.texture-wet;
+                                            texture-post-gain <=> root.texture-post-gain;
                                             reflect-enabled <=> root.reflect-enabled;
                                             reflect-freeze <=> root.reflect-freeze;
                                             reflect-delay <=> root.reflect-delay;
@@ -1378,6 +1392,7 @@ export component TLBX1UI inherits Window {
                                             reflect-spread <=> root.reflect-spread;
                                             reflect-damp <=> root.reflect-damp;
                                             reflect-decay <=> root.reflect-decay;
+                                            reflect-post-gain <=> root.reflect-post-gain;
                                             animate-slot-a-type-changed(index) => { root.animate-slot-a-type-changed(index); }
                                             animate-slot-b-type-changed(index) => { root.animate-slot-b-type-changed(index); }
                                             animate-slot-c-type-changed(index) => { root.animate-slot-c-type-changed(index); }
@@ -1473,6 +1488,7 @@ export component TLBX1UI inherits Window {
                                             mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
                                             mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
                                             mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
+                                            mosaic-post-gain-changed(value) => { root.mosaic-post-gain-changed(value); }
                                             toggle-g8-enabled => root.toggle-g8-enabled();
                                             g8-rate-selected(index) => { root.g8-rate-selected(index); }
                                             g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
@@ -1502,6 +1518,7 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                                             texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                                             texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                                            texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                                             toggle-reflect-enabled => root.toggle-reflect-enabled();
                                             toggle-reflect-freeze => root.toggle-reflect-freeze();
                                             reflect-clear => root.reflect-clear();
@@ -1514,6 +1531,7 @@ export component TLBX1UI inherits Window {
                                             reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
                                             reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
                                             reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
+                                            reflect-post-gain-changed(value) => { root.reflect-post-gain-changed(value); }
                                         }
                                     }
                                 }
@@ -1578,6 +1596,39 @@ export component TLBX1UI inherits Window {
                                             syndrm-step-snare-filter-type <=> root.syndrm-step-snare-filter-type;
                                             syndrm-step-snare-filter-cutoff <=> root.syndrm-step-snare-filter-cutoff;
                                             syndrm-step-snare-filter-resonance <=> root.syndrm-step-snare-filter-resonance;
+                                            mosaic-enabled <=> root.mosaic-enabled;
+                                            mosaic-loop-lock <=> root.mosaic-loop-lock;
+                                            mosaic-pitch <=> root.mosaic-pitch;
+                                            mosaic-rate <=> root.mosaic-rate;
+                                            mosaic-size <=> root.mosaic-size;
+                                            mosaic-contour <=> root.mosaic-contour;
+                                            mosaic-warp <=> root.mosaic-warp;
+                                            mosaic-spray <=> root.mosaic-spray;
+                                            mosaic-pattern <=> root.mosaic-pattern;
+                                            mosaic-wet <=> root.mosaic-wet;
+                                            mosaic-post-gain <=> root.mosaic-post-gain;
+                                            mosaic-detune <=> root.mosaic-detune;
+                                            mosaic-spatial <=> root.mosaic-spatial;
+                                            mosaic-rand-rate <=> root.mosaic-rand-rate;
+                                            mosaic-rand-size <=> root.mosaic-rand-size;
+                                            mosaic-sos <=> root.mosaic-sos;
+                                            ring-enabled <=> root.ring-enabled;
+                                            ring-cutoff <=> root.ring-cutoff;
+                                            ring-resonance <=> root.ring-resonance;
+                                            ring-decay <=> root.ring-decay;
+                                            ring-pitch <=> root.ring-pitch;
+                                            ring-decay-modes: root.ring-decay-modes;
+                                            ring-decay-mode <=> root.ring-decay-mode;
+                                            ring-slope <=> root.ring-slope;
+                                            ring-tone <=> root.ring-tone;
+                                            ring-tilt <=> root.ring-tilt;
+                                            ring-wet <=> root.ring-wet;
+                                            ring-detune <=> root.ring-detune;
+                                            ring-waves <=> root.ring-waves;
+                                            ring-waves-rate <=> root.ring-waves-rate;
+                                            ring-noise <=> root.ring-noise;
+                                            ring-noise-rate <=> root.ring-noise-rate;
+                                            ring-pre-post <=> root.ring-pre-post;
                                             texture-enabled <=> root.texture-enabled;
                                             texture-gate <=> root.texture-gate;
                                             texture-drive <=> root.texture-drive;
@@ -1588,6 +1639,7 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay <=> root.texture-noise-decay;
                                             texture-noise-color <=> root.texture-noise-color;
                                             texture-wet <=> root.texture-wet;
+                                            texture-post-gain <=> root.texture-post-gain;
                                             reflect-enabled <=> root.reflect-enabled;
                                             reflect-freeze <=> root.reflect-freeze;
                                             reflect-delay <=> root.reflect-delay;
@@ -1599,6 +1651,7 @@ export component TLBX1UI inherits Window {
                                             reflect-spread <=> root.reflect-spread;
                                             reflect-damp <=> root.reflect-damp;
                                             reflect-decay <=> root.reflect-decay;
+                                            reflect-post-gain <=> root.reflect-post-gain;
                                             kick-pitch-changed(value) => { root.kick-pitch-changed(value); }
                                             kick-decay-changed(value) => { root.kick-decay-changed(value); }
                                             kick-attack-changed(value) => { root.kick-attack-changed(value); }
@@ -1643,6 +1696,38 @@ export component TLBX1UI inherits Window {
                                             syndrm-step-snare-filter-type-changed(index) => { root.syndrm-step-snare-filter-type-changed(index); }
                                             syndrm-step-snare-filter-cutoff-changed(value) => { root.syndrm-step-snare-filter-cutoff-changed(value); }
                                             syndrm-step-snare-filter-resonance-changed(value) => { root.syndrm-step-snare-filter-resonance-changed(value); }
+                                            toggle-mosaic-enabled => root.toggle-mosaic-enabled();
+                                            toggle-mosaic-loop-lock => root.toggle-mosaic-loop-lock();
+                                            mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
+                                            mosaic-rate-changed(value) => { root.mosaic-rate-changed(value); }
+                                            mosaic-size-changed(value) => { root.mosaic-size-changed(value); }
+                                            mosaic-contour-changed(value) => { root.mosaic-contour-changed(value); }
+                                            mosaic-warp-changed(value) => { root.mosaic-warp-changed(value); }
+                                            mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
+                                            mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
+                                            mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                                            mosaic-post-gain-changed(value) => { root.mosaic-post-gain-changed(value); }
+                                            mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
+                                            mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
+                                            mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
+                                            mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
+                                            mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
+                                            toggle-ring-enabled => root.toggle-ring-enabled();
+                                            toggle-ring-pre-post => root.toggle-ring-pre-post();
+                                            ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
+                                            ring-resonance-changed(value) => { root.ring-resonance-changed(value); }
+                                            ring-decay-changed(value) => { root.ring-decay-changed(value); }
+                                            ring-pitch-changed(value) => { root.ring-pitch-changed(value); }
+                                            ring-decay-mode-selected(index) => { root.ring-decay-mode-selected(index); }
+                                            ring-slope-changed(value) => { root.ring-slope-changed(value); }
+                                            ring-tone-changed(value) => { root.ring-tone-changed(value); }
+                                            ring-tilt-changed(value) => { root.ring-tilt-changed(value); }
+                                            ring-wet-changed(value) => { root.ring-wet-changed(value); }
+                                            ring-detune-changed(value) => { root.ring-detune-changed(value); }
+                                            ring-waves-changed(value) => { root.ring-waves-changed(value); }
+                                            ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
+                                            ring-noise-changed(value) => { root.ring-noise-changed(value); }
+                                            ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
                                             toggle-texture-enabled => root.toggle-texture-enabled();
                                             toggle-texture-gate => root.toggle-texture-gate();
                                             texture-drive-changed(value) => { root.texture-drive-changed(value); }
@@ -1653,6 +1738,7 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                                             texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                                             texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                                            texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                                             toggle-reflect-enabled => root.toggle-reflect-enabled();
                                             toggle-reflect-freeze => root.toggle-reflect-freeze();
                                             reflect-clear => root.reflect-clear();
@@ -1665,6 +1751,7 @@ export component TLBX1UI inherits Window {
                                             reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
                                             reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
                                             reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
+                                            reflect-post-gain-changed(value) => { root.reflect-post-gain-changed(value); }
                                             syndrm-randomize-steps-lane-page() => { root.syndrm-randomize-steps-lane-page(); }
                                             syndrm-randomize-steps-lane-all() => { root.syndrm-randomize-steps-lane-all(); }
                                             syndrm-randomize-steps-all-page() => { root.syndrm-randomize-steps-all-page(); }
@@ -1738,6 +1825,7 @@ export component TLBX1UI inherits Window {
                                             mosaic-rand-rate <=> root.mosaic-rand-rate;
                                             mosaic-rand-size <=> root.mosaic-rand-size;
                                             mosaic-sos <=> root.mosaic-sos;
+                                            mosaic-post-gain <=> root.mosaic-post-gain;
                                             g8-enabled <=> root.g8-enabled;
                                             g8-rate-index <=> root.g8-rate-index;
                                             g8-steps <=> root.g8-steps;
@@ -1767,6 +1855,7 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay <=> root.texture-noise-decay;
                                             texture-noise-color <=> root.texture-noise-color;
                                             texture-wet <=> root.texture-wet;
+                                            texture-post-gain <=> root.texture-post-gain;
                                             reflect-enabled <=> root.reflect-enabled;
                                             reflect-freeze <=> root.reflect-freeze;
                                             reflect-delay <=> root.reflect-delay;
@@ -1778,6 +1867,20 @@ export component TLBX1UI inherits Window {
                                             reflect-spread <=> root.reflect-spread;
                                             reflect-damp <=> root.reflect-damp;
                                             reflect-decay <=> root.reflect-decay;
+                                            reflect-post-gain <=> root.reflect-post-gain;
+                                            toggle-reflect-enabled => root.toggle-reflect-enabled();
+                                            toggle-reflect-freeze => root.toggle-reflect-freeze();
+                                            reflect-clear => root.reflect-clear();
+                                            reflect-delay-changed(value) => { root.reflect-delay-changed(value); }
+                                            reflect-time-changed(value) => { root.reflect-time-changed(value); }
+                                            reflect-time-mode-selected(index) => { root.reflect-time-mode-selected(index); }
+                                            reflect-reverb-changed(value) => { root.reflect-reverb-changed(value); }
+                                            reflect-size-changed(value) => { root.reflect-size-changed(value); }
+                                            reflect-feedback-changed(value) => { root.reflect-feedback-changed(value); }
+                                            reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
+                                            reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
+                                            reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
+                                            reflect-post-gain-changed(value) => { root.reflect-post-gain-changed(value); }
                                             void-base-freq-changed(value) => { root.void-base-freq-changed(value); }
                                             void-chaos-depth-changed(value) => { root.void-chaos-depth-changed(value); }
                                             void-entropy-changed(value) => { root.void-entropy-changed(value); }
@@ -1808,6 +1911,7 @@ export component TLBX1UI inherits Window {
                                             mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
                                             mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
                                             mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
+                                            mosaic-post-gain-changed(value) => { root.mosaic-post-gain-changed(value); }
                                             toggle-g8-enabled => root.toggle-g8-enabled();
                                             g8-rate-selected(index) => { root.g8-rate-selected(index); }
                                             g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
@@ -1836,6 +1940,7 @@ export component TLBX1UI inherits Window {
                                             texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                                             texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                                             texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                                            texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                                             toggle-track-mute => { root.toggle-track-mute(); }
                                         }
                                     }

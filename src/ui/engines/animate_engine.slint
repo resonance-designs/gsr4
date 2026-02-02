@@ -1,3 +1,4 @@
+// Imports
 import { Theme } from "../theme/index.slint";
 import {
     RDSHeaderLabel,
@@ -15,25 +16,24 @@ import { G8Device } from "../devices/g8_device.slint";
 import { TextureDevice } from "../devices/texture_device.slint";
 import { ReflectDevice } from "../devices/reflect_device.slint";
 
+// Animate Engine
 export component AnimateEngine inherits Rectangle {
+    // Engine Properties
     in property <[string]> animate-slot-types;
     in-out property <int> animate-slot-a-type: 0;
     in-out property <int> animate-slot-b-type: 0;
     in-out property <int> animate-slot-c-type: 0;
     in-out property <int> animate-slot-d-type: 0;
-
     in property <[string]> animate-wavetables;
     in-out property <int> animate-slot-a-wavetable: 0;
     in-out property <int> animate-slot-b-wavetable: 0;
     in-out property <int> animate-slot-c-wavetable: 0;
     in-out property <int> animate-slot-d-wavetable: 0;
-
     in property <[string]> animate-samples;
     in-out property <int> animate-slot-a-sample: 0;
     in-out property <int> animate-slot-b-sample: 0;
     in-out property <int> animate-slot-c-sample: 0;
     in-out property <int> animate-slot-d-sample: 0;
-
     in-out property <float> animate-slot-a-level: 1.0;
     in-out property <float> animate-slot-b-level: 1.0;
     in-out property <float> animate-slot-c-level: 1.0;
@@ -89,7 +89,6 @@ export component AnimateEngine inherits Rectangle {
     in-out property <float> animate-slot-d-sample-start: 0.0;
     in-out property <float> animate-slot-d-loop-start: 0.0;
     in-out property <float> animate-slot-d-loop-end: 1.0;
-
     in-out property <float> animate-vector-x: 0.5;
     in-out property <float> animate-vector-y: 0.5;
     in property <[string]> animate-lfo-waveforms;
@@ -104,29 +103,100 @@ export component AnimateEngine inherits Rectangle {
     in-out property <int> animate-lfo-y-division: 0;
     in-out property <float> animate-lfo-y-rate: 0.5;
     in-out property <float> animate-lfo-y-amount: 0.0;
-
     in property <[string]> animate-filter-types;
-
-    in-out property <bool> track-muted: false;
-
     in-out property <[bool]> animate-sequencer-grid;
     in property <int> animate-sequencer-current-step: -1;
+    in-out property <bool> track-muted: false;
+    private property <int> keybed-last-note: 60;
 
+    // Granulator Properties
+    in-out property <float> mosaic-pitch: 0.0;
+    in-out property <float> mosaic-rate: 0.5;
+    in-out property <float> mosaic-size: 0.5;
+    in-out property <float> mosaic-contour: 0.5;
+    in-out property <float> mosaic-warp: 0.0;
+    in-out property <float> mosaic-spray: 0.0;
+    in-out property <float> mosaic-pattern: 0.0;
+    in-out property <float> mosaic-wet: 0.0;
+    in-out property <float> mosaic-post-gain: 0.5;
+    in-out property <float> mosaic-detune: 0.0;
+    in-out property <float> mosaic-spatial: 0.0;
+    in-out property <float> mosaic-rand-rate: 0.0;
+    in-out property <float> mosaic-rand-size: 0.0;
+    in-out property <float> mosaic-sos: 0.0;
+    in-out property <bool> mosaic-enabled: true;
+    in-out property <bool> mosaic-loop-lock: false;
+
+    // Silk Properties
+    in-out property <bool> ring-enabled: false;
+    in-out property <float> ring-cutoff: 0.5;
+    in-out property <float> ring-resonance: 0.0;
+    in-out property <float> ring-decay: 0.0;
+    in-out property <float> ring-pitch: 0.5;
+    in property <[string]> ring-decay-modes;
+    in-out property <int> ring-decay-mode: 0;
+    in-out property <float> ring-slope: 0.5;
+    in-out property <float> ring-tone: 0.5;
+    in-out property <float> ring-tilt: 0.5;
+    in-out property <float> ring-wet: 0.0;
+    in-out property <float> ring-detune: 0.0;
+    in-out property <float> ring-waves: 0.0;
+    in-out property <float> ring-waves-rate: 0.5;
+    in-out property <float> ring-noise: 0.0;
+    in-out property <float> ring-noise-rate: 0.5;
+    in-out property <bool> ring-pre-post: true;
+
+    // Texture Properties
+    in-out property <bool> texture-enabled: false;
+    in-out property <bool> texture-gate: false;
+    in-out property <float> texture-drive: 0.0;
+    in-out property <float> texture-compress: 0.0;
+    in-out property <float> texture-crush: 0.0;
+    in-out property <float> texture-tilt: 0.0;
+    in-out property <float> texture-noise: 0.0;
+    in-out property <float> texture-noise-decay: 0.0;
+    in-out property <float> texture-noise-color: 0.0;
+    in-out property <float> texture-wet: 1.0;
+    in-out property <float> texture-post-gain: 0.5;
+
+    // Reflect Properties
+    in-out property <bool> reflect-enabled: false;
+    in-out property <bool> reflect-freeze: false;
+    in-out property <float> reflect-delay: 0.0;
+    in-out property <float> reflect-time: 0.5;
+    in-out property <int> reflect-time-mode: 0;
+    in-out property <float> reflect-reverb: 0.0;
+    in-out property <float> reflect-size: 0.5;
+    in-out property <float> reflect-feedback: 0.0;
+    in-out property <float> reflect-spread: 0.0;
+    in-out property <float> reflect-damp: 0.5;
+    in-out property <float> reflect-decay: 0.5;
+    in-out property <float> reflect-post-gain: 0.5;
+
+    // G8 Properties
+    in-out property <bool> g8-enabled: true;
+    in-out property <int> g8-rate-index: 0;
+    in-out property <[float]> g8-steps: [
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+    ];
+
+    // Engine Callbacks
+    callback toggle-track-mute();
     callback animate-slot-a-type-changed(index: int);
     callback animate-slot-b-type-changed(index: int);
     callback animate-slot-c-type-changed(index: int);
     callback animate-slot-d-type-changed(index: int);
-
     callback animate-slot-a-wavetable-changed(index: int);
     callback animate-slot-b-wavetable-changed(index: int);
     callback animate-slot-c-wavetable-changed(index: int);
     callback animate-slot-d-wavetable-changed(index: int);
-
     callback animate-slot-a-sample-changed(index: int);
     callback animate-slot-b-sample-changed(index: int);
     callback animate-slot-c-sample-changed(index: int);
     callback animate-slot-d-sample-changed(index: int);
-
     callback animate-slot-a-level-changed(value: float);
     callback animate-slot-b-level-changed(value: float);
     callback animate-slot-c-level-changed(value: float);
@@ -182,68 +252,20 @@ export component AnimateEngine inherits Rectangle {
     callback animate-slot-d-sample-start-changed(value: float);
     callback animate-slot-d-loop-start-changed(value: float);
     callback animate-slot-d-loop-end-changed(value: float);
+    callback animate-vector-changed(x: float, y: float);
+    callback animate-lfo-x-waveform-changed(index: int);
+    callback animate-lfo-x-sync-changed(value: bool);
+    callback animate-lfo-x-division-changed(index: int);
+    callback animate-lfo-x-rate-changed(value: float);
+    callback animate-lfo-x-amount-changed(value: float);
+    callback animate-lfo-y-waveform-changed(index: int);
+    callback animate-lfo-y-sync-changed(value: bool);
+    callback animate-lfo-y-division-changed(index: int);
+    callback animate-lfo-y-rate-changed(value: float);
+    callback animate-lfo-y-amount-changed(value: float);
+    callback animate-sequencer-grid-toggled(row: int, step: int);
 
-    in-out property <float> mosaic-pitch: 0.0;
-    in-out property <float> mosaic-rate: 0.5;
-    in-out property <float> mosaic-size: 0.5;
-    in-out property <float> mosaic-contour: 0.5;
-    in-out property <float> mosaic-warp: 0.0;
-    in-out property <float> mosaic-spray: 0.0;
-    in-out property <float> mosaic-pattern: 0.0;
-    in-out property <float> mosaic-wet: 0.0;
-    in-out property <float> mosaic-detune: 0.0;
-    in-out property <float> mosaic-spatial: 0.0;
-    in-out property <float> mosaic-rand-rate: 0.0;
-    in-out property <float> mosaic-rand-size: 0.0;
-    in-out property <float> mosaic-sos: 0.0;
-    in-out property <bool> mosaic-enabled: true;
-    in-out property <bool> mosaic-loop-lock: false;
-    in-out property <bool> ring-enabled: false;
-    in-out property <float> ring-cutoff: 0.5;
-    in-out property <float> ring-resonance: 0.0;
-    in-out property <float> ring-decay: 0.0;
-    in-out property <float> ring-pitch: 0.5;
-    in property <[string]> ring-decay-modes;
-    in-out property <int> ring-decay-mode: 0;
-    in-out property <float> ring-slope: 0.5;
-    in-out property <float> ring-tone: 0.5;
-    in-out property <float> ring-tilt: 0.5;
-    in-out property <float> ring-wet: 0.0;
-    in-out property <float> ring-detune: 0.0;
-    in-out property <float> ring-waves: 0.0;
-    in-out property <float> ring-waves-rate: 0.5;
-    in-out property <float> ring-noise: 0.0;
-    in-out property <float> ring-noise-rate: 0.5;
-    in-out property <bool> ring-pre-post: true;
-    in-out property <bool> texture-enabled: false;
-    in-out property <bool> texture-gate: false;
-    in-out property <float> texture-drive: 0.0;
-    in-out property <float> texture-compress: 0.0;
-    in-out property <float> texture-crush: 0.0;
-    in-out property <float> texture-tilt: 0.0;
-    in-out property <float> texture-noise: 0.0;
-    in-out property <float> texture-noise-decay: 0.0;
-    in-out property <float> texture-noise-color: 0.0;
-    in-out property <float> texture-wet: 1.0;
-    in-out property <bool> reflect-enabled: false;
-    in-out property <bool> reflect-freeze: false;
-    in-out property <float> reflect-delay: 0.0;
-    in-out property <float> reflect-time: 0.5;
-    in-out property <int> reflect-time-mode: 0;
-    in-out property <float> reflect-reverb: 0.0;
-    in-out property <float> reflect-size: 0.5;
-    in-out property <float> reflect-feedback: 0.0;
-    in-out property <float> reflect-spread: 0.0;
-    in-out property <float> reflect-damp: 0.5;
-    in-out property <float> reflect-decay: 0.5;
-    in-out property <bool> g8-enabled: true;
-    in-out property <int> g8-rate-index: 0;
-    in-out property <[float]> g8-steps: [
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
-    ];
+    // Granulator Callbacks
     callback toggle-mosaic-enabled();
     callback toggle-mosaic-loop-lock();
     callback mosaic-pitch-changed(value: float);
@@ -254,11 +276,14 @@ export component AnimateEngine inherits Rectangle {
     callback mosaic-spray-changed(value: float);
     callback mosaic-pattern-changed(value: float);
     callback mosaic-wet-changed(value: float);
+    callback mosaic-post-gain-changed(value: float);
     callback mosaic-detune-changed(value: float);
     callback mosaic-spatial-changed(value: float);
     callback mosaic-rand-rate-changed(value: float);
     callback mosaic-rand-size-changed(value: float);
     callback mosaic-sos-changed(value: float);
+
+    // Silk Callbacks
     callback toggle-ring-enabled();
     callback ring-cutoff-changed(value: float);
     callback ring-resonance-changed(value: float);
@@ -275,6 +300,8 @@ export component AnimateEngine inherits Rectangle {
     callback ring-noise-changed(value: float);
     callback ring-noise-rate-changed(value: float);
     callback toggle-ring-pre-post();
+
+    // Texture Callbacks
     callback toggle-texture-enabled();
     callback toggle-texture-gate();
     callback texture-drive-changed(value: float);
@@ -285,6 +312,9 @@ export component AnimateEngine inherits Rectangle {
     callback texture-noise-decay-changed(value: float);
     callback texture-noise-color-changed(value: float);
     callback texture-wet-changed(value: float);
+    callback texture-post-gain-changed(value: float);
+
+    // Reflect Callbacks
     callback toggle-reflect-enabled();
     callback toggle-reflect-freeze();
     callback reflect-clear();
@@ -297,27 +327,12 @@ export component AnimateEngine inherits Rectangle {
     callback reflect-spread-changed(value: float);
     callback reflect-damp-changed(value: float);
     callback reflect-decay-changed(value: float);
+    callback reflect-post-gain-changed(value: float);
+
+    // G8 Callbacks
     callback toggle-g8-enabled();
     callback g8-rate-selected(index: int);
     callback g8-step-changed(index: int, value: float);
-
-    callback toggle-track-mute();
-
-    callback animate-vector-changed(x: float, y: float);
-    callback animate-lfo-x-waveform-changed(index: int);
-    callback animate-lfo-x-sync-changed(value: bool);
-    callback animate-lfo-x-division-changed(index: int);
-    callback animate-lfo-x-rate-changed(value: float);
-    callback animate-lfo-x-amount-changed(value: float);
-    callback animate-lfo-y-waveform-changed(index: int);
-    callback animate-lfo-y-sync-changed(value: bool);
-    callback animate-lfo-y-division-changed(index: int);
-    callback animate-lfo-y-rate-changed(value: float);
-    callback animate-lfo-y-amount-changed(value: float);
-
-    private property <int> keybed-last-note: 60;
-
-    callback animate-sequencer-grid-toggled(row: int, step: int);
 
     width: 1200px;
     background: transparent;
@@ -328,7 +343,7 @@ export component AnimateEngine inherits Rectangle {
         padding: 12px;
         width: parent.width;
 
-        // Engine Title
+        // Engine Title & Mute
         RDSHeaderLabel {
             text: "Animate";
             horizontal-alignment: left;
@@ -361,6 +376,7 @@ export component AnimateEngine inherits Rectangle {
             border-color: Theme.active.border-strong;
             width: parent.width;
             height: engine-controls-content.preferred-height;
+
             engine-controls-content := VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
@@ -1722,16 +1738,19 @@ export component AnimateEngine inherits Rectangle {
                     }
                 }
 
+                // Vector LFO's
                 Rectangle {
                     width: parent.width;
                     background: #121216;
                     border-radius: 6px;
                     border-color: #2a2a35;
                     border-width: 2px;
+
                     HorizontalLayout {
                         padding: 12px;
                         spacing: 16px;
 
+                        // Vector LFO X
                         VerticalLayout {
                             spacing: 6px;
                             width: (parent.width - 16px) / 2;
@@ -1740,92 +1759,94 @@ export component AnimateEngine inherits Rectangle {
                                 color: #e4e4ea;
                                 font-size: 13px;
                             }
-                        RDSComboBox {
-                            width: parent.width;
-                            model: root.animate-lfo-waveforms;
-                            current-index: root.animate-lfo-x-waveform;
-                            selected => {
-                                root.animate-lfo-x-waveform = self.current-index;
-                                root.animate-lfo-x-waveform-changed(self.current-index);
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            VerticalLayout {
-                                spacing: 4px;
-                                Text {
-                                    text: "Sync";
-                                    color: #b9b9bf;
-                                    font-size: 11px;
-                                }
-                                RDSCircleToggle {
-                                    active: root.animate-lfo-x-sync;
-                                    clicked => {
-                                        root.animate-lfo-x-sync = !root.animate-lfo-x-sync;
-                                        root.animate-lfo-x-sync-changed(root.animate-lfo-x-sync);
-                                    }
-                                }
-                            }
                             RDSComboBox {
-                                width: parent.width - 60px;
-                                visible: root.animate-lfo-x-sync;
-                                model: root.animate-lfo-divisions;
-                                current-index: root.animate-lfo-x-division;
+                                width: parent.width;
+                                model: root.animate-lfo-waveforms;
+                                current-index: root.animate-lfo-x-waveform;
                                 selected => {
-                                    root.animate-lfo-x-division = self.current-index;
-                                    root.animate-lfo-x-division-changed(self.current-index);
+                                    root.animate-lfo-x-waveform = self.current-index;
+                                    root.animate-lfo-x-waveform-changed(self.current-index);
                                 }
                             }
-                        }
-                        HorizontalLayout {
-                            spacing: 12px;
-                            VerticalLayout {
-                                spacing: 4px;
-                                width: 50px;
-                                visible: !root.animate-lfo-x-sync;
-                                Text {
-                                    text: "Rate";
-                                    color: #b9b9bf;
-                                    font-size: 11px;
-                                    horizontal-alignment: center;
-                                }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.animate-lfo-x-rate;
-                                    min-value: 0.0; max-value: 1.0;
-                                    size: 28px; indicator-position: 8px;
-                                    sensitivity: 0.001; scroll-sensitivity: 0.001;
-                                    infinite-rotary: true;
-                                    value-changed(v) => {
-                                        root.animate-lfo-x-rate = v;
-                                        root.animate-lfo-x-rate-changed(v);
-                                    }
-                                }
-                            }
-                            VerticalLayout {
-                                spacing: 4px;
-                                width: 50px;
-                                Text {
-                                    text: "Amt";
-                                    color: #b9b9bf;
-                                    font-size: 11px;
-                                    horizontal-alignment: center;
-                                }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.animate-lfo-x-amount;
-                                    min-value: 0.0; max-value: 1.0;
-                                    size: 28px; indicator-position: 8px;
-                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
-                                    value-changed(v) => {
-                                        root.animate-lfo-x-amount = v;
-                                        root.animate-lfo-x-amount-changed(v);
-                                    }
-                                }
-                            }
-                        }
-                    }
 
+                            HorizontalLayout {
+                                spacing: 6px;
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text {
+                                        text: "Sync";
+                                        color: #b9b9bf;
+                                        font-size: 11px;
+                                    }
+                                    RDSCircleToggle {
+                                        active: root.animate-lfo-x-sync;
+                                        clicked => {
+                                            root.animate-lfo-x-sync = !root.animate-lfo-x-sync;
+                                            root.animate-lfo-x-sync-changed(root.animate-lfo-x-sync);
+                                        }
+                                    }
+                                }
+                                RDSComboBox {
+                                    width: parent.width - 60px;
+                                    visible: root.animate-lfo-x-sync;
+                                    model: root.animate-lfo-divisions;
+                                    current-index: root.animate-lfo-x-division;
+                                    selected => {
+                                        root.animate-lfo-x-division = self.current-index;
+                                        root.animate-lfo-x-division-changed(self.current-index);
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 50px;
+                                    visible: !root.animate-lfo-x-sync;
+                                    Text {
+                                        text: "Rate";
+                                        color: #b9b9bf;
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                    }
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.animate-lfo-x-rate;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 28px; indicator-position: 8px;
+                                        sensitivity: 0.001; scroll-sensitivity: 0.001;
+                                        infinite-rotary: true;
+                                        value-changed(v) => {
+                                            root.animate-lfo-x-rate = v;
+                                            root.animate-lfo-x-rate-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 50px;
+                                    Text {
+                                        text: "Amt";
+                                        color: #b9b9bf;
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                    }
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.animate-lfo-x-amount;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 28px; indicator-position: 8px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => {
+                                            root.animate-lfo-x-amount = v;
+                                            root.animate-lfo-x-amount-changed(v);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Vector LFO Y
                         VerticalLayout {
                             spacing: 6px;
                             width: (parent.width - 16px) / 2;
@@ -1834,104 +1855,107 @@ export component AnimateEngine inherits Rectangle {
                                 color: #e4e4ea;
                                 font-size: 13px;
                             }
-                        RDSComboBox {
-                            width: parent.width;
-                            model: root.animate-lfo-waveforms;
-                            current-index: root.animate-lfo-y-waveform;
-                            selected => {
-                                root.animate-lfo-y-waveform = self.current-index;
-                                root.animate-lfo-y-waveform-changed(self.current-index);
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            VerticalLayout {
-                                spacing: 4px;
-                                Text {
-                                    text: "Sync";
-                                    color: #b9b9bf;
-                                    font-size: 11px;
-                                }
-                                RDSCircleToggle {
-                                    active: root.animate-lfo-y-sync;
-                                    clicked => {
-                                        root.animate-lfo-y-sync = !root.animate-lfo-y-sync;
-                                        root.animate-lfo-y-sync-changed(root.animate-lfo-y-sync);
-                                    }
-                                }
-                            }
                             RDSComboBox {
-                                width: parent.width - 60px;
-                                visible: root.animate-lfo-y-sync;
-                                model: root.animate-lfo-divisions;
-                                current-index: root.animate-lfo-y-division;
+                                width: parent.width;
+                                model: root.animate-lfo-waveforms;
+                                current-index: root.animate-lfo-y-waveform;
                                 selected => {
-                                    root.animate-lfo-y-division = self.current-index;
-                                    root.animate-lfo-y-division-changed(self.current-index);
+                                    root.animate-lfo-y-waveform = self.current-index;
+                                    root.animate-lfo-y-waveform-changed(self.current-index);
                                 }
                             }
-                        }
-                        HorizontalLayout {
-                            spacing: 12px;
-                            VerticalLayout {
-                                spacing: 4px;
-                                width: 50px;
-                                visible: !root.animate-lfo-y-sync;
-                                Text {
-                                    text: "Rate";
-                                    color: #b9b9bf;
-                                    font-size: 11px;
-                                    horizontal-alignment: center;
+                            HorizontalLayout {
+                                spacing: 6px;
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text {
+                                        text: "Sync";
+                                        color: #b9b9bf;
+                                        font-size: 11px;
+                                    }
+                                    RDSCircleToggle {
+                                        active: root.animate-lfo-y-sync;
+                                        clicked => {
+                                            root.animate-lfo-y-sync = !root.animate-lfo-y-sync;
+                                            root.animate-lfo-y-sync-changed(root.animate-lfo-y-sync);
+                                        }
+                                    }
                                 }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.animate-lfo-y-rate;
-                                    min-value: 0.0; max-value: 1.0;
-                                    size: 28px; indicator-position: 8px;
-                                    sensitivity: 0.001; scroll-sensitivity: 0.001;
-                                    infinite-rotary: true;
-                                    value-changed(v) => {
-                                        root.animate-lfo-y-rate = v;
-                                        root.animate-lfo-y-rate-changed(v);
+                                RDSComboBox {
+                                    width: parent.width - 60px;
+                                    visible: root.animate-lfo-y-sync;
+                                    model: root.animate-lfo-divisions;
+                                    current-index: root.animate-lfo-y-division;
+                                    selected => {
+                                        root.animate-lfo-y-division = self.current-index;
+                                        root.animate-lfo-y-division-changed(self.current-index);
                                     }
                                 }
                             }
-                            VerticalLayout {
-                                spacing: 4px;
-                                width: 50px;
-                                Text {
-                                    text: "Amt";
-                                    color: #b9b9bf;
-                                    font-size: 11px;
-                                    horizontal-alignment: center;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 50px;
+                                    visible: !root.animate-lfo-y-sync;
+                                    Text {
+                                        text: "Rate";
+                                        color: #b9b9bf;
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                    }
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.animate-lfo-y-rate;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 28px; indicator-position: 8px;
+                                        sensitivity: 0.001; scroll-sensitivity: 0.001;
+                                        infinite-rotary: true;
+                                        value-changed(v) => {
+                                            root.animate-lfo-y-rate = v;
+                                            root.animate-lfo-y-rate-changed(v);
+                                        }
+                                    }
                                 }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.animate-lfo-y-amount;
-                                    min-value: 0.0; max-value: 1.0;
-                                    size: 28px; indicator-position: 8px;
-                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
-                                    value-changed(v) => {
-                                        root.animate-lfo-y-amount = v;
-                                        root.animate-lfo-y-amount-changed(v);
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    width: 50px;
+                                    Text {
+                                        text: "Amt";
+                                        color: #b9b9bf;
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                    }
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.animate-lfo-y-amount;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 28px; indicator-position: 8px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => {
+                                            root.animate-lfo-y-amount = v;
+                                            root.animate-lfo-y-amount-changed(v);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
+                // MIDI / Notation
                 Rectangle {
                     width: parent.width;
                     background: #121216;
                     border-radius: 6px;
                     border-color: #2a2a35;
                     border-width: 2px;
+
                     HorizontalLayout {
                         padding: 12px;
                         spacing: 16px;
 
+                        // Sequencer
                         VerticalLayout {
                             spacing: 4px;
                             Text { text: "Sequencer"; color: #e4e4ea; font-size: 14px; }
@@ -1945,7 +1969,7 @@ export component AnimateEngine inherits Rectangle {
                             }
                         }
 
-                    // Keybed (UI only for isolation)
+                        // Keybed (UI only for isolation)
                         VerticalLayout {
                             spacing: 4px;
                             Text {
@@ -1977,8 +2001,12 @@ export component AnimateEngine inherits Rectangle {
         // Downstream Devices
         VerticalLayout {
             width: parent.width;
-                HorizontalLayout {
-                    spacing: 22px;
+
+            // Granulator & Silk Devices
+            HorizontalLayout {
+                spacing: 22px;
+
+                // Granulator Device
                 Rectangle {
                     width: (parent.width - 16px) / 2 - 15px;
                     height: 250px;
@@ -1993,6 +2021,7 @@ export component AnimateEngine inherits Rectangle {
                         mosaic-spray <=> root.mosaic-spray;
                         mosaic-pattern <=> root.mosaic-pattern;
                         mosaic-wet <=> root.mosaic-wet;
+                        mosaic-post-gain <=> root.mosaic-post-gain;
                         mosaic-detune <=> root.mosaic-detune;
                         mosaic-spatial <=> root.mosaic-spatial;
                         mosaic-rand-rate <=> root.mosaic-rand-rate;
@@ -2007,6 +2036,7 @@ export component AnimateEngine inherits Rectangle {
                         mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
                         mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
                         mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                        mosaic-post-gain-changed(value) => { root.mosaic-post-gain-changed(value); }
                         mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
                         mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
                         mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
@@ -2016,6 +2046,7 @@ export component AnimateEngine inherits Rectangle {
                     }
                 }
 
+                // Silk Device
                 Rectangle {
                     width: (parent.width - 16px) / 2 - 15px;
                     height: 250px;
@@ -2054,70 +2085,84 @@ export component AnimateEngine inherits Rectangle {
                         ring-noise-changed(value) => { root.ring-noise-changed(value); }
                         ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
                     }
+                }
+            }
+
+            // Texture & Reflect Devices
+            HorizontalLayout {
+                spacing: 22px;
+
+                // Texture Device
+                Rectangle {
+                    width: (parent.width - 16px) / 2 - 15px;
+                    height: 280px;
+
+                    TextureDevice {
+                        texture-enabled <=> root.texture-enabled;
+                        texture-gate <=> root.texture-gate;
+                        texture-drive <=> root.texture-drive;
+                        texture-compress <=> root.texture-compress;
+                        texture-crush <=> root.texture-crush;
+                        texture-tilt <=> root.texture-tilt;
+                        texture-noise <=> root.texture-noise;
+                        texture-noise-decay <=> root.texture-noise-decay;
+                        texture-noise-color <=> root.texture-noise-color;
+                        texture-wet <=> root.texture-wet;
+                        texture-post-gain <=> root.texture-post-gain;
+                        toggle-texture-enabled => root.toggle-texture-enabled();
+                        toggle-texture-gate => root.toggle-texture-gate();
+                        texture-drive-changed(value) => { root.texture-drive-changed(value); }
+                        texture-compress-changed(value) => { root.texture-compress-changed(value); }
+                        texture-crush-changed(value) => { root.texture-crush-changed(value); }
+                        texture-tilt-changed(value) => { root.texture-tilt-changed(value); }
+                        texture-noise-changed(value) => { root.texture-noise-changed(value); }
+                        texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
+                        texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
+                        texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                        texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                     }
                 }
 
-                HorizontalLayout {
-                    spacing: 22px;
-                    Rectangle {
-                        width: (parent.width - 22px) / 2;
-                        height: 250px;
-                        TextureDevice {
-                            texture-enabled <=> root.texture-enabled;
-                            texture-gate <=> root.texture-gate;
-                            texture-drive <=> root.texture-drive;
-                            texture-compress <=> root.texture-compress;
-                            texture-crush <=> root.texture-crush;
-                            texture-tilt <=> root.texture-tilt;
-                            texture-noise <=> root.texture-noise;
-                            texture-noise-decay <=> root.texture-noise-decay;
-                            texture-noise-color <=> root.texture-noise-color;
-                            texture-wet <=> root.texture-wet;
-                            toggle-texture-enabled => root.toggle-texture-enabled();
-                            toggle-texture-gate => root.toggle-texture-gate();
-                            texture-drive-changed(value) => { root.texture-drive-changed(value); }
-                            texture-compress-changed(value) => { root.texture-compress-changed(value); }
-                            texture-crush-changed(value) => { root.texture-crush-changed(value); }
-                            texture-tilt-changed(value) => { root.texture-tilt-changed(value); }
-                            texture-noise-changed(value) => { root.texture-noise-changed(value); }
-                            texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
-                            texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
-                            texture-wet-changed(value) => { root.texture-wet-changed(value); }
-                        }
-                    }
-                    Rectangle {
-                        width: (parent.width - 22px) / 2;
-                        height: 250px;
-                        ReflectDevice {
-                            reflect-enabled <=> root.reflect-enabled;
-                            reflect-freeze <=> root.reflect-freeze;
-                            reflect-delay <=> root.reflect-delay;
-                            reflect-time <=> root.reflect-time;
-                            reflect-time-mode <=> root.reflect-time-mode;
-                            reflect-reverb <=> root.reflect-reverb;
-                            reflect-size <=> root.reflect-size;
-                            reflect-feedback <=> root.reflect-feedback;
-                            reflect-spread <=> root.reflect-spread;
-                            reflect-damp <=> root.reflect-damp;
-                            reflect-decay <=> root.reflect-decay;
-                            toggle-reflect-enabled => root.toggle-reflect-enabled();
-                            toggle-reflect-freeze => root.toggle-reflect-freeze();
-                            reflect-clear => root.reflect-clear();
-                            reflect-delay-changed(value) => { root.reflect-delay-changed(value); }
-                            reflect-time-changed(value) => { root.reflect-time-changed(value); }
-                            reflect-time-mode-selected(index) => { root.reflect-time-mode-selected(index); }
-                            reflect-reverb-changed(value) => { root.reflect-reverb-changed(value); }
-                            reflect-size-changed(value) => { root.reflect-size-changed(value); }
-                            reflect-feedback-changed(value) => { root.reflect-feedback-changed(value); }
-                            reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
-                            reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
-                            reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
-                        }
+                // Reflect Device
+                Rectangle {
+                    width: (parent.width - 16px) / 2 - 15px;
+                    height: 280px;
+
+                    ReflectDevice {
+                        reflect-enabled <=> root.reflect-enabled;
+                        reflect-freeze <=> root.reflect-freeze;
+                        reflect-delay <=> root.reflect-delay;
+                        reflect-time <=> root.reflect-time;
+                        reflect-time-mode <=> root.reflect-time-mode;
+                        reflect-reverb <=> root.reflect-reverb;
+                        reflect-size <=> root.reflect-size;
+                        reflect-feedback <=> root.reflect-feedback;
+                        reflect-spread <=> root.reflect-spread;
+                        reflect-damp <=> root.reflect-damp;
+                        reflect-decay <=> root.reflect-decay;
+                        reflect-post-gain <=> root.reflect-post-gain;
+                        toggle-reflect-enabled => root.toggle-reflect-enabled();
+                        toggle-reflect-freeze => root.toggle-reflect-freeze();
+                        reflect-clear => root.reflect-clear();
+                        reflect-delay-changed(value) => { root.reflect-delay-changed(value); }
+                        reflect-time-changed(value) => { root.reflect-time-changed(value); }
+                        reflect-time-mode-selected(index) => { root.reflect-time-mode-selected(index); }
+                        reflect-reverb-changed(value) => { root.reflect-reverb-changed(value); }
+                        reflect-size-changed(value) => { root.reflect-size-changed(value); }
+                        reflect-feedback-changed(value) => { root.reflect-feedback-changed(value); }
+                        reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
+                        reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
+                        reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
+                        reflect-post-gain-changed(value) => { root.reflect-post-gain-changed(value); }
                     }
                 }
+            }
 
-                HorizontalLayout {
-                    spacing: 22px;
+            // G8 & Modul8 Devices
+            HorizontalLayout {
+                spacing: 22px;
+
+                // G8 Device
                 Rectangle {
                     width: parent.width;
                     height: 200px;

@@ -15,6 +15,7 @@ Public members:
 - reflect-spread: float - Stereo spread
 - reflect-damp: float - Damp (LPF)
 - reflect-decay: float - Reverb decay
+- reflect-post-gain: float - Post gain
 - reflect-freeze: bool - Freeze toggle
 */
 export component ReflectDevice {
@@ -28,6 +29,7 @@ export component ReflectDevice {
     in-out property <float> reflect-spread: 0.0;
     in-out property <float> reflect-damp: 0.5;
     in-out property <float> reflect-decay: 0.5;
+    in-out property <float> reflect-post-gain: 0.5;
     in-out property <bool> reflect-freeze: false;
 
     callback toggle-reflect-enabled();
@@ -42,6 +44,7 @@ export component ReflectDevice {
     callback reflect-spread-changed(value: float);
     callback reflect-damp-changed(value: float);
     callback reflect-decay-changed(value: float);
+    callback reflect-post-gain-changed(value: float);
 
     private property <[string]> reflect-time-divisions: [
         "4/1", "2/1", "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/64"
@@ -113,29 +116,107 @@ export component ReflectDevice {
             border-radius: 6px;
             border-color: Theme.active.border-strong;
             GridLayout {
-                padding-top: 24px;
+                padding-top: 30px;
                 padding-right: 12px;
                 padding-bottom: 12px;
                 padding-left: 12px;
                 spacing-horizontal: 10px;
-                spacing-vertical: 26px;
+                spacing-vertical: 30px;
 
-                HorizontalLayout {
-                    spacing: 10px;
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.reflect-delay;
-                        min-value: 0; max-value: 1;
-                        size: 70px; indicator-position: 25px;
-                        label: "Delay";
-                        label-pos: "top-center";
-                        label-font-size: 10px;
-                        label-font-weight: 500;
-                        sensitivity: 0.01; scroll-sensitivity: 0.01;
-                        value-changed(v) => { root.reflect-delay = v; root.reflect-delay-changed(v); }
+                Row {
+                    HorizontalLayout {
+                        spacing: 10px;
+                        RDSKnob {
+                            renderer: "lo-fi";
+                            value: root.reflect-reverb;
+                            min-value: 0; max-value: 1;
+                            size: 70px; indicator-position: 25px;
+                            label: "Reverb";
+                            label-pos: "top-center";
+                            label-font-size: 10px;
+                            label-font-weight: 500;
+                            sensitivity: 0.01; scroll-sensitivity: 0.01;
+                            value-changed(v) => { root.reflect-reverb = v; root.reflect-reverb-changed(v); }
+                        }
+                        RDSKnob {
+                            renderer: "lo-fi";
+                            value: root.reflect-size;
+                            min-value: 0; max-value: 1;
+                            size: 70px; indicator-position: 25px;
+                            label: "Size";
+                            label-pos: "top-center";
+                            label-font-size: 10px;
+                            label-font-weight: 500;
+                            sensitivity: 0.01; scroll-sensitivity: 0.01;
+                            value-changed(v) => { root.reflect-size = v; root.reflect-size-changed(v); }
+                        }
+                        RDSKnob {
+                            renderer: "lo-fi";
+                            value: root.reflect-spread;
+                            min-value: 0; max-value: 1;
+                            size: 70px; indicator-position: 25px;
+                            label: "Spread";
+                            label-pos: "top-center";
+                            label-font-size: 10px;
+                            label-font-weight: 500;
+                            sensitivity: 0.01; scroll-sensitivity: 0.01;
+                            value-changed(v) => { root.reflect-spread = v; root.reflect-spread-changed(v); }
+                        }
+                        RDSKnob {
+                            renderer: "lo-fi";
+                            value: root.reflect-damp;
+                            min-value: 0; max-value: 1;
+                            size: 70px; indicator-position: 25px;
+                            label: "Damp";
+                            label-pos: "top-center";
+                            label-font-size: 10px;
+                            label-font-weight: 500;
+                            sensitivity: 0.01; scroll-sensitivity: 0.01;
+                            value-changed(v) => { root.reflect-damp = v; root.reflect-damp-changed(v); }
+                        }
+                        RDSKnob {
+                            renderer: "lo-fi";
+                            value: root.reflect-decay;
+                            min-value: 0; max-value: 1;
+                            size: 70px; indicator-position: 25px;
+                            label: "Decay";
+                            label-pos: "top-center";
+                            label-font-size: 10px;
+                            label-font-weight: 500;
+                            sensitivity: 0.01; scroll-sensitivity: 0.01;
+                            value-changed(v) => { root.reflect-decay = v; root.reflect-decay-changed(v); }
+                        }
+                        RDSButton {
+                            label: "Clear";
+                            button-width: 70px;
+                            button-height: 28px;
+                            clicked => root.reflect-clear();
+                        }
+                        RDSButton {
+                            label: "Freeze";
+                            active: root.reflect-freeze;
+                            button-width: 70px;
+                            button-height: 28px;
+                            clicked => root.toggle-reflect-freeze();
+                        }
                     }
-                    VerticalLayout {
-                        spacing: 4px;
+                }
+
+                Row {
+                    HorizontalLayout {
+                        spacing: 10px;
+                        RDSKnob {
+                            renderer: "lo-fi";
+                            value: root.reflect-delay;
+                            min-value: 0; max-value: 1;
+                            size: 70px; indicator-position: 25px;
+                            label: "Delay";
+                            label-pos: "top-center";
+                            label-font-size: 10px;
+                            label-font-weight: 500;
+                            sensitivity: 0.01; scroll-sensitivity: 0.01;
+                            value-changed(v) => { root.reflect-delay = v; root.reflect-delay-changed(v); }
+                        }
                         RDSKnob {
                             renderer: "lo-fi";
                             value: root.reflect-time;
@@ -146,128 +227,56 @@ export component ReflectDevice {
                             label-font-size: 10px;
                             label-font-weight: 500;
                             sensitivity: 0.01; scroll-sensitivity: 0.01;
+                            readout-text: root.reflect-time-readout;
                             value-changed(v) => { root.reflect-time = v; root.reflect-time-changed(v); }
                         }
-                        Text {
-                            text: root.reflect-time-readout;
-                            color: Theme.active.text_secondary;
-                            font-size: 10px;
-                            horizontal-alignment: center;
+                        RDSKnob {
+                            renderer: "lo-fi";
+                            value: root.reflect-feedback;
+                            min-value: 0; max-value: 1;
+                            size: 70px; indicator-position: 25px;
+                            label: "Feedback";
+                            label-pos: "top-center";
+                            label-font-size: 10px;
+                            label-font-weight: 500;
+                            sensitivity: 0.01; scroll-sensitivity: 0.01;
+                            value-changed(v) => { root.reflect-feedback = v; root.reflect-feedback-changed(v); }
                         }
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.reflect-reverb;
-                        min-value: 0; max-value: 1;
-                        size: 70px; indicator-position: 25px;
-                        label: "Reverb";
-                        label-pos: "top-center";
-                        label-font-size: 10px;
-                        label-font-weight: 500;
-                        sensitivity: 0.01; scroll-sensitivity: 0.01;
-                        value-changed(v) => { root.reflect-reverb = v; root.reflect-reverb-changed(v); }
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.reflect-size;
-                        min-value: 0; max-value: 1;
-                        size: 70px; indicator-position: 25px;
-                        label: "Size";
-                        label-pos: "top-center";
-                        label-font-size: 10px;
-                        label-font-weight: 500;
-                        sensitivity: 0.01; scroll-sensitivity: 0.01;
-                        value-changed(v) => { root.reflect-size = v; root.reflect-size-changed(v); }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 10px;
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.reflect-feedback;
-                        min-value: 0; max-value: 1;
-                        size: 70px; indicator-position: 25px;
-                        label: "Feedback";
-                        label-pos: "top-center";
-                        label-font-size: 10px;
-                        label-font-weight: 500;
-                        sensitivity: 0.01; scroll-sensitivity: 0.01;
-                        value-changed(v) => { root.reflect-feedback = v; root.reflect-feedback-changed(v); }
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.reflect-spread;
-                        min-value: 0; max-value: 1;
-                        size: 70px; indicator-position: 25px;
-                        label: "Spread";
-                        label-pos: "top-center";
-                        label-font-size: 10px;
-                        label-font-weight: 500;
-                        sensitivity: 0.01; scroll-sensitivity: 0.01;
-                        value-changed(v) => { root.reflect-spread = v; root.reflect-spread-changed(v); }
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.reflect-damp;
-                        min-value: 0; max-value: 1;
-                        size: 70px; indicator-position: 25px;
-                        label: "Damp";
-                        label-pos: "top-center";
-                        label-font-size: 10px;
-                        label-font-weight: 500;
-                        sensitivity: 0.01; scroll-sensitivity: 0.01;
-                        value-changed(v) => { root.reflect-damp = v; root.reflect-damp-changed(v); }
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.reflect-decay;
-                        min-value: 0; max-value: 1;
-                        size: 70px; indicator-position: 25px;
-                        label: "Decay";
-                        label-pos: "top-center";
-                        label-font-size: 10px;
-                        label-font-weight: 500;
-                        sensitivity: 0.01; scroll-sensitivity: 0.01;
-                        value-changed(v) => { root.reflect-decay = v; root.reflect-decay-changed(v); }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 10px;
-                    RDSComboBox {
-                        width: 140px;
-                        model: ["Straight", "Dotted", "Triplet", "Free"];
-                        current-index: root.reflect-time-mode;
-                        selected(index) => {
-                            root.reflect-time-mode = index;
-                            root.reflect-time-mode-selected(index);
+                        VerticalLayout {
+                            RDSComboBox {
+                                width: 140px;
+                                model: ["Straight", "Dotted", "Triplet", "Free"];
+                                current-index: root.reflect-time-mode;
+                                selected(index) => {
+                                    root.reflect-time-mode = index;
+                                    root.reflect-time-mode-selected(index);
+                                }
+                            }
+                            RDSComboBox {
+                                width: 140px;
+                                model: root.reflect-time-division-model;
+                                current-index: root.reflect-time-division-index-ui;
+                                enabled: root.reflect-time-mode != 3;
+                                selected(index) => {
+                                    let next = Math.max(0, Math.min(root.reflect-time-divisions.length - 1, index));
+                                    let norm = next / Math.max(1, root.reflect-time-divisions.length - 1);
+                                    root.reflect-time = norm;
+                                    root.reflect-time-changed(norm);
+                                }
+                            }
                         }
-                    }
-                    RDSComboBox {
-                        width: 120px;
-                        model: root.reflect-time-division-model;
-                        current-index: root.reflect-time-division-index-ui;
-                        enabled: root.reflect-time-mode != 3;
-                        selected(index) => {
-                            let next = Math.max(0, Math.min(root.reflect-time-divisions.length - 1, index));
-                            let norm = next / Math.max(1, root.reflect-time-divisions.length - 1);
-                            root.reflect-time = norm;
-                            root.reflect-time-changed(norm);
+                        RDSKnob {
+                            renderer: "lo-fi";
+                            value: root.reflect-post-gain;
+                            min-value: 0; max-value: 1;
+                            size: 70px; indicator-position: 25px;
+                            label: "Post Gain";
+                            label-pos: "top-center";
+                            label-font-size: 10px;
+                            label-font-weight: 500;
+                            sensitivity: 0.01; scroll-sensitivity: 0.01;
+                            value-changed(v) => { root.reflect-post-gain = v; root.reflect-post-gain-changed(v); }
                         }
-                    }
-                    RDSButton {
-                        label: "Clear";
-                        button-width: 70px;
-                        button-height: 28px;
-                        clicked => root.reflect-clear();
-                    }
-                    RDSButton {
-                        label: "Freeze";
-                        active: root.reflect-freeze;
-                        button-width: 70px;
-                        button-height: 28px;
-                        clicked => root.toggle-reflect-freeze();
                     }
                 }
             }
