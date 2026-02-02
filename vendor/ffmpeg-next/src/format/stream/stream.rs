@@ -12,7 +12,7 @@ pub struct Stream<'a> {
 }
 
 impl<'a> Stream<'a> {
-    pub unsafe fn wrap(context: &Context, index: usize) -> Stream {
+    pub unsafe fn wrap(context: &Context, index: usize) -> Stream<'_> {
         Stream { context, index }
     }
 
@@ -65,7 +65,7 @@ impl<'a> Stream<'a> {
         unsafe { Discard::from((*self.as_ptr()).discard) }
     }
 
-    pub fn side_data(&self) -> SideDataIter {
+    pub fn side_data(&self) -> SideDataIter<'_> {
         SideDataIter::new(self)
     }
 
@@ -77,7 +77,7 @@ impl<'a> Stream<'a> {
         unsafe { Rational::from((*self.as_ptr()).avg_frame_rate) }
     }
 
-    pub fn metadata(&self) -> DictionaryRef {
+    pub fn metadata(&self) -> DictionaryRef<'_> {
         unsafe { DictionaryRef::wrap((*self.as_ptr()).metadata) }
     }
 }

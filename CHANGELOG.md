@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.21] - 2026-02-01
+
+- SynDRM: tweaked step editor layout so Page/Step/Lane sit on one row, and Clear actions are always visible.
+- UI components: added sizing/offset props for RDSNumStepper/RDSTextStepper and customizable RDSSequencerCell dimensions/text.
+- SynDRM: lane label alignment and readout font adjustments for clearer navigation.
+
+## [0.1.20] - 2026-02-01
+
+- Added Reflect (Vast/Space) device with UI + DSP (delay + reverb chain, time divisions, clear/freeze).
+- Laid out Texture + Reflect side-by-side across all engines to prevent overlap.
+- Suppressed warnings in vendored `ffmpeg-next` and `ffmpeg-sys-next` crates (with inline comments).
+
+## [0.1.19] - 2026-02-01
+
+- Added Texture (Color/Deform) device with UI + DSP (drive/compress/crush/tilt/noise + gate, wet/dry) and wired it into all engines.
+- Fixed Texture crush scaling so 0 is clean and 1 is fully crushed.
+
 ## [0.1.18] - 2026-01-29
 
 - Void Seed: added Moog filter + drive with pre/post toggle, Close Decay, and stereo width control.

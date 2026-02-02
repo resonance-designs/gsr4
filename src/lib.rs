@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.18
+ * Version: 0.1.21
  * Component: Core Logic
  */
 
@@ -94,6 +94,14 @@ const MOSAIC_PARAM_SMOOTH_MS: f32 = 20.0;
 const MOSAIC_MAX_GRAINS: usize = 128;
 const MOSAIC_GRAIN_MARKER_COUNT: usize = 32;
 const G8_GAIN_SMOOTH_MS: f32 = 5.0;
+const REFLECT_MAX_SAMPLE_RATE: usize = 192_000;
+const REFLECT_MAX_DELAY_SECONDS: f32 = 10.0;
+const REFLECT_MAX_DELAY_SAMPLES: usize =
+    (REFLECT_MAX_SAMPLE_RATE as f32 * REFLECT_MAX_DELAY_SECONDS) as usize + 1;
+const REFLECT_REVERB_MIN_SCALE: f32 = 0.5;
+const REFLECT_REVERB_MAX_SCALE: f32 = 1.5;
+const REFLECT_REVERB_COMB_BASE: [usize; 4] = [1116, 1188, 1277, 1356];
+const REFLECT_REVERB_AP_BASE: [usize; 2] = [556, 441];
 const RING_PITCH_SEMITONES: f32 = 24.0;
 const RING_CUTOFF_MIN_HZ: f32 = 20.0;
 const RING_CUTOFF_MAX_HZ: f32 = 20_000.0;
@@ -302,6 +310,10 @@ struct Track {
     mosaic_sos: AtomicU32,
     /// Smoothed mosaic sound-on-sound.
     mosaic_sos_smooth: AtomicU32,
+    /// Mosaic post gain (after granulation).
+    mosaic_post_gain: AtomicU32,
+    /// Smoothed mosaic post gain.
+    mosaic_post_gain_smooth: AtomicU32,
     /// Mosaic output enabled.
     mosaic_enabled: AtomicBool,
     /// Mosaic grains locked to tape loop area.
@@ -420,6 +432,118 @@ struct Track {
     g8_steps: Arc<[AtomicU32; 32]>,
     /// Smoothed G8 gate gain.
     g8_gain_smooth: AtomicU32,
+    /// Texture device enabled.
+    texture_enabled: AtomicBool,
+    /// Texture noise gate enabled.
+    texture_gate: AtomicBool,
+    /// Texture drive amount.
+    texture_drive: AtomicU32,
+    /// Smoothed texture drive.
+    texture_drive_smooth: AtomicU32,
+    /// Texture compress amount.
+    texture_compress: AtomicU32,
+    /// Smoothed texture compress.
+    texture_compress_smooth: AtomicU32,
+    /// Texture crush amount.
+    texture_crush: AtomicU32,
+    /// Smoothed texture crush.
+    texture_crush_smooth: AtomicU32,
+    /// Texture tilt amount.
+    texture_tilt: AtomicU32,
+    /// Smoothed texture tilt.
+    texture_tilt_smooth: AtomicU32,
+    /// Texture noise amount.
+    texture_noise: AtomicU32,
+    /// Smoothed texture noise.
+    texture_noise_smooth: AtomicU32,
+    /// Texture noise decay.
+    texture_noise_decay: AtomicU32,
+    /// Smoothed texture noise decay.
+    texture_noise_decay_smooth: AtomicU32,
+    /// Texture noise color.
+    texture_noise_color: AtomicU32,
+    /// Smoothed texture noise color.
+    texture_noise_color_smooth: AtomicU32,
+    /// Texture wet mix.
+    texture_wet: AtomicU32,
+    /// Smoothed texture wet mix.
+    texture_wet_smooth: AtomicU32,
+    /// Texture post gain.
+    texture_post_gain: AtomicU32,
+    /// Smoothed texture post gain.
+    texture_post_gain_smooth: AtomicU32,
+    /// Texture noise envelope.
+    texture_noise_env: AtomicU32,
+    /// Texture noise RNG state.
+    texture_noise_rng: AtomicU32,
+    /// Texture noise filter state per channel.
+    texture_noise_lp: [AtomicU32; 2],
+    /// Texture tilt filter state per channel.
+    texture_tilt_lp: [AtomicU32; 2],
+    /// Texture crush phase.
+    texture_crush_phase: AtomicU32,
+    /// Texture crush hold value per channel.
+    texture_crush_hold: [AtomicU32; 2],
+    /// Reflect device enabled.
+    reflect_enabled: AtomicBool,
+    /// Reflect freeze toggle.
+    reflect_freeze: AtomicBool,
+    /// Reflect delay mix.
+    reflect_delay: AtomicU32,
+    /// Smoothed reflect delay mix.
+    reflect_delay_smooth: AtomicU32,
+    /// Reflect time (normalized).
+    reflect_time: AtomicU32,
+    /// Smoothed reflect time.
+    reflect_time_smooth: AtomicU32,
+    /// Reflect time mode (0 = straight, 1 = dotted, 2 = triplet, 3 = free).
+    reflect_time_mode: AtomicU32,
+    /// Reflect reverb mix.
+    reflect_reverb: AtomicU32,
+    /// Smoothed reflect reverb mix.
+    reflect_reverb_smooth: AtomicU32,
+    /// Reflect size.
+    reflect_size: AtomicU32,
+    /// Smoothed reflect size.
+    reflect_size_smooth: AtomicU32,
+    /// Reflect feedback.
+    reflect_feedback: AtomicU32,
+    /// Smoothed reflect feedback.
+    reflect_feedback_smooth: AtomicU32,
+    /// Reflect spread.
+    reflect_spread: AtomicU32,
+    /// Smoothed reflect spread.
+    reflect_spread_smooth: AtomicU32,
+    /// Reflect damp.
+    reflect_damp: AtomicU32,
+    /// Smoothed reflect damp.
+    reflect_damp_smooth: AtomicU32,
+    /// Reflect decay.
+    reflect_decay: AtomicU32,
+    /// Smoothed reflect decay.
+    reflect_decay_smooth: AtomicU32,
+    /// Reflect post gain.
+    reflect_post_gain: AtomicU32,
+    /// Smoothed reflect post gain.
+    reflect_post_gain_smooth: AtomicU32,
+    /// Reflect clear flag.
+    reflect_clear: AtomicBool,
+    /// Reflect delay buffer (stereo).
+    reflect_delay_buffer: Arc<Mutex<[Vec<f32>; 2]>>,
+    /// Reflect delay write position.
+    reflect_delay_write_pos: AtomicU32,
+    /// Reflect reverb comb buffers.
+    reflect_reverb_comb_buffers: Arc<Mutex<[[Vec<f32>; 4]; 2]>>,
+    /// Reflect reverb comb positions.
+    reflect_reverb_comb_pos: [AtomicU32; 8],
+    /// Reflect reverb allpass buffers.
+    reflect_reverb_ap_buffers: Arc<Mutex<[[Vec<f32>; 2]; 2]>>,
+    /// Reflect reverb allpass positions.
+    reflect_reverb_ap_pos: [AtomicU32; 4],
+    /// Reflect delay feedback damp state per channel.
+    reflect_damp_state_delay: [AtomicU32; 2],
+    /// Reflect reverb feedback damp state per channel.
+    reflect_damp_state_reverb: [AtomicU32; 2],
     /// Animate slot types (0 = wavetable, 1 = sample).
     animate_slot_types: [AtomicU32; 4],
     /// Animate slot wavetable indices.
@@ -840,6 +964,8 @@ impl Default for Track {
             mosaic_rand_size_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_sos: AtomicU32::new(0.0f32.to_bits()),
             mosaic_sos_smooth: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_post_gain: AtomicU32::new(0.5f32.to_bits()),
+            mosaic_post_gain_smooth: AtomicU32::new(0.5f32.to_bits()),
             mosaic_enabled: AtomicBool::new(true),
             mosaic_loop_lock: AtomicBool::new(false),
             mosaic_buffer: Arc::new(Mutex::new(vec![
@@ -902,6 +1028,73 @@ impl Default for Track {
             g8_rate_index: AtomicU32::new(0),
             g8_steps: Arc::new(std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits()))),
             g8_gain_smooth: AtomicU32::new(1.0f32.to_bits()),
+            texture_enabled: AtomicBool::new(false),
+            texture_gate: AtomicBool::new(false),
+            texture_drive: AtomicU32::new(0.0f32.to_bits()),
+            texture_drive_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_compress: AtomicU32::new(0.0f32.to_bits()),
+            texture_compress_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_crush: AtomicU32::new(0.0f32.to_bits()),
+            texture_crush_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_tilt: AtomicU32::new(0.5f32.to_bits()),
+            texture_tilt_smooth: AtomicU32::new(0.5f32.to_bits()),
+            texture_noise: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_decay: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_decay_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_color: AtomicU32::new(0.5f32.to_bits()),
+            texture_noise_color_smooth: AtomicU32::new(0.5f32.to_bits()),
+            texture_wet: AtomicU32::new(0.0f32.to_bits()),
+            texture_wet_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_post_gain: AtomicU32::new(0.5f32.to_bits()),
+            texture_post_gain_smooth: AtomicU32::new(0.5f32.to_bits()),
+            texture_noise_env: AtomicU32::new(0.0f32.to_bits()),
+            texture_noise_rng: AtomicU32::new(0x2468_1357),
+            texture_noise_lp: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            texture_tilt_lp: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            texture_crush_phase: AtomicU32::new(0),
+            texture_crush_hold: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            reflect_enabled: AtomicBool::new(false),
+            reflect_freeze: AtomicBool::new(false),
+            reflect_delay: AtomicU32::new(0.0f32.to_bits()),
+            reflect_delay_smooth: AtomicU32::new(0.0f32.to_bits()),
+            reflect_time: AtomicU32::new(0.5f32.to_bits()),
+            reflect_time_smooth: AtomicU32::new(0.5f32.to_bits()),
+            reflect_time_mode: AtomicU32::new(0),
+            reflect_reverb: AtomicU32::new(0.0f32.to_bits()),
+            reflect_reverb_smooth: AtomicU32::new(0.0f32.to_bits()),
+            reflect_size: AtomicU32::new(0.5f32.to_bits()),
+            reflect_size_smooth: AtomicU32::new(0.5f32.to_bits()),
+            reflect_feedback: AtomicU32::new(0.0f32.to_bits()),
+            reflect_feedback_smooth: AtomicU32::new(0.0f32.to_bits()),
+            reflect_spread: AtomicU32::new(0.0f32.to_bits()),
+            reflect_spread_smooth: AtomicU32::new(0.0f32.to_bits()),
+            reflect_damp: AtomicU32::new(0.5f32.to_bits()),
+            reflect_damp_smooth: AtomicU32::new(0.5f32.to_bits()),
+            reflect_decay: AtomicU32::new(0.5f32.to_bits()),
+            reflect_decay_smooth: AtomicU32::new(0.5f32.to_bits()),
+            reflect_post_gain: AtomicU32::new(0.5f32.to_bits()),
+            reflect_post_gain_smooth: AtomicU32::new(0.5f32.to_bits()),
+            reflect_clear: AtomicBool::new(false),
+            reflect_delay_buffer: Arc::new(Mutex::new([
+                vec![0.0; REFLECT_MAX_DELAY_SAMPLES],
+                vec![0.0; REFLECT_MAX_DELAY_SAMPLES],
+            ])),
+            reflect_delay_write_pos: AtomicU32::new(0),
+            reflect_reverb_comb_buffers: Arc::new(Mutex::new(std::array::from_fn(|_| {
+                std::array::from_fn(|i| {
+                    vec![0.0; reflect_comb_max_len(REFLECT_REVERB_COMB_BASE[i])]
+                })
+            }))),
+            reflect_reverb_comb_pos: std::array::from_fn(|_| AtomicU32::new(0)),
+            reflect_reverb_ap_buffers: Arc::new(Mutex::new(std::array::from_fn(|_| {
+                std::array::from_fn(|i| {
+                    vec![0.0; reflect_ap_max_len(REFLECT_REVERB_AP_BASE[i])]
+                })
+            }))),
+            reflect_reverb_ap_pos: std::array::from_fn(|_| AtomicU32::new(0)),
+            reflect_damp_state_delay: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            reflect_damp_state_reverb: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
             animate_slot_types: std::array::from_fn(|_| AtomicU32::new(0)),
             animate_slot_wavetables: std::array::from_fn(|_| AtomicU32::new(0)),
             animate_slot_samples: std::array::from_fn(|_| AtomicU32::new(0)),
@@ -1600,6 +1793,12 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.mosaic_rand_size_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_sos.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_sos_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .mosaic_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .mosaic_post_gain_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
     track.mosaic_enabled.store(true, Ordering::Relaxed);
     track.mosaic_loop_lock.store(false, Ordering::Relaxed);
     track.mosaic_write_pos.store(0, Ordering::Relaxed);
@@ -1676,6 +1875,152 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track
         .g8_gain_smooth
         .store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_enabled.store(false, Ordering::Relaxed);
+    track.texture_gate.store(false, Ordering::Relaxed);
+    track.texture_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_drive_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_compress
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_compress_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_crush.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_crush_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_tilt.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_tilt_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.texture_noise.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_decay
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_decay_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_color
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_color_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.texture_wet.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_wet_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_post_gain_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_post_gain_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_env
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_noise_rng.store(0x2468_1357, Ordering::Relaxed);
+    track.texture_crush_phase.store(0, Ordering::Relaxed);
+    for channel in 0..2 {
+        track
+            .texture_noise_lp[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .texture_tilt_lp[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .texture_crush_hold[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+    }
+    track.reflect_enabled.store(false, Ordering::Relaxed);
+    track.reflect_freeze.store(false, Ordering::Relaxed);
+    track.reflect_delay.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_delay_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.reflect_time.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_time_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.reflect_time_mode.store(0, Ordering::Relaxed);
+    track.reflect_reverb.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_reverb_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.reflect_size.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_size_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_feedback
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_feedback_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.reflect_spread.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_spread_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.reflect_damp.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_damp_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.reflect_decay.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_decay_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_post_gain_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.reflect_clear.store(false, Ordering::Relaxed);
+    track.reflect_delay_write_pos.store(0, Ordering::Relaxed);
+    for idx in 0..track.reflect_reverb_comb_pos.len() {
+        track.reflect_reverb_comb_pos[idx].store(0, Ordering::Relaxed);
+    }
+    for idx in 0..track.reflect_reverb_ap_pos.len() {
+        track.reflect_reverb_ap_pos[idx].store(0, Ordering::Relaxed);
+    }
+    for channel in 0..2 {
+        track
+            .reflect_damp_state_delay[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_damp_state_reverb[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+    }
+    if let Some(mut buffer) = track.reflect_delay_buffer.try_lock() {
+        for channel in buffer.iter_mut() {
+            channel.fill(0.0);
+        }
+    }
+    if let Some(mut buffer) = track.reflect_reverb_comb_buffers.try_lock() {
+        for channel in buffer.iter_mut() {
+            for comb in channel.iter_mut() {
+                comb.fill(0.0);
+            }
+        }
+    }
+    if let Some(mut buffer) = track.reflect_reverb_ap_buffers.try_lock() {
+        for channel in buffer.iter_mut() {
+            for ap in channel.iter_mut() {
+                ap.fill(0.0);
+            }
+        }
+    }
     if let Some(mut buffer) = track.mosaic_buffer.try_lock() {
         for channel in buffer.iter_mut() {
             channel.fill(0.0);
@@ -4120,6 +4465,8 @@ impl TLBX1 {
             f32::from_bits(track.mosaic_pattern.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let target_wet =
             f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_post_gain =
+            f32::from_bits(track.mosaic_post_gain.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let target_spatial =
             f32::from_bits(track.mosaic_spatial.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let target_detune =
@@ -4176,6 +4523,12 @@ impl TLBX1 {
             num_buffer_samples,
             sr as f32,
         );
+        let mosaic_post_gain = smooth_param(
+            f32::from_bits(track.mosaic_post_gain_smooth.load(Ordering::Relaxed)),
+            target_post_gain,
+            num_buffer_samples,
+            sr as f32,
+        );
         let mosaic_spatial = smooth_param(
             f32::from_bits(track.mosaic_spatial_smooth.load(Ordering::Relaxed)),
             target_spatial,
@@ -4224,6 +4577,9 @@ impl TLBX1 {
         track
             .mosaic_wet_smooth
             .store(mosaic_wet.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_post_gain_smooth
+            .store(mosaic_post_gain.to_bits(), Ordering::Relaxed);
         track
             .mosaic_spatial_smooth
             .store(mosaic_spatial.to_bits(), Ordering::Relaxed);
@@ -4333,6 +4689,7 @@ impl TLBX1 {
         let mut last_grain_len =
             track.mosaic_last_grain_len.load(Ordering::Relaxed) as usize;
         let mut rng_state = track.mosaic_rng_state.load(Ordering::Relaxed);
+        let post_gain = (mosaic_post_gain * 2.0).max(0.0);
 
         let num_channels = track_output.len();
         let output = track_output;
@@ -4413,6 +4770,10 @@ impl TLBX1 {
                     base_rate * (1.0 + mosaic_rand_rate * rand_rate * 0.5)
                 };
                 rate = rate.clamp(MOSAIC_RATE_MIN, MOSAIC_RATE_MAX);
+                if !sync_rate {
+                    // Use randomized rate for free mode so rand rate affects spawn interval.
+                    spawn_phase = (sr as f32 / rate).max(1.0);
+                }
                 let mut size_ms = base_size_ms * (1.0 + mosaic_rand_size * rand_size * 0.5);
                 size_ms = size_ms.clamp(MOSAIC_SIZE_MIN_MS, MOSAIC_SIZE_MAX_MS);
                 grain_len[slot] = ((size_ms / 1000.0) * sr as f32).round() as usize;
@@ -4549,6 +4910,14 @@ impl TLBX1 {
         track
             .mosaic_rng_state
             .store(rng_state, Ordering::Relaxed);
+
+        if post_gain != 1.0 {
+            for channel_idx in 0..num_channels {
+                for sample_idx in 0..num_buffer_samples {
+                    output[channel_idx][sample_idx] *= post_gain;
+                }
+            }
+        }
     }
 
     fn process_track_ring(
@@ -4940,6 +5309,605 @@ impl TLBX1 {
         track
             .g8_gain_smooth
             .store(smooth_gain.to_bits(), Ordering::Relaxed);
+    }
+
+    fn process_track_texture(
+        track: &Track,
+        track_output: &mut [Vec<f32>],
+        num_buffer_samples: usize,
+    ) {
+        if !track.texture_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        if num_buffer_samples == 0 || track_output.is_empty() {
+            return;
+        }
+        let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as f32;
+
+        let target_drive =
+            f32::from_bits(track.texture_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_compress =
+            f32::from_bits(track.texture_compress.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_crush =
+            f32::from_bits(track.texture_crush.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_tilt =
+            f32::from_bits(track.texture_tilt.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_noise =
+            f32::from_bits(track.texture_noise.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_noise_decay =
+            f32::from_bits(track.texture_noise_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_noise_color =
+            f32::from_bits(track.texture_noise_color.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_wet =
+            f32::from_bits(track.texture_wet.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_post_gain =
+            f32::from_bits(track.texture_post_gain.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let gate = track.texture_gate.load(Ordering::Relaxed);
+
+        let drive = smooth_param(
+            f32::from_bits(track.texture_drive_smooth.load(Ordering::Relaxed)),
+            target_drive,
+            num_buffer_samples,
+            sr,
+        );
+        let compress = smooth_param(
+            f32::from_bits(track.texture_compress_smooth.load(Ordering::Relaxed)),
+            target_compress,
+            num_buffer_samples,
+            sr,
+        );
+        let crush = smooth_param(
+            f32::from_bits(track.texture_crush_smooth.load(Ordering::Relaxed)),
+            target_crush,
+            num_buffer_samples,
+            sr,
+        );
+        let tilt = smooth_param(
+            f32::from_bits(track.texture_tilt_smooth.load(Ordering::Relaxed)),
+            target_tilt,
+            num_buffer_samples,
+            sr,
+        );
+        let noise = smooth_param(
+            f32::from_bits(track.texture_noise_smooth.load(Ordering::Relaxed)),
+            target_noise,
+            num_buffer_samples,
+            sr,
+        );
+        let noise_decay = smooth_param(
+            f32::from_bits(track.texture_noise_decay_smooth.load(Ordering::Relaxed)),
+            target_noise_decay,
+            num_buffer_samples,
+            sr,
+        );
+        let noise_color = smooth_param(
+            f32::from_bits(track.texture_noise_color_smooth.load(Ordering::Relaxed)),
+            target_noise_color,
+            num_buffer_samples,
+            sr,
+        );
+        let wet = smooth_param(
+            f32::from_bits(track.texture_wet_smooth.load(Ordering::Relaxed)),
+            target_wet,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+        let post_gain = smooth_param(
+            f32::from_bits(track.texture_post_gain_smooth.load(Ordering::Relaxed)),
+            target_post_gain,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+
+        track
+            .texture_drive_smooth
+            .store(drive.to_bits(), Ordering::Relaxed);
+        track
+            .texture_compress_smooth
+            .store(compress.to_bits(), Ordering::Relaxed);
+        track
+            .texture_crush_smooth
+            .store(crush.to_bits(), Ordering::Relaxed);
+        track
+            .texture_tilt_smooth
+            .store(tilt.to_bits(), Ordering::Relaxed);
+        track
+            .texture_noise_smooth
+            .store(noise.to_bits(), Ordering::Relaxed);
+        track
+            .texture_noise_decay_smooth
+            .store(noise_decay.to_bits(), Ordering::Relaxed);
+        track
+            .texture_noise_color_smooth
+            .store(noise_color.to_bits(), Ordering::Relaxed);
+        track
+            .texture_wet_smooth
+            .store(wet.to_bits(), Ordering::Relaxed);
+        track
+            .texture_post_gain_smooth
+            .store(post_gain.to_bits(), Ordering::Relaxed);
+
+        if wet <= 0.0 {
+            return;
+        }
+
+        let drive_gain = 1.0 + drive * 8.0;
+        let crush_step = crush.clamp(0.01, 1.0);
+        let tilt_bipolar = tilt * 2.0 - 1.0;
+        let tilt_low_gain = (1.0 + tilt_bipolar * 0.5).max(0.0);
+        let tilt_high_gain = (1.0 - tilt_bipolar * 0.5).max(0.0);
+        let tilt_cutoff = 800.0;
+        let tilt_alpha = 1.0 - (-2.0 * PI * tilt_cutoff / sr).exp();
+
+        let noise_cutoff = 200.0 + noise_color * 12000.0;
+        let noise_alpha = 1.0 - (-2.0 * PI * noise_cutoff / sr).exp();
+        let noise_decay_sec = 0.02 + noise_decay * 2.0;
+        let noise_decay_factor = (-1.0 / (noise_decay_sec * sr)).exp();
+        let post_gain_lin = post_gain * 2.0;
+
+        let mut noise_env =
+            f32::from_bits(track.texture_noise_env.load(Ordering::Relaxed));
+        let mut noise_rng = track.texture_noise_rng.load(Ordering::Relaxed);
+        let mut crush_phase = track.texture_crush_phase.load(Ordering::Relaxed);
+
+        let channel_count = track_output.len().min(2);
+        let mut noise_lp = [0.0f32; 2];
+        let mut tilt_lp = [0.0f32; 2];
+        let mut crush_hold = [0.0f32; 2];
+        for idx in 0..channel_count {
+            noise_lp[idx] =
+                f32::from_bits(track.texture_noise_lp[idx].load(Ordering::Relaxed));
+            tilt_lp[idx] = f32::from_bits(track.texture_tilt_lp[idx].load(Ordering::Relaxed));
+            crush_hold[idx] =
+                f32::from_bits(track.texture_crush_hold[idx].load(Ordering::Relaxed));
+        }
+
+        for sample_idx in 0..num_buffer_samples {
+            let mut abs_in = 0.0f32;
+            if gate {
+                for channel_idx in 0..channel_count {
+                    let input = track_output[channel_idx][sample_idx].abs();
+                    if input > abs_in {
+                        abs_in = input;
+                    }
+                }
+                if abs_in > 0.01 {
+                    noise_env = 1.0;
+                } else {
+                    noise_env *= noise_decay_factor;
+                }
+            } else {
+                noise_env = 1.0;
+            }
+
+            noise_rng = noise_rng
+                .wrapping_mul(1664525)
+                .wrapping_add(1013904223);
+            let noise_sample = (noise_rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
+
+            let mut crush_update = false;
+            if crush > 0.0 {
+                crush_phase = crush_phase.wrapping_add(1);
+                crush_update = crush_phase % 2 == 0;
+            }
+
+            for channel_idx in 0..channel_count {
+                let input = track_output[channel_idx][sample_idx];
+                noise_lp[channel_idx] += (noise_sample - noise_lp[channel_idx]) * noise_alpha;
+                let mut sample = input * drive_gain;
+                sample = sample.tanh();
+                let comp_amount = compress * 4.0;
+                if comp_amount > 0.0 {
+                    sample = sample / (1.0 + comp_amount * sample.abs());
+                }
+                if crush > 0.0 {
+                    if crush_update {
+                        crush_hold[channel_idx] = sample;
+                    }
+                    sample = (crush_hold[channel_idx] / crush_step).round() * crush_step;
+                }
+                tilt_lp[channel_idx] += (sample - tilt_lp[channel_idx]) * tilt_alpha;
+                let low = tilt_lp[channel_idx];
+                let high = sample - low;
+                let tilted = low * tilt_low_gain + high * tilt_high_gain;
+                let noisy = tilted + noise_lp[channel_idx] * noise * noise_env;
+                let wet_sample = noisy * post_gain_lin;
+                track_output[channel_idx][sample_idx] =
+                    input * (1.0 - wet) + wet_sample * wet;
+            }
+        }
+
+        for channel_idx in 0..channel_count {
+            track
+                .texture_noise_lp[channel_idx]
+                .store(noise_lp[channel_idx].to_bits(), Ordering::Relaxed);
+            track
+                .texture_tilt_lp[channel_idx]
+                .store(tilt_lp[channel_idx].to_bits(), Ordering::Relaxed);
+            track
+                .texture_crush_hold[channel_idx]
+                .store(crush_hold[channel_idx].to_bits(), Ordering::Relaxed);
+        }
+
+        track
+            .texture_noise_env
+            .store(noise_env.to_bits(), Ordering::Relaxed);
+        track.texture_noise_rng.store(noise_rng, Ordering::Relaxed);
+        track.texture_crush_phase.store(crush_phase, Ordering::Relaxed);
+    }
+
+    fn process_track_reflect(
+        track: &Track,
+        track_output: &mut [Vec<f32>],
+        num_buffer_samples: usize,
+        tempo: f32,
+    ) {
+        if !track.reflect_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        if num_buffer_samples == 0 || track_output.is_empty() {
+            return;
+        }
+
+        let sr = track.sample_rate.load(Ordering::Relaxed).max(1) as f32;
+        let channel_count = track_output.len().min(2);
+
+        let target_delay =
+            f32::from_bits(track.reflect_delay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_time =
+            f32::from_bits(track.reflect_time.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let time_mode = track.reflect_time_mode.load(Ordering::Relaxed);
+        let target_reverb =
+            f32::from_bits(track.reflect_reverb.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_size =
+            f32::from_bits(track.reflect_size.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_feedback =
+            f32::from_bits(track.reflect_feedback.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_spread =
+            f32::from_bits(track.reflect_spread.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_damp =
+            f32::from_bits(track.reflect_damp.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_decay =
+            f32::from_bits(track.reflect_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_post_gain =
+            f32::from_bits(track.reflect_post_gain.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+
+        let delay_mix = smooth_param(
+            f32::from_bits(track.reflect_delay_smooth.load(Ordering::Relaxed)),
+            target_delay,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+        let time_norm = if time_mode == 3 {
+            smooth_param(
+                f32::from_bits(track.reflect_time_smooth.load(Ordering::Relaxed)),
+                target_time,
+                num_buffer_samples,
+                sr,
+            )
+        } else {
+            target_time
+        }
+        .clamp(0.0, 1.0);
+        let reverb_mix = smooth_param(
+            f32::from_bits(track.reflect_reverb_smooth.load(Ordering::Relaxed)),
+            target_reverb,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+        let size = smooth_param(
+            f32::from_bits(track.reflect_size_smooth.load(Ordering::Relaxed)),
+            target_size,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+        let feedback = smooth_param(
+            f32::from_bits(track.reflect_feedback_smooth.load(Ordering::Relaxed)),
+            target_feedback,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+        let spread = smooth_param(
+            f32::from_bits(track.reflect_spread_smooth.load(Ordering::Relaxed)),
+            target_spread,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+        let damp = smooth_param(
+            f32::from_bits(track.reflect_damp_smooth.load(Ordering::Relaxed)),
+            target_damp,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+        let decay = smooth_param(
+            f32::from_bits(track.reflect_decay_smooth.load(Ordering::Relaxed)),
+            target_decay,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+        let post_gain = smooth_param(
+            f32::from_bits(track.reflect_post_gain_smooth.load(Ordering::Relaxed)),
+            target_post_gain,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
+
+        track
+            .reflect_delay_smooth
+            .store(delay_mix.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_time_smooth
+            .store(time_norm.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_reverb_smooth
+            .store(reverb_mix.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_size_smooth
+            .store(size.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_feedback_smooth
+            .store(feedback.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_spread_smooth
+            .store(spread.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_damp_smooth
+            .store(damp.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_decay_smooth
+            .store(decay.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_post_gain_smooth
+            .store(post_gain.to_bits(), Ordering::Relaxed);
+
+        let mut delay_buffers = if let Some(buffers) = track.reflect_delay_buffer.try_lock() {
+            buffers
+        } else {
+            return;
+        };
+        let mut comb_buffers =
+            if let Some(buffers) = track.reflect_reverb_comb_buffers.try_lock() {
+                buffers
+            } else {
+                return;
+            };
+        let mut ap_buffers =
+            if let Some(buffers) = track.reflect_reverb_ap_buffers.try_lock() {
+                buffers
+            } else {
+                return;
+            };
+
+        if track.reflect_clear.swap(false, Ordering::Relaxed) {
+            for channel in delay_buffers.iter_mut() {
+                channel.fill(0.0);
+            }
+            for channel in comb_buffers.iter_mut() {
+                for comb in channel.iter_mut() {
+                    comb.fill(0.0);
+                }
+            }
+            for channel in ap_buffers.iter_mut() {
+                for ap in channel.iter_mut() {
+                    ap.fill(0.0);
+                }
+            }
+            track.reflect_delay_write_pos.store(0, Ordering::Relaxed);
+            for idx in 0..track.reflect_reverb_comb_pos.len() {
+                track.reflect_reverb_comb_pos[idx].store(0, Ordering::Relaxed);
+            }
+            for idx in 0..track.reflect_reverb_ap_pos.len() {
+                track.reflect_reverb_ap_pos[idx].store(0, Ordering::Relaxed);
+            }
+            for channel in 0..2 {
+                track
+                    .reflect_damp_state_delay[channel]
+                    .store(0.0f32.to_bits(), Ordering::Relaxed);
+                track
+                    .reflect_damp_state_reverb[channel]
+                    .store(0.0f32.to_bits(), Ordering::Relaxed);
+            }
+        }
+
+        let delay_len = delay_buffers[0].len();
+        if delay_len < 2 {
+            return;
+        }
+
+        let delay_seconds = reflect_time_seconds(time_norm, time_mode, tempo);
+        let mut delay_samples = (delay_seconds * sr).round() as usize;
+        delay_samples = delay_samples.clamp(1, delay_len.saturating_sub(1));
+
+        let size_scale =
+            REFLECT_REVERB_MIN_SCALE + size * (REFLECT_REVERB_MAX_SCALE - REFLECT_REVERB_MIN_SCALE);
+        let mut comb_lens = [0usize; 4];
+        for i in 0..4 {
+            let len = (REFLECT_REVERB_COMB_BASE[i] as f32 * (sr / 44_100.0) * size_scale)
+                .round() as usize;
+            let max_len = comb_buffers[0][i].len().saturating_sub(1).max(1);
+            comb_lens[i] = len.clamp(1, max_len);
+        }
+        let mut ap_lens = [0usize; 2];
+        for i in 0..2 {
+            let len = (REFLECT_REVERB_AP_BASE[i] as f32 * (sr / 44_100.0) * size_scale)
+                .round() as usize;
+            let max_len = ap_buffers[0][i].len().saturating_sub(1).max(1);
+            ap_lens[i] = len.clamp(1, max_len);
+        }
+
+        let damp_cutoff = 200.0 + (1.0 - damp) * 12_000.0;
+        let damp_alpha = 1.0 - (-2.0 * PI * damp_cutoff / sr).exp();
+
+        let feedback_curve = feedback.powf(1.4);
+        let decay_curve = decay.powf(1.4);
+        let mut feedback_amt = (feedback_curve * 0.98).clamp(0.0, 0.98);
+        let mut decay_amt = (decay_curve * 0.98).clamp(0.0, 0.98);
+        let freeze = track.reflect_freeze.load(Ordering::Relaxed);
+        if freeze {
+            feedback_amt = 0.995;
+            decay_amt = 0.995;
+        }
+        let comb_feedback = 0.2 + decay_amt * 0.78;
+        let wet_mix = (delay_mix + reverb_mix).clamp(0.0, 1.0);
+        let dry_mix = 1.0 - wet_mix;
+        let post_gain_lin = post_gain * 2.0;
+
+        let mut write_pos =
+            (track.reflect_delay_write_pos.load(Ordering::Relaxed) as usize) % delay_len;
+        let mut comb_pos = [[0usize; 4]; 2];
+        let mut ap_pos = [[0usize; 2]; 2];
+        for ch in 0..2 {
+            for i in 0..4 {
+                let idx = ch * 4 + i;
+                comb_pos[ch][i] =
+                    (track.reflect_reverb_comb_pos[idx].load(Ordering::Relaxed) as usize)
+                        % comb_lens[i];
+            }
+            for i in 0..2 {
+                let idx = ch * 2 + i;
+                ap_pos[ch][i] =
+                    (track.reflect_reverb_ap_pos[idx].load(Ordering::Relaxed) as usize)
+                        % ap_lens[i];
+            }
+        }
+
+        let mut damp_delay = [0.0f32; 2];
+        let mut damp_reverb = [0.0f32; 2];
+        for ch in 0..2 {
+            damp_delay[ch] =
+                f32::from_bits(track.reflect_damp_state_delay[ch].load(Ordering::Relaxed));
+            damp_reverb[ch] =
+                f32::from_bits(track.reflect_damp_state_reverb[ch].load(Ordering::Relaxed));
+        }
+
+        for sample_idx in 0..num_buffer_samples {
+            let read_pos = if write_pos >= delay_samples {
+                write_pos - delay_samples
+            } else {
+                delay_len + write_pos - delay_samples
+            };
+
+            let mut delay_wet = [0.0f32; 2];
+            let mut reverb_wet = [0.0f32; 2];
+            for ch in 0..channel_count {
+                let input = track_output[ch][sample_idx];
+                let delay_out = delay_buffers[ch][read_pos];
+                let fb = delay_out * feedback_amt;
+                damp_delay[ch] += (fb - damp_delay[ch]) * damp_alpha;
+                let delay_in = if freeze {
+                    damp_delay[ch]
+                } else {
+                    input + damp_delay[ch]
+                };
+                delay_buffers[ch][write_pos] = delay_in;
+
+                let reverb_in = input + delay_out * delay_mix;
+                let mut comb_sum = 0.0f32;
+                for i in 0..4 {
+                    let pos = comb_pos[ch][i];
+                    let buf = &mut comb_buffers[ch][i];
+                    let comb_out = buf[pos];
+                    let comb_fb = comb_out * comb_feedback;
+                    damp_reverb[ch] += (comb_fb - damp_reverb[ch]) * damp_alpha;
+                    let comb_in = if freeze {
+                        damp_reverb[ch]
+                    } else {
+                        reverb_in + damp_reverb[ch]
+                    };
+                    buf[pos] = comb_in;
+                    comb_sum += comb_out;
+                    comb_pos[ch][i] = (pos + 1) % comb_lens[i];
+                }
+
+                let mut ap_signal = comb_sum * 0.25;
+                for i in 0..2 {
+                    let pos = ap_pos[ch][i];
+                    let buf = &mut ap_buffers[ch][i];
+                    let ap_out = buf[pos];
+                    let ap_feedback = 0.7;
+                    let ap_in = ap_signal + (-ap_feedback) * ap_out;
+                    let ap_res = ap_out + ap_feedback * ap_in;
+                    buf[pos] = ap_in;
+                    ap_signal = ap_res;
+                    ap_pos[ch][i] = (pos + 1) % ap_lens[i];
+                }
+
+                delay_wet[ch] = delay_out * delay_mix;
+                reverb_wet[ch] = ap_signal * reverb_mix;
+            }
+
+            let total_mix = delay_mix + reverb_mix;
+            let wet_scale = if total_mix > 1.0 {
+                1.0 / total_mix
+            } else {
+                1.0
+            };
+            for ch in 0..channel_count {
+                delay_wet[ch] *= wet_scale;
+                reverb_wet[ch] *= wet_scale;
+            }
+
+            if channel_count == 2 {
+                if spread <= 0.5 {
+                    let pingpong = spread / 0.5;
+                    let dl = delay_wet[0];
+                    let dr = delay_wet[1];
+                    delay_wet[0] = dl * (1.0 - pingpong) + dr * pingpong;
+                    delay_wet[1] = dr * (1.0 - pingpong) + dl * pingpong;
+                } else {
+                    let diffusion = (spread - 0.5) / 0.5;
+                    let mid = (reverb_wet[0] + reverb_wet[1]) * 0.5;
+                    let side = (reverb_wet[0] - reverb_wet[1]) * 0.5;
+                    let spread_gain = 1.0 + diffusion;
+                    reverb_wet[0] = mid + side * spread_gain;
+                    reverb_wet[1] = mid - side * spread_gain;
+                }
+            }
+
+            for ch in 0..channel_count {
+                let input = track_output[ch][sample_idx];
+                let wet = delay_wet[ch] + reverb_wet[ch];
+                track_output[ch][sample_idx] =
+                    (input * dry_mix + wet) * post_gain_lin;
+            }
+
+            write_pos += 1;
+            if write_pos >= delay_len {
+                write_pos = 0;
+            }
+        }
+
+        track
+            .reflect_delay_write_pos
+            .store(write_pos as u32, Ordering::Relaxed);
+        for ch in 0..2 {
+            track
+                .reflect_damp_state_delay[ch]
+                .store(damp_delay[ch].to_bits(), Ordering::Relaxed);
+            track
+                .reflect_damp_state_reverb[ch]
+                .store(damp_reverb[ch].to_bits(), Ordering::Relaxed);
+            for i in 0..4 {
+                let idx = ch * 4 + i;
+                track.reflect_reverb_comb_pos[idx]
+                    .store(comb_pos[ch][i] as u32, Ordering::Relaxed);
+            }
+            for i in 0..2 {
+                let idx = ch * 2 + i;
+                track.reflect_reverb_ap_pos[idx]
+                    .store(ap_pos[ch][i] as u32, Ordering::Relaxed);
+            }
+        }
     }
 }
 
@@ -5438,6 +6406,53 @@ impl Plugin for TLBX1 {
                     master_sr,
                     transport_running,
                 );
+                let mosaic_active =
+                    track.granular_type.load(Ordering::Relaxed) == 1
+                        && track.mosaic_enabled.load(Ordering::Relaxed);
+                if mosaic_active {
+                    if let Some(mut mosaic) = track.mosaic_buffer.try_lock() {
+                        if !mosaic.is_empty() && !mosaic[0].is_empty() {
+                            let sr = master_sr.max(1.0) as usize;
+                            let mosaic_len = (sr * MOSAIC_BUFFER_SECONDS)
+                                .min(MOSAIC_BUFFER_SAMPLES)
+                                .max(1);
+                            let mut mosaic_write_pos =
+                                (track.mosaic_write_pos.load(Ordering::Relaxed) as usize)
+                                    % mosaic_len;
+                            let target_mosaic_sos = f32::from_bits(
+                                track.mosaic_sos.load(Ordering::Relaxed),
+                            )
+                            .clamp(0.0, 1.0);
+                            let smooth_mosaic_sos = smooth_param(
+                                f32::from_bits(
+                                    track.mosaic_sos_smooth.load(Ordering::Relaxed),
+                                ),
+                                target_mosaic_sos,
+                                buffer.samples(),
+                                master_sr,
+                            );
+                            track
+                                .mosaic_sos_smooth
+                                .store(smooth_mosaic_sos.to_bits(), Ordering::Relaxed);
+                            let num_buffer_samples = buffer.samples();
+                            let num_channels = self.track_buffer.len().min(mosaic.len());
+                            for sample_idx in 0..num_buffer_samples {
+                                for channel_idx in 0..num_channels {
+                                    let out_value =
+                                        self.track_buffer[channel_idx][sample_idx];
+                                    let existing = mosaic[channel_idx][mosaic_write_pos];
+                                    mosaic[channel_idx][mosaic_write_pos] =
+                                        out_value * (1.0 - smooth_mosaic_sos)
+                                            + existing * smooth_mosaic_sos;
+                                }
+                                mosaic_write_pos = (mosaic_write_pos + 1) % mosaic_len;
+                            }
+                            track
+                                .mosaic_write_pos
+                                .store(mosaic_write_pos as u32, Ordering::Relaxed);
+                        }
+                    }
+                }
             } else if engine_type == 4 {
                 Self::process_voidseed(
                     track,
@@ -6088,6 +7103,13 @@ impl Plugin for TLBX1 {
                 samples_per_step,
                 master_sr,
             );
+            Self::process_track_texture(track, &mut self.track_buffer, buffer.samples());
+            Self::process_track_reflect(
+                track,
+                &mut self.track_buffer,
+                buffer.samples(),
+                global_tempo,
+            );
 
             let mix_gain = if track_muted && engine_type != 1 { 0.0 } else { 1.0 };
             // Sum track buffer to master output and calculate final peaks
@@ -6715,6 +7737,54 @@ fn smooth_param(current: f32, target: f32, num_samples: usize, sample_rate: f32)
     next
 }
 
+fn reflect_comb_max_len(base: usize) -> usize {
+    ((base as f32)
+        * (REFLECT_MAX_SAMPLE_RATE as f32 / 44_100.0)
+        * REFLECT_REVERB_MAX_SCALE)
+        .ceil() as usize
+        + 1
+}
+
+fn reflect_ap_max_len(base: usize) -> usize {
+    ((base as f32)
+        * (REFLECT_MAX_SAMPLE_RATE as f32 / 44_100.0)
+        * REFLECT_REVERB_MAX_SCALE)
+        .ceil() as usize
+        + 1
+}
+
+fn reflect_time_seconds(time_norm: f32, mode: u32, tempo: f32) -> f32 {
+    let time_norm = time_norm.clamp(0.0, 1.0);
+    if mode == 3 {
+        let min_sec = 0.0027;
+        let max_sec = REFLECT_MAX_DELAY_SECONDS;
+        return min_sec + (max_sec - min_sec) * time_norm;
+    }
+
+    let base_divisions = [
+        4.0,
+        2.0,
+        1.0,
+        0.5,
+        0.25,
+        0.125,
+        0.0625,
+        0.03125,
+        0.015625,
+    ];
+    let idx = ((base_divisions.len() - 1) as f32 * time_norm)
+        .round()
+        .clamp(0.0, (base_divisions.len() - 1) as f32) as usize;
+    let mut bars = base_divisions[idx];
+    match mode {
+        1 => bars *= 1.5,       // dotted
+        2 => bars *= 2.0 / 3.0, // triplet
+        _ => {}
+    }
+    let seconds_per_bar = (60.0 / tempo.clamp(20.0, 300.0)) * 4.0;
+    (bars * seconds_per_bar).max(0.001)
+}
+
 fn ring_rate_hz(rate_norm: f32, mode: u32, tempo: f32) -> f32 {
     let rate_norm = rate_norm.clamp(0.0, 1.0);
     if mode == 0 {
@@ -7184,6 +8254,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("mosaic_spray".to_string(), f(&track.mosaic_spray));
     params.insert("mosaic_pattern".to_string(), f(&track.mosaic_pattern));
     params.insert("mosaic_wet".to_string(), f(&track.mosaic_wet));
+    params.insert("mosaic_post_gain".to_string(), f(&track.mosaic_post_gain));
     params.insert("mosaic_spatial".to_string(), f(&track.mosaic_spatial));
     params.insert("mosaic_detune".to_string(), f(&track.mosaic_detune));
     params.insert("mosaic_rand_rate".to_string(), f(&track.mosaic_rand_rate));
@@ -7215,6 +8286,38 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     for i in 0..32 {
         params.insert(format!("g8_step_{}", i), f(&track.g8_steps[i]));
     }
+    params.insert("texture_enabled".to_string(), b(&track.texture_enabled));
+    params.insert("texture_gate".to_string(), b(&track.texture_gate));
+    params.insert("texture_drive".to_string(), f(&track.texture_drive));
+    params.insert("texture_compress".to_string(), f(&track.texture_compress));
+    params.insert("texture_crush".to_string(), f(&track.texture_crush));
+    params.insert("texture_tilt".to_string(), f(&track.texture_tilt));
+    params.insert("texture_noise".to_string(), f(&track.texture_noise));
+    params.insert(
+        "texture_noise_decay".to_string(),
+        f(&track.texture_noise_decay),
+    );
+    params.insert(
+        "texture_noise_color".to_string(),
+        f(&track.texture_noise_color),
+    );
+    params.insert("texture_wet".to_string(), f(&track.texture_wet));
+    params.insert("texture_post_gain".to_string(), f(&track.texture_post_gain));
+    params.insert("reflect_enabled".to_string(), b(&track.reflect_enabled));
+    params.insert("reflect_freeze".to_string(), b(&track.reflect_freeze));
+    params.insert("reflect_delay".to_string(), f(&track.reflect_delay));
+    params.insert("reflect_time".to_string(), f(&track.reflect_time));
+    params.insert("reflect_time_mode".to_string(), u(&track.reflect_time_mode));
+    params.insert("reflect_reverb".to_string(), f(&track.reflect_reverb));
+    params.insert("reflect_size".to_string(), f(&track.reflect_size));
+    params.insert("reflect_feedback".to_string(), f(&track.reflect_feedback));
+    params.insert("reflect_spread".to_string(), f(&track.reflect_spread));
+    params.insert("reflect_damp".to_string(), f(&track.reflect_damp));
+    params.insert("reflect_decay".to_string(), f(&track.reflect_decay));
+    params.insert(
+        "reflect_post_gain".to_string(),
+        f(&track.reflect_post_gain),
+    );
 
     for i in 0..4 {
         params.insert(format!("animate_slot_type_{}", i), u(&track.animate_slot_types[i]));
@@ -7405,6 +8508,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.mosaic_spray, "mosaic_spray");
     sf(&track.mosaic_pattern, "mosaic_pattern");
     sf(&track.mosaic_wet, "mosaic_wet");
+    sf(&track.mosaic_post_gain, "mosaic_post_gain");
     sf(&track.mosaic_spatial, "mosaic_spatial");
     sf(&track.mosaic_detune, "mosaic_detune");
     sf(&track.mosaic_rand_rate, "mosaic_rand_rate");
@@ -7412,6 +8516,10 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.mosaic_sos, "mosaic_sos");
     sb(&track.mosaic_enabled, "mosaic_enabled");
     sb(&track.mosaic_loop_lock, "mosaic_loop_lock");
+    track.mosaic_post_gain_smooth.store(
+        track.mosaic_post_gain.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
     sf(&track.ring_cutoff, "ring_cutoff");
     sf(&track.ring_resonance, "ring_resonance");
     sf(&track.ring_decay, "ring_decay");
@@ -7431,6 +8539,148 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su(&track.ring_scale, "ring_scale");
     sb(&track.ring_pre_post, "ring_pre_post");
     sb(&track.ring_enabled, "ring_enabled");
+    track.texture_enabled.store(false, Ordering::Relaxed);
+    track.texture_gate.store(false, Ordering::Relaxed);
+    track.texture_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_drive_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_compress
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_compress_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_crush.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_crush_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_tilt.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_tilt_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.texture_noise.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_decay
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_decay_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_color
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_color_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.texture_wet.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_wet_smooth
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_noise_env
+        .store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.texture_noise_rng.store(0x2468_1357, Ordering::Relaxed);
+    track.texture_crush_phase.store(0, Ordering::Relaxed);
+    for channel in 0..2 {
+        track
+            .texture_noise_lp[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .texture_tilt_lp[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .texture_crush_hold[channel]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+    }
+    sb(&track.texture_enabled, "texture_enabled");
+    sb(&track.texture_gate, "texture_gate");
+    sf(&track.texture_drive, "texture_drive");
+    sf(&track.texture_compress, "texture_compress");
+    sf(&track.texture_crush, "texture_crush");
+    sf(&track.texture_tilt, "texture_tilt");
+    sf(&track.texture_noise, "texture_noise");
+    sf(&track.texture_noise_decay, "texture_noise_decay");
+    sf(&track.texture_noise_color, "texture_noise_color");
+    sf(&track.texture_wet, "texture_wet");
+    sf(&track.texture_post_gain, "texture_post_gain");
+    sb(&track.reflect_enabled, "reflect_enabled");
+    sb(&track.reflect_freeze, "reflect_freeze");
+    sf(&track.reflect_delay, "reflect_delay");
+    sf(&track.reflect_time, "reflect_time");
+    su(&track.reflect_time_mode, "reflect_time_mode");
+    sf(&track.reflect_reverb, "reflect_reverb");
+    sf(&track.reflect_size, "reflect_size");
+    sf(&track.reflect_feedback, "reflect_feedback");
+    sf(&track.reflect_spread, "reflect_spread");
+    sf(&track.reflect_damp, "reflect_damp");
+    sf(&track.reflect_decay, "reflect_decay");
+    sf(&track.reflect_post_gain, "reflect_post_gain");
+    track
+        .reflect_delay_smooth
+        .store(track.reflect_delay.load(Ordering::Relaxed), Ordering::Relaxed);
+    track
+        .reflect_time_smooth
+        .store(track.reflect_time.load(Ordering::Relaxed), Ordering::Relaxed);
+    track
+        .reflect_reverb_smooth
+        .store(track.reflect_reverb.load(Ordering::Relaxed), Ordering::Relaxed);
+    track
+        .reflect_size_smooth
+        .store(track.reflect_size.load(Ordering::Relaxed), Ordering::Relaxed);
+    track
+        .reflect_feedback_smooth
+        .store(track.reflect_feedback.load(Ordering::Relaxed), Ordering::Relaxed);
+    track
+        .reflect_spread_smooth
+        .store(track.reflect_spread.load(Ordering::Relaxed), Ordering::Relaxed);
+    track
+        .reflect_damp_smooth
+        .store(track.reflect_damp.load(Ordering::Relaxed), Ordering::Relaxed);
+    track
+        .reflect_decay_smooth
+        .store(track.reflect_decay.load(Ordering::Relaxed), Ordering::Relaxed);
+    track
+        .reflect_post_gain_smooth
+        .store(track.reflect_post_gain.load(Ordering::Relaxed), Ordering::Relaxed);
+    track.texture_drive_smooth.store(
+        track.texture_drive.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_compress_smooth.store(
+        track.texture_compress.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_crush_smooth.store(
+        track.texture_crush.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_tilt_smooth.store(
+        track.texture_tilt.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_noise_smooth.store(
+        track.texture_noise.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_noise_decay_smooth.store(
+        track.texture_noise_decay.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_noise_color_smooth.store(
+        track.texture_noise_color.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_wet_smooth.store(
+        track.texture_wet.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_post_gain_smooth.store(
+        track.texture_post_gain.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
     track.g8_enabled.store(false, Ordering::Relaxed);
     track.g8_rate_index.store(0, Ordering::Relaxed);
     for step in track.g8_steps.iter() {
@@ -8318,6 +9568,8 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].mosaic_pattern.load(Ordering::Relaxed));
         let mosaic_wet =
             f32::from_bits(self.tracks[track_idx].mosaic_wet.load(Ordering::Relaxed));
+        let mosaic_post_gain =
+            f32::from_bits(self.tracks[track_idx].mosaic_post_gain.load(Ordering::Relaxed));
         let mosaic_spatial =
             f32::from_bits(self.tracks[track_idx].mosaic_spatial.load(Ordering::Relaxed));
         let mosaic_detune =
@@ -8391,6 +9643,48 @@ impl SlintWindow {
         let ring_scale =
             self.tracks[track_idx].ring_scale.load(Ordering::Relaxed);
         let ring_pre_post = self.tracks[track_idx].ring_pre_post.load(Ordering::Relaxed);
+        let texture_enabled = self.tracks[track_idx].texture_enabled.load(Ordering::Relaxed);
+        let texture_gate = self.tracks[track_idx].texture_gate.load(Ordering::Relaxed);
+        let texture_drive =
+            f32::from_bits(self.tracks[track_idx].texture_drive.load(Ordering::Relaxed));
+        let texture_compress =
+            f32::from_bits(self.tracks[track_idx].texture_compress.load(Ordering::Relaxed));
+        let texture_crush =
+            f32::from_bits(self.tracks[track_idx].texture_crush.load(Ordering::Relaxed));
+        let texture_tilt =
+            f32::from_bits(self.tracks[track_idx].texture_tilt.load(Ordering::Relaxed));
+        let texture_noise =
+            f32::from_bits(self.tracks[track_idx].texture_noise.load(Ordering::Relaxed));
+        let texture_noise_decay =
+            f32::from_bits(self.tracks[track_idx].texture_noise_decay.load(Ordering::Relaxed));
+        let texture_noise_color =
+            f32::from_bits(self.tracks[track_idx].texture_noise_color.load(Ordering::Relaxed));
+        let texture_wet =
+            f32::from_bits(self.tracks[track_idx].texture_wet.load(Ordering::Relaxed));
+        let texture_post_gain =
+            f32::from_bits(self.tracks[track_idx].texture_post_gain.load(Ordering::Relaxed));
+        let reflect_enabled = self.tracks[track_idx].reflect_enabled.load(Ordering::Relaxed);
+        let reflect_freeze = self.tracks[track_idx].reflect_freeze.load(Ordering::Relaxed);
+        let reflect_delay =
+            f32::from_bits(self.tracks[track_idx].reflect_delay.load(Ordering::Relaxed));
+        let reflect_time =
+            f32::from_bits(self.tracks[track_idx].reflect_time.load(Ordering::Relaxed));
+        let reflect_time_mode =
+            self.tracks[track_idx].reflect_time_mode.load(Ordering::Relaxed);
+        let reflect_reverb =
+            f32::from_bits(self.tracks[track_idx].reflect_reverb.load(Ordering::Relaxed));
+        let reflect_size =
+            f32::from_bits(self.tracks[track_idx].reflect_size.load(Ordering::Relaxed));
+        let reflect_feedback =
+            f32::from_bits(self.tracks[track_idx].reflect_feedback.load(Ordering::Relaxed));
+        let reflect_spread =
+            f32::from_bits(self.tracks[track_idx].reflect_spread.load(Ordering::Relaxed));
+        let reflect_damp =
+            f32::from_bits(self.tracks[track_idx].reflect_damp.load(Ordering::Relaxed));
+        let reflect_decay =
+            f32::from_bits(self.tracks[track_idx].reflect_decay.load(Ordering::Relaxed));
+        let reflect_post_gain =
+            f32::from_bits(self.tracks[track_idx].reflect_post_gain.load(Ordering::Relaxed));
         let loop_start =
             f32::from_bits(self.tracks[track_idx].loop_start.load(Ordering::Relaxed));
         let trigger_start =
@@ -8937,6 +10231,7 @@ impl SlintWindow {
         self.ui.set_mosaic_spray(mosaic_spray);
         self.ui.set_mosaic_pattern(mosaic_pattern);
         self.ui.set_mosaic_wet(mosaic_wet);
+        self.ui.set_mosaic_post_gain(mosaic_post_gain);
         self.ui.set_mosaic_spatial(mosaic_spatial);
         self.ui.set_mosaic_detune(mosaic_detune);
         self.ui.set_mosaic_rand_rate(mosaic_rand_rate);
@@ -8962,6 +10257,29 @@ impl SlintWindow {
         self.ui.set_ring_noise_rate_mode(ring_noise_rate_mode as i32);
         self.ui.set_ring_scale(ring_scale as i32);
         self.ui.set_ring_pre_post(ring_pre_post);
+        self.ui.set_texture_enabled(texture_enabled);
+        self.ui.set_texture_gate(texture_gate);
+        self.ui.set_texture_drive(texture_drive);
+        self.ui.set_texture_compress(texture_compress);
+        self.ui.set_texture_crush(texture_crush);
+        self.ui.set_texture_tilt(texture_tilt);
+        self.ui.set_texture_noise(texture_noise);
+        self.ui.set_texture_noise_decay(texture_noise_decay);
+        self.ui.set_texture_noise_color(texture_noise_color);
+        self.ui.set_texture_wet(texture_wet);
+        self.ui.set_texture_post_gain(texture_post_gain);
+        self.ui.set_reflect_enabled(reflect_enabled);
+        self.ui.set_reflect_freeze(reflect_freeze);
+        self.ui.set_reflect_delay(reflect_delay);
+        self.ui.set_reflect_time(reflect_time);
+        self.ui.set_reflect_time_mode(reflect_time_mode as i32);
+        self.ui.set_reflect_reverb(reflect_reverb);
+        self.ui.set_reflect_size(reflect_size);
+        self.ui.set_reflect_feedback(reflect_feedback);
+        self.ui.set_reflect_spread(reflect_spread);
+        self.ui.set_reflect_damp(reflect_damp);
+        self.ui.set_reflect_decay(reflect_decay);
+        self.ui.set_reflect_post_gain(reflect_post_gain);
         self.ui.set_loop_start(loop_start);
         self.ui.set_trigger_start(trigger_start);
         self.ui.set_loop_length(loop_length);
@@ -10569,6 +11887,17 @@ fn initialize_ui(
 
     let tracks_mosaic = Arc::clone(tracks);
     let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_post_gain_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_post_gain
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
     ui.on_mosaic_spatial_changed(move |value| {
         let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -10825,6 +12154,274 @@ fn initialize_ui(
             tracks_ring[track_idx]
                 .ring_pre_post
                 .store(!pre_post, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_toggle_texture_enabled(move || {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let enabled = tracks_texture[track_idx].texture_enabled.load(Ordering::Relaxed);
+            tracks_texture[track_idx]
+                .texture_enabled
+                .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_toggle_texture_gate(move || {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let enabled = tracks_texture[track_idx].texture_gate.load(Ordering::Relaxed);
+            tracks_texture[track_idx]
+                .texture_gate
+                .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_drive_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_drive
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_compress_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_compress
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_crush_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_crush
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_tilt_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_tilt
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_noise_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_noise
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_noise_decay_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_noise_decay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_noise_color_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_noise_color
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_wet_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_wet
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_post_gain_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_post_gain
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_toggle_reflect_enabled(move || {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let enabled = tracks_reflect[track_idx].reflect_enabled.load(Ordering::Relaxed);
+            tracks_reflect[track_idx]
+                .reflect_enabled
+                .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_toggle_reflect_freeze(move || {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let freeze = tracks_reflect[track_idx].reflect_freeze.load(Ordering::Relaxed);
+            tracks_reflect[track_idx]
+                .reflect_freeze
+                .store(!freeze, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_clear(move || {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_clear
+                .store(true, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_delay_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_delay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_time_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_time
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_time_mode_selected(move |index| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_time_mode
+                .store(index.max(0) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_reverb_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_reverb
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_size_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_size
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_feedback_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_feedback
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_spread_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_spread
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_damp_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_damp
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_decay_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_decay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_post_gain_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_post_gain
+                .store(value.to_bits(), Ordering::Relaxed);
         }
     });
 

@@ -138,11 +138,15 @@ Packaging expects these environment variables:
 - `src/ui/devices/granulator_device.slint` contains the Mosaic/Granulator device UI component
 - `src/ui/devices/silk_device.slint` contains the Ring/Silk device UI component
 - `src/ui/devices/g8_device.slint` contains the G8 trance gate device UI component
+- `src/ui/devices/texture_device.slint` contains the Texture (Color/Deform) device UI component
+- `src/ui/devices/reflect_device.slint` contains the Reflect (Vast/Space) device UI component
 - `src/ui/globals.slint` contains shared UI globals (e.g., keybed bus)
 - `src/ui/components/viz.slint` contains visualizer and meter components
 - `src/ui/components/` contains shared controls (RDS Slint UI Component Kit)
 - `docs/` contains Markdown developer docs
 - `docs-site/` contains the Docusaurus documentation site
+
+Vendored `ffmpeg-next` and `ffmpeg-sys-next` warnings are suppressed in their crate roots to keep build output readable. Remove those `#![allow(warnings)]` attributes to restore the warnings.
 
 ## UI Component Kit
 

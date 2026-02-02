@@ -23,7 +23,7 @@
 
 ### Engine 1: Tape-Deck
 
-#### Phase 1: Material Device (Tape)
+#### Phase 1: Material Device (Tape / Tape-Deck)
 
 - [x] Loop controls (start/length/x-fade + loop enable)
 - [x] Implement tape device parameters: speed, tempo, start, length, rotate, x-fade
@@ -40,18 +40,18 @@
 
 #### Phase 3: Filter Device (Ring / Silk)
 
-- [ ] Implement resonator/filter bank core controls
-- [ ] Add animation (waves/noise/tilt/detune) and pre/post mode
+- [x] Implement resonator/filter bank core controls
+- [x] Add animation (waves/noise/tilt/detune) and pre/post mode
 
-#### Phase 4: Color Device (Deform)
+#### Phase 4: Color Device (Deform / Texture)
 
-- [ ] Implement drive/compress/crush/tilt/noise chain
-- [ ] Add noise gate and wet/dry control
+- [x] Implement drive/compress/crush/tilt/noise chain
+- [x] Add noise gate and wet/dry control
 
-#### Phase 5: Space Device (Vast)
+#### Phase 5: Space Device (Vast / Reflect)
 
-- [ ] Implement delay + reverb chain
-- [ ] Add clear/freeze actions
+- [x] Implement delay + reverb chain
+- [x] Add clear/freeze actions
 
 #### Phase 6: Modulation
 

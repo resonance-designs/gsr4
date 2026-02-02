@@ -173,15 +173,27 @@ Description: A compact grid cell suitable for step sequencers.
 Public members:
 - active: bool - Active state of the cell
 - current: bool - Whether the cell is currently being played
+- cell-width: length - Cell width
+- cell-height: length - Cell height
+- cell-text: string - Optional text label inside the cell
+- cell-text-color: color - Text color
+- cell-text-size: length - Text size
+- cell-text-weight: int - Text weight
 - clicked(): callback - Triggered when the cell is clicked
 */
 export component RDSSequencerCell {
     in property <bool> active;
     in property <bool> current;
+    in property <length> cell-width: 20px;
+    in property <length> cell-height: 20px;
+    in property <string> cell-text: "";
+    in property <color> cell-text-color: Theme.active.text_primary;
+    in property <length> cell-text-size: 10px;
+    in property <int> cell-text-weight: 500;
     callback clicked();
 
-    width: 20px;
-    height: 20px;
+    width: root.cell-width;
+    height: root.cell-height;
 
     Rectangle {
         width: parent.width;
@@ -190,6 +202,18 @@ export component RDSSequencerCell {
         border-radius: Theme.active.radius_small;
         border-color: Theme.active.border_strong;
         border-width: 1px;
+
+        Text {
+            visible: root.cell-text != "";
+            text: root.cell-text;
+            color: root.cell-text-color;
+            font-size: root.cell-text-size;
+            font-weight: root.cell-text-weight;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            width: parent.width;
+            height: parent.height;
+        }
 
         TouchArea {
             width: parent.width;

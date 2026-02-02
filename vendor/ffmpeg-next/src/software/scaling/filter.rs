@@ -43,36 +43,36 @@ impl Filter {
         Self::get(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     }
 
-    pub fn luma_horizontal(&self) -> Vector {
+    pub fn luma_horizontal(&self) -> Vector<'_> {
         unsafe { Vector::wrap((*self.as_ptr()).lumH) }
     }
 
-    pub fn luma_horizontal_mut(&mut self) -> Vector {
+    pub fn luma_horizontal_mut(&mut self) -> Vector<'_> {
         unsafe { Vector::wrap((*self.as_mut_ptr()).lumH) }
     }
 
-    pub fn luma_vertical(&self) -> Vector {
+    pub fn luma_vertical(&self) -> Vector<'_> {
         unsafe { Vector::wrap((*self.as_ptr()).lumV) }
     }
 
-    pub fn luma_vertical_mut(&mut self) -> Vector {
+    pub fn luma_vertical_mut(&mut self) -> Vector<'_> {
         unsafe { Vector::wrap((*self.as_mut_ptr()).lumV) }
     }
 
-    pub fn chroma_horizontal(&self) -> Vector {
-        unsafe { Vector::wrap((*self.as_ptr()).lumV) }
+    pub fn chroma_horizontal(&self) -> Vector<'_> {
+        unsafe { Vector::wrap((*self.as_ptr()).chrH) }
     }
 
-    pub fn chroma_horizontal_mut(&mut self) -> Vector {
-        unsafe { Vector::wrap((*self.as_mut_ptr()).lumV) }
+    pub fn chroma_horizontal_mut(&mut self) -> Vector<'_> {
+        unsafe { Vector::wrap((*self.as_mut_ptr()).chrH) }
     }
 
-    pub fn chroma_vertical(&self) -> Vector {
-        unsafe { Vector::wrap((*self.as_ptr()).lumV) }
+    pub fn chroma_vertical(&self) -> Vector<'_> {
+        unsafe { Vector::wrap((*self.as_ptr()).chrV) }
     }
 
-    pub fn chroma_vertical_mut(&mut self) -> Vector {
-        unsafe { Vector::wrap((*self.as_mut_ptr()).lumV) }
+    pub fn chroma_vertical_mut(&mut self) -> Vector<'_> {
+        unsafe { Vector::wrap((*self.as_mut_ptr()).chrV) }
     }
 }
 

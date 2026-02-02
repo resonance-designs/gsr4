@@ -16,6 +16,7 @@ export component GranulatorDevice {
     in-out property <float> mosaic-rand-rate: 0.0;
     in-out property <float> mosaic-rand-size: 0.0;
     in-out property <float> mosaic-sos: 0.0;
+    in-out property <float> mosaic-post-gain: 0.5;
     in-out property <bool> mosaic-loop-lock: false;
 
     callback toggle-mosaic-enabled();
@@ -32,6 +33,7 @@ export component GranulatorDevice {
     callback mosaic-rand-rate-changed(value: float);
     callback mosaic-rand-size-changed(value: float);
     callback mosaic-sos-changed(value: float);
+    callback mosaic-post-gain-changed(value: float);
     callback toggle-mosaic-loop-lock();
 
     private property <[string]> rate-division-labels: [
@@ -280,6 +282,19 @@ export component GranulatorDevice {
                         label-font-weight: 500;
                         sensitivity: 0.01; scroll-sensitivity: 0.01;
                         value-changed(v) => { root.mosaic-sos = v; root.mosaic-sos-changed(v); }
+                    }
+                    // Post Gain
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.mosaic-post-gain;
+                        min-value: 0; max-value: 1;
+                        size: 70px; indicator-position: 25px;
+                        label: "Post Gain";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        label-font-weight: 500;
+                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                        value-changed(v) => { root.mosaic-post-gain = v; root.mosaic-post-gain-changed(v); }
                     }
                 }
             }

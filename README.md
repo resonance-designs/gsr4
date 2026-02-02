@@ -1,6 +1,6 @@
 # TLBX-1
 
-![Static Badge](https://img.shields.io/badge/Version-0.1.18-orange)
+![Static Badge](https://img.shields.io/badge/Version-0.1.21-orange)
 
 TLBX-1 is a 4-track audio toolbox built in Rust. It features different audio engines, one of which is inspired by the Torso S-4 workflow. It runs as a standalone app and as a plugin via nih-plug, with a Slint-based UI.
 The UI is built with Slint in combination with the [Resonance Designs Slint UI Component Kit](https://github.com/resonance-designs/rds-slint-ui-kit).
@@ -20,6 +20,8 @@ The UI is built with Slint in combination with the [Resonance Designs Slint UI C
 - Post-tape granular buffer with bypass toggle (Granulator device)
 - Post-tape filter with bypass toggle (Silk device)
 - Post-tape trance gate with bypass toggle (G8 device)
+- Post-tape Texture device with drive/compress/crush/tilt/noise + gate
+- Post-tape Reflect device with delay + reverb, time divisions, and clear/freeze
 - Experimental: Tape engine can load video files and display playback in place of the waveform (audio still drives playback).
 - Project save/load (JSON)
 - Project/library browser for samples and saved projects
@@ -109,6 +111,8 @@ Installers include the built documentation site under `documentation/` in the in
 - Mosaic enable toggles the post-tape granular buffer per track
 - Ring enable toggles the post-tape filter device per track (Silk device)
 - G8 enable toggles the post-tape trance gate device per track
+- Texture enable toggles the post-tape Texture/Deform device per track
+- Reflect enable toggles the post-tape Reflect/Vast device per track
 - Void Seed includes Moog filter + drive with PRE/POST toggle and Close Decay
 - Save/Load Project stores track paths and loop/mix state
 - Browser opens the project/library panel for quick loading and folder management
