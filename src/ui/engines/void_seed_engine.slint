@@ -44,6 +44,7 @@ export component VoidSeedEngine {
     in-out property <float> mosaic-spray: 0.0;
     in-out property <float> mosaic-pattern: 0.0;
     in-out property <float> mosaic-wet: 0.0;
+    in-out property <float> mosaic-post-gain: 0.5;
     in-out property <float> mosaic-detune: 0.0;
     in-out property <float> mosaic-spatial: 0.0;
     in-out property <float> mosaic-rand-rate: 0.0;
@@ -76,6 +77,7 @@ export component VoidSeedEngine {
     in-out property <float> texture-noise-decay: 0.0;
     in-out property <float> texture-noise-color: 0.0;
     in-out property <float> texture-wet: 1.0;
+    in-out property <float> texture-post-gain: 0.5;
     in-out property <bool> reflect-enabled: false;
     in-out property <bool> reflect-freeze: false;
     in-out property <float> reflect-delay: 0.0;
@@ -87,6 +89,7 @@ export component VoidSeedEngine {
     in-out property <float> reflect-spread: 0.0;
     in-out property <float> reflect-damp: 0.5;
     in-out property <float> reflect-decay: 0.5;
+    in-out property <float> reflect-post-gain: 0.5;
 
     in-out property <bool> g8-enabled: true;
     in-out property <int> g8-rate-index: 0;
@@ -118,6 +121,7 @@ export component VoidSeedEngine {
     callback mosaic-spray-changed(float);
     callback mosaic-pattern-changed(float);
     callback mosaic-wet-changed(float);
+    callback mosaic-post-gain-changed(float);
     callback mosaic-detune-changed(float);
     callback mosaic-spatial-changed(float);
     callback mosaic-rand-rate-changed(float);
@@ -152,6 +156,7 @@ export component VoidSeedEngine {
     callback texture-noise-decay-changed(float);
     callback texture-noise-color-changed(float);
     callback texture-wet-changed(float);
+    callback texture-post-gain-changed(float);
     callback toggle-reflect-enabled();
     callback toggle-reflect-freeze();
     callback reflect-clear();
@@ -164,6 +169,7 @@ export component VoidSeedEngine {
     callback reflect-spread-changed(float);
     callback reflect-damp-changed(float);
     callback reflect-decay-changed(float);
+    callback reflect-post-gain-changed(float);
 
     VerticalLayout {
         spacing: 12px;
@@ -450,6 +456,7 @@ export component VoidSeedEngine {
                         mosaic-spray <=> root.mosaic-spray;
                         mosaic-pattern <=> root.mosaic-pattern;
                         mosaic-wet <=> root.mosaic-wet;
+                        mosaic-post-gain <=> root.mosaic-post-gain;
                         mosaic-detune <=> root.mosaic-detune;
                         mosaic-spatial <=> root.mosaic-spatial;
                         mosaic-rand-rate <=> root.mosaic-rand-rate;
@@ -464,6 +471,7 @@ export component VoidSeedEngine {
                         mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
                         mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
                         mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                        mosaic-post-gain-changed(value) => { root.mosaic-post-gain-changed(value); }
                         mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
                         mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
                         mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
@@ -533,6 +541,7 @@ export component VoidSeedEngine {
                         texture-noise-decay <=> root.texture-noise-decay;
                         texture-noise-color <=> root.texture-noise-color;
                         texture-wet <=> root.texture-wet;
+                        texture-post-gain <=> root.texture-post-gain;
                         toggle-texture-enabled => root.toggle-texture-enabled();
                         toggle-texture-gate => root.toggle-texture-gate();
                         texture-drive-changed(value) => { root.texture-drive-changed(value); }
@@ -543,6 +552,7 @@ export component VoidSeedEngine {
                         texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                         texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                         texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                        texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                     }
                 }
                 Rectangle {
@@ -562,6 +572,7 @@ export component VoidSeedEngine {
                         reflect-spread <=> root.reflect-spread;
                         reflect-damp <=> root.reflect-damp;
                         reflect-decay <=> root.reflect-decay;
+                        reflect-post-gain <=> root.reflect-post-gain;
                         toggle-reflect-enabled => root.toggle-reflect-enabled();
                         toggle-reflect-freeze => root.toggle-reflect-freeze();
                         reflect-clear => root.reflect-clear();
@@ -574,6 +585,7 @@ export component VoidSeedEngine {
                         reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
                         reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
                         reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
+                        reflect-post-gain-changed(value) => { root.reflect-post-gain-changed(value); }
                     }
                 }
             }

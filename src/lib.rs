@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.20
+ * Version: 0.1.21
  * Component: Core Logic
  */
 
@@ -310,6 +310,10 @@ struct Track {
     mosaic_sos: AtomicU32,
     /// Smoothed mosaic sound-on-sound.
     mosaic_sos_smooth: AtomicU32,
+    /// Mosaic post gain (after granulation).
+    mosaic_post_gain: AtomicU32,
+    /// Smoothed mosaic post gain.
+    mosaic_post_gain_smooth: AtomicU32,
     /// Mosaic output enabled.
     mosaic_enabled: AtomicBool,
     /// Mosaic grains locked to tape loop area.
@@ -464,6 +468,10 @@ struct Track {
     texture_wet: AtomicU32,
     /// Smoothed texture wet mix.
     texture_wet_smooth: AtomicU32,
+    /// Texture post gain.
+    texture_post_gain: AtomicU32,
+    /// Smoothed texture post gain.
+    texture_post_gain_smooth: AtomicU32,
     /// Texture noise envelope.
     texture_noise_env: AtomicU32,
     /// Texture noise RNG state.
@@ -514,6 +522,10 @@ struct Track {
     reflect_decay: AtomicU32,
     /// Smoothed reflect decay.
     reflect_decay_smooth: AtomicU32,
+    /// Reflect post gain.
+    reflect_post_gain: AtomicU32,
+    /// Smoothed reflect post gain.
+    reflect_post_gain_smooth: AtomicU32,
     /// Reflect clear flag.
     reflect_clear: AtomicBool,
     /// Reflect delay buffer (stereo).
@@ -952,6 +964,8 @@ impl Default for Track {
             mosaic_rand_size_smooth: AtomicU32::new(0.0f32.to_bits()),
             mosaic_sos: AtomicU32::new(0.0f32.to_bits()),
             mosaic_sos_smooth: AtomicU32::new(0.0f32.to_bits()),
+            mosaic_post_gain: AtomicU32::new(0.5f32.to_bits()),
+            mosaic_post_gain_smooth: AtomicU32::new(0.5f32.to_bits()),
             mosaic_enabled: AtomicBool::new(true),
             mosaic_loop_lock: AtomicBool::new(false),
             mosaic_buffer: Arc::new(Mutex::new(vec![
@@ -1032,6 +1046,8 @@ impl Default for Track {
             texture_noise_color_smooth: AtomicU32::new(0.5f32.to_bits()),
             texture_wet: AtomicU32::new(0.0f32.to_bits()),
             texture_wet_smooth: AtomicU32::new(0.0f32.to_bits()),
+            texture_post_gain: AtomicU32::new(0.5f32.to_bits()),
+            texture_post_gain_smooth: AtomicU32::new(0.5f32.to_bits()),
             texture_noise_env: AtomicU32::new(0.0f32.to_bits()),
             texture_noise_rng: AtomicU32::new(0x2468_1357),
             texture_noise_lp: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
@@ -1057,6 +1073,8 @@ impl Default for Track {
             reflect_damp_smooth: AtomicU32::new(0.5f32.to_bits()),
             reflect_decay: AtomicU32::new(0.5f32.to_bits()),
             reflect_decay_smooth: AtomicU32::new(0.5f32.to_bits()),
+            reflect_post_gain: AtomicU32::new(0.5f32.to_bits()),
+            reflect_post_gain_smooth: AtomicU32::new(0.5f32.to_bits()),
             reflect_clear: AtomicBool::new(false),
             reflect_delay_buffer: Arc::new(Mutex::new([
                 vec![0.0; REFLECT_MAX_DELAY_SAMPLES],
@@ -1775,6 +1793,12 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.mosaic_rand_size_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_sos.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.mosaic_sos_smooth.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .mosaic_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .mosaic_post_gain_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
     track.mosaic_enabled.store(true, Ordering::Relaxed);
     track.mosaic_loop_lock.store(false, Ordering::Relaxed);
     track.mosaic_write_pos.store(0, Ordering::Relaxed);
@@ -1892,6 +1916,18 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
         .texture_wet_smooth
         .store(0.0f32.to_bits(), Ordering::Relaxed);
     track
+        .texture_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_post_gain_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .texture_post_gain_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
         .texture_noise_env
         .store(0.0f32.to_bits(), Ordering::Relaxed);
     track.texture_noise_rng.store(0x2468_1357, Ordering::Relaxed);
@@ -1943,6 +1979,12 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.reflect_decay.store(0.5f32.to_bits(), Ordering::Relaxed);
     track
         .reflect_decay_smooth
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track
+        .reflect_post_gain_smooth
         .store(0.5f32.to_bits(), Ordering::Relaxed);
     track.reflect_clear.store(false, Ordering::Relaxed);
     track.reflect_delay_write_pos.store(0, Ordering::Relaxed);
@@ -4423,6 +4465,8 @@ impl TLBX1 {
             f32::from_bits(track.mosaic_pattern.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let target_wet =
             f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_post_gain =
+            f32::from_bits(track.mosaic_post_gain.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let target_spatial =
             f32::from_bits(track.mosaic_spatial.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let target_detune =
@@ -4479,6 +4523,12 @@ impl TLBX1 {
             num_buffer_samples,
             sr as f32,
         );
+        let mosaic_post_gain = smooth_param(
+            f32::from_bits(track.mosaic_post_gain_smooth.load(Ordering::Relaxed)),
+            target_post_gain,
+            num_buffer_samples,
+            sr as f32,
+        );
         let mosaic_spatial = smooth_param(
             f32::from_bits(track.mosaic_spatial_smooth.load(Ordering::Relaxed)),
             target_spatial,
@@ -4527,6 +4577,9 @@ impl TLBX1 {
         track
             .mosaic_wet_smooth
             .store(mosaic_wet.to_bits(), Ordering::Relaxed);
+        track
+            .mosaic_post_gain_smooth
+            .store(mosaic_post_gain.to_bits(), Ordering::Relaxed);
         track
             .mosaic_spatial_smooth
             .store(mosaic_spatial.to_bits(), Ordering::Relaxed);
@@ -4636,6 +4689,7 @@ impl TLBX1 {
         let mut last_grain_len =
             track.mosaic_last_grain_len.load(Ordering::Relaxed) as usize;
         let mut rng_state = track.mosaic_rng_state.load(Ordering::Relaxed);
+        let post_gain = (mosaic_post_gain * 2.0).max(0.0);
 
         let num_channels = track_output.len();
         let output = track_output;
@@ -4856,6 +4910,14 @@ impl TLBX1 {
         track
             .mosaic_rng_state
             .store(rng_state, Ordering::Relaxed);
+
+        if post_gain != 1.0 {
+            for channel_idx in 0..num_channels {
+                for sample_idx in 0..num_buffer_samples {
+                    output[channel_idx][sample_idx] *= post_gain;
+                }
+            }
+        }
     }
 
     fn process_track_ring(
@@ -5278,6 +5340,8 @@ impl TLBX1 {
             f32::from_bits(track.texture_noise_color.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let target_wet =
             f32::from_bits(track.texture_wet.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_post_gain =
+            f32::from_bits(track.texture_post_gain.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let gate = track.texture_gate.load(Ordering::Relaxed);
 
         let drive = smooth_param(
@@ -5329,6 +5393,13 @@ impl TLBX1 {
             sr,
         )
         .clamp(0.0, 1.0);
+        let post_gain = smooth_param(
+            f32::from_bits(track.texture_post_gain_smooth.load(Ordering::Relaxed)),
+            target_post_gain,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
 
         track
             .texture_drive_smooth
@@ -5354,6 +5425,9 @@ impl TLBX1 {
         track
             .texture_wet_smooth
             .store(wet.to_bits(), Ordering::Relaxed);
+        track
+            .texture_post_gain_smooth
+            .store(post_gain.to_bits(), Ordering::Relaxed);
 
         if wet <= 0.0 {
             return;
@@ -5371,6 +5445,7 @@ impl TLBX1 {
         let noise_alpha = 1.0 - (-2.0 * PI * noise_cutoff / sr).exp();
         let noise_decay_sec = 0.02 + noise_decay * 2.0;
         let noise_decay_factor = (-1.0 / (noise_decay_sec * sr)).exp();
+        let post_gain_lin = post_gain * 2.0;
 
         let mut noise_env =
             f32::from_bits(track.texture_noise_env.load(Ordering::Relaxed));
@@ -5438,8 +5513,9 @@ impl TLBX1 {
                 let high = sample - low;
                 let tilted = low * tilt_low_gain + high * tilt_high_gain;
                 let noisy = tilted + noise_lp[channel_idx] * noise * noise_env;
+                let wet_sample = noisy * post_gain_lin;
                 track_output[channel_idx][sample_idx] =
-                    input * (1.0 - wet) + noisy * wet;
+                    input * (1.0 - wet) + wet_sample * wet;
             }
         }
 
@@ -5495,6 +5571,8 @@ impl TLBX1 {
             f32::from_bits(track.reflect_damp.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let target_decay =
             f32::from_bits(track.reflect_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let target_post_gain =
+            f32::from_bits(track.reflect_post_gain.load(Ordering::Relaxed)).clamp(0.0, 1.0);
 
         let delay_mix = smooth_param(
             f32::from_bits(track.reflect_delay_smooth.load(Ordering::Relaxed)),
@@ -5556,6 +5634,13 @@ impl TLBX1 {
             sr,
         )
         .clamp(0.0, 1.0);
+        let post_gain = smooth_param(
+            f32::from_bits(track.reflect_post_gain_smooth.load(Ordering::Relaxed)),
+            target_post_gain,
+            num_buffer_samples,
+            sr,
+        )
+        .clamp(0.0, 1.0);
 
         track
             .reflect_delay_smooth
@@ -5581,6 +5666,9 @@ impl TLBX1 {
         track
             .reflect_decay_smooth
             .store(decay.to_bits(), Ordering::Relaxed);
+        track
+            .reflect_post_gain_smooth
+            .store(post_gain.to_bits(), Ordering::Relaxed);
 
         let mut delay_buffers = if let Some(buffers) = track.reflect_delay_buffer.try_lock() {
             buffers
@@ -5672,6 +5760,7 @@ impl TLBX1 {
         let comb_feedback = 0.2 + decay_amt * 0.78;
         let wet_mix = (delay_mix + reverb_mix).clamp(0.0, 1.0);
         let dry_mix = 1.0 - wet_mix;
+        let post_gain_lin = post_gain * 2.0;
 
         let mut write_pos =
             (track.reflect_delay_write_pos.load(Ordering::Relaxed) as usize) % delay_len;
@@ -5788,7 +5877,8 @@ impl TLBX1 {
             for ch in 0..channel_count {
                 let input = track_output[ch][sample_idx];
                 let wet = delay_wet[ch] + reverb_wet[ch];
-                track_output[ch][sample_idx] = input * dry_mix + wet;
+                track_output[ch][sample_idx] =
+                    (input * dry_mix + wet) * post_gain_lin;
             }
 
             write_pos += 1;
@@ -6316,6 +6406,53 @@ impl Plugin for TLBX1 {
                     master_sr,
                     transport_running,
                 );
+                let mosaic_active =
+                    track.granular_type.load(Ordering::Relaxed) == 1
+                        && track.mosaic_enabled.load(Ordering::Relaxed);
+                if mosaic_active {
+                    if let Some(mut mosaic) = track.mosaic_buffer.try_lock() {
+                        if !mosaic.is_empty() && !mosaic[0].is_empty() {
+                            let sr = master_sr.max(1.0) as usize;
+                            let mosaic_len = (sr * MOSAIC_BUFFER_SECONDS)
+                                .min(MOSAIC_BUFFER_SAMPLES)
+                                .max(1);
+                            let mut mosaic_write_pos =
+                                (track.mosaic_write_pos.load(Ordering::Relaxed) as usize)
+                                    % mosaic_len;
+                            let target_mosaic_sos = f32::from_bits(
+                                track.mosaic_sos.load(Ordering::Relaxed),
+                            )
+                            .clamp(0.0, 1.0);
+                            let smooth_mosaic_sos = smooth_param(
+                                f32::from_bits(
+                                    track.mosaic_sos_smooth.load(Ordering::Relaxed),
+                                ),
+                                target_mosaic_sos,
+                                buffer.samples(),
+                                master_sr,
+                            );
+                            track
+                                .mosaic_sos_smooth
+                                .store(smooth_mosaic_sos.to_bits(), Ordering::Relaxed);
+                            let num_buffer_samples = buffer.samples();
+                            let num_channels = self.track_buffer.len().min(mosaic.len());
+                            for sample_idx in 0..num_buffer_samples {
+                                for channel_idx in 0..num_channels {
+                                    let out_value =
+                                        self.track_buffer[channel_idx][sample_idx];
+                                    let existing = mosaic[channel_idx][mosaic_write_pos];
+                                    mosaic[channel_idx][mosaic_write_pos] =
+                                        out_value * (1.0 - smooth_mosaic_sos)
+                                            + existing * smooth_mosaic_sos;
+                                }
+                                mosaic_write_pos = (mosaic_write_pos + 1) % mosaic_len;
+                            }
+                            track
+                                .mosaic_write_pos
+                                .store(mosaic_write_pos as u32, Ordering::Relaxed);
+                        }
+                    }
+                }
             } else if engine_type == 4 {
                 Self::process_voidseed(
                     track,
@@ -8117,6 +8254,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("mosaic_spray".to_string(), f(&track.mosaic_spray));
     params.insert("mosaic_pattern".to_string(), f(&track.mosaic_pattern));
     params.insert("mosaic_wet".to_string(), f(&track.mosaic_wet));
+    params.insert("mosaic_post_gain".to_string(), f(&track.mosaic_post_gain));
     params.insert("mosaic_spatial".to_string(), f(&track.mosaic_spatial));
     params.insert("mosaic_detune".to_string(), f(&track.mosaic_detune));
     params.insert("mosaic_rand_rate".to_string(), f(&track.mosaic_rand_rate));
@@ -8164,6 +8302,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
         f(&track.texture_noise_color),
     );
     params.insert("texture_wet".to_string(), f(&track.texture_wet));
+    params.insert("texture_post_gain".to_string(), f(&track.texture_post_gain));
     params.insert("reflect_enabled".to_string(), b(&track.reflect_enabled));
     params.insert("reflect_freeze".to_string(), b(&track.reflect_freeze));
     params.insert("reflect_delay".to_string(), f(&track.reflect_delay));
@@ -8175,6 +8314,10 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("reflect_spread".to_string(), f(&track.reflect_spread));
     params.insert("reflect_damp".to_string(), f(&track.reflect_damp));
     params.insert("reflect_decay".to_string(), f(&track.reflect_decay));
+    params.insert(
+        "reflect_post_gain".to_string(),
+        f(&track.reflect_post_gain),
+    );
 
     for i in 0..4 {
         params.insert(format!("animate_slot_type_{}", i), u(&track.animate_slot_types[i]));
@@ -8365,6 +8508,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.mosaic_spray, "mosaic_spray");
     sf(&track.mosaic_pattern, "mosaic_pattern");
     sf(&track.mosaic_wet, "mosaic_wet");
+    sf(&track.mosaic_post_gain, "mosaic_post_gain");
     sf(&track.mosaic_spatial, "mosaic_spatial");
     sf(&track.mosaic_detune, "mosaic_detune");
     sf(&track.mosaic_rand_rate, "mosaic_rand_rate");
@@ -8372,6 +8516,10 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.mosaic_sos, "mosaic_sos");
     sb(&track.mosaic_enabled, "mosaic_enabled");
     sb(&track.mosaic_loop_lock, "mosaic_loop_lock");
+    track.mosaic_post_gain_smooth.store(
+        track.mosaic_post_gain.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
     sf(&track.ring_cutoff, "ring_cutoff");
     sf(&track.ring_resonance, "ring_resonance");
     sf(&track.ring_decay, "ring_decay");
@@ -8457,6 +8605,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.texture_noise_decay, "texture_noise_decay");
     sf(&track.texture_noise_color, "texture_noise_color");
     sf(&track.texture_wet, "texture_wet");
+    sf(&track.texture_post_gain, "texture_post_gain");
     sb(&track.reflect_enabled, "reflect_enabled");
     sb(&track.reflect_freeze, "reflect_freeze");
     sf(&track.reflect_delay, "reflect_delay");
@@ -8468,6 +8617,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.reflect_spread, "reflect_spread");
     sf(&track.reflect_damp, "reflect_damp");
     sf(&track.reflect_decay, "reflect_decay");
+    sf(&track.reflect_post_gain, "reflect_post_gain");
     track
         .reflect_delay_smooth
         .store(track.reflect_delay.load(Ordering::Relaxed), Ordering::Relaxed);
@@ -8492,6 +8642,9 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     track
         .reflect_decay_smooth
         .store(track.reflect_decay.load(Ordering::Relaxed), Ordering::Relaxed);
+    track
+        .reflect_post_gain_smooth
+        .store(track.reflect_post_gain.load(Ordering::Relaxed), Ordering::Relaxed);
     track.texture_drive_smooth.store(
         track.texture_drive.load(Ordering::Relaxed),
         Ordering::Relaxed,
@@ -8522,6 +8675,10 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     );
     track.texture_wet_smooth.store(
         track.texture_wet.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    track.texture_post_gain_smooth.store(
+        track.texture_post_gain.load(Ordering::Relaxed),
         Ordering::Relaxed,
     );
     track.g8_enabled.store(false, Ordering::Relaxed);
@@ -9411,6 +9568,8 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].mosaic_pattern.load(Ordering::Relaxed));
         let mosaic_wet =
             f32::from_bits(self.tracks[track_idx].mosaic_wet.load(Ordering::Relaxed));
+        let mosaic_post_gain =
+            f32::from_bits(self.tracks[track_idx].mosaic_post_gain.load(Ordering::Relaxed));
         let mosaic_spatial =
             f32::from_bits(self.tracks[track_idx].mosaic_spatial.load(Ordering::Relaxed));
         let mosaic_detune =
@@ -9502,6 +9661,8 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].texture_noise_color.load(Ordering::Relaxed));
         let texture_wet =
             f32::from_bits(self.tracks[track_idx].texture_wet.load(Ordering::Relaxed));
+        let texture_post_gain =
+            f32::from_bits(self.tracks[track_idx].texture_post_gain.load(Ordering::Relaxed));
         let reflect_enabled = self.tracks[track_idx].reflect_enabled.load(Ordering::Relaxed);
         let reflect_freeze = self.tracks[track_idx].reflect_freeze.load(Ordering::Relaxed);
         let reflect_delay =
@@ -9522,6 +9683,8 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].reflect_damp.load(Ordering::Relaxed));
         let reflect_decay =
             f32::from_bits(self.tracks[track_idx].reflect_decay.load(Ordering::Relaxed));
+        let reflect_post_gain =
+            f32::from_bits(self.tracks[track_idx].reflect_post_gain.load(Ordering::Relaxed));
         let loop_start =
             f32::from_bits(self.tracks[track_idx].loop_start.load(Ordering::Relaxed));
         let trigger_start =
@@ -10068,6 +10231,7 @@ impl SlintWindow {
         self.ui.set_mosaic_spray(mosaic_spray);
         self.ui.set_mosaic_pattern(mosaic_pattern);
         self.ui.set_mosaic_wet(mosaic_wet);
+        self.ui.set_mosaic_post_gain(mosaic_post_gain);
         self.ui.set_mosaic_spatial(mosaic_spatial);
         self.ui.set_mosaic_detune(mosaic_detune);
         self.ui.set_mosaic_rand_rate(mosaic_rand_rate);
@@ -10103,6 +10267,7 @@ impl SlintWindow {
         self.ui.set_texture_noise_decay(texture_noise_decay);
         self.ui.set_texture_noise_color(texture_noise_color);
         self.ui.set_texture_wet(texture_wet);
+        self.ui.set_texture_post_gain(texture_post_gain);
         self.ui.set_reflect_enabled(reflect_enabled);
         self.ui.set_reflect_freeze(reflect_freeze);
         self.ui.set_reflect_delay(reflect_delay);
@@ -10114,6 +10279,7 @@ impl SlintWindow {
         self.ui.set_reflect_spread(reflect_spread);
         self.ui.set_reflect_damp(reflect_damp);
         self.ui.set_reflect_decay(reflect_decay);
+        self.ui.set_reflect_post_gain(reflect_post_gain);
         self.ui.set_loop_start(loop_start);
         self.ui.set_trigger_start(trigger_start);
         self.ui.set_loop_length(loop_length);
@@ -11721,6 +11887,17 @@ fn initialize_ui(
 
     let tracks_mosaic = Arc::clone(tracks);
     let params_mosaic = Arc::clone(params);
+    ui.on_mosaic_post_gain_changed(move |value| {
+        let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_mosaic[track_idx]
+                .mosaic_post_gain
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_mosaic = Arc::clone(tracks);
+    let params_mosaic = Arc::clone(params);
     ui.on_mosaic_spatial_changed(move |value| {
         let track_idx = params_mosaic.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -12092,6 +12269,17 @@ fn initialize_ui(
         }
     });
 
+    let tracks_texture = Arc::clone(tracks);
+    let params_texture = Arc::clone(params);
+    ui.on_texture_post_gain_changed(move |value| {
+        let track_idx = params_texture.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_texture[track_idx]
+                .texture_post_gain
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
     let tracks_reflect = Arc::clone(tracks);
     let params_reflect = Arc::clone(params);
     ui.on_toggle_reflect_enabled(move || {
@@ -12222,6 +12410,17 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             tracks_reflect[track_idx]
                 .reflect_decay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_reflect = Arc::clone(tracks);
+    let params_reflect = Arc::clone(params);
+    ui.on_reflect_post_gain_changed(move |value| {
+        let track_idx = params_reflect.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_reflect[track_idx]
+                .reflect_post_gain
                 .store(value.to_bits(), Ordering::Relaxed);
         }
     });

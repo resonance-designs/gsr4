@@ -150,6 +150,7 @@ export component TapeEngine inherits Rectangle {
     in-out property <float> mosaic-spray: 0.0;
     in-out property <float> mosaic-pattern: 0.0;
     in-out property <float> mosaic-wet: 0.0;
+    in-out property <float> mosaic-post-gain: 0.5;
     in-out property <float> mosaic-detune: 0.0;
     in-out property <float> mosaic-spatial: 0.0;
     in-out property <float> mosaic-rand-rate: 0.0;
@@ -183,6 +184,7 @@ export component TapeEngine inherits Rectangle {
     in-out property <float> texture-noise-decay: 0.0;
     in-out property <float> texture-noise-color: 0.0;
     in-out property <float> texture-wet: 1.0;
+    in-out property <float> texture-post-gain: 0.5;
     in-out property <bool> reflect-enabled: false;
     in-out property <bool> reflect-freeze: false;
     in-out property <float> reflect-delay: 0.0;
@@ -194,6 +196,7 @@ export component TapeEngine inherits Rectangle {
     in-out property <float> reflect-spread: 0.0;
     in-out property <float> reflect-damp: 0.5;
     in-out property <float> reflect-decay: 0.5;
+    in-out property <float> reflect-post-gain: 0.5;
 
     in-out property <bool> g8-enabled: true;
     in-out property <int> g8-rate-index: 0;
@@ -240,6 +243,7 @@ export component TapeEngine inherits Rectangle {
     callback mosaic-spray-changed(value: float);
     callback mosaic-pattern-changed(value: float);
     callback mosaic-wet-changed(value: float);
+    callback mosaic-post-gain-changed(value: float);
     callback mosaic-detune-changed(value: float);
     callback mosaic-spatial-changed(value: float);
     callback mosaic-rand-rate-changed(value: float);
@@ -272,6 +276,7 @@ export component TapeEngine inherits Rectangle {
     callback texture-noise-decay-changed(value: float);
     callback texture-noise-color-changed(value: float);
     callback texture-wet-changed(value: float);
+    callback texture-post-gain-changed(value: float);
     callback toggle-reflect-enabled();
     callback toggle-reflect-freeze();
     callback reflect-clear();
@@ -284,6 +289,7 @@ export component TapeEngine inherits Rectangle {
     callback reflect-spread-changed(value: float);
     callback reflect-damp-changed(value: float);
     callback reflect-decay-changed(value: float);
+    callback reflect-post-gain-changed(value: float);
     callback toggle-g8-enabled();
     callback g8-rate-selected(index: int);
     callback g8-step-changed(index: int, value: float);
@@ -655,6 +661,7 @@ export component TapeEngine inherits Rectangle {
         // Downstream Devices
         VerticalLayout {
             width: parent.width;
+
             HorizontalLayout {
                 spacing: 22px;
 
@@ -673,6 +680,7 @@ export component TapeEngine inherits Rectangle {
                         mosaic-spray <=> root.mosaic-spray;
                         mosaic-pattern <=> root.mosaic-pattern;
                         mosaic-wet <=> root.mosaic-wet;
+                        mosaic-post-gain <=> root.mosaic-post-gain;
                         mosaic-detune <=> root.mosaic-detune;
                         mosaic-spatial <=> root.mosaic-spatial;
                         mosaic-rand-rate <=> root.mosaic-rand-rate;
@@ -687,6 +695,7 @@ export component TapeEngine inherits Rectangle {
                         mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
                         mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
                         mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                        mosaic-post-gain-changed(value) => { root.mosaic-post-gain-changed(value); }
                         mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
                         mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
                         mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
@@ -739,9 +748,11 @@ export component TapeEngine inherits Rectangle {
 
             HorizontalLayout {
                 spacing: 22px;
+
+                // Texture Device
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: (parent.width - 16px) / 2 - 15px;
+                    height: 280px;
                     TextureDevice {
                         texture-enabled <=> root.texture-enabled;
                         texture-gate <=> root.texture-gate;
@@ -753,6 +764,7 @@ export component TapeEngine inherits Rectangle {
                         texture-noise-decay <=> root.texture-noise-decay;
                         texture-noise-color <=> root.texture-noise-color;
                         texture-wet <=> root.texture-wet;
+                        texture-post-gain <=> root.texture-post-gain;
                         toggle-texture-enabled => root.toggle-texture-enabled();
                         toggle-texture-gate => root.toggle-texture-gate();
                         texture-drive-changed(value) => { root.texture-drive-changed(value); }
@@ -763,11 +775,14 @@ export component TapeEngine inherits Rectangle {
                         texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
                         texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
                         texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                        texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                     }
                 }
+
+                // Reflect Device
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: (parent.width - 16px) / 2 - 15px;
+                    height: 280px;
                     ReflectDevice {
                         reflect-enabled <=> root.reflect-enabled;
                         reflect-freeze <=> root.reflect-freeze;
@@ -780,6 +795,7 @@ export component TapeEngine inherits Rectangle {
                         reflect-spread <=> root.reflect-spread;
                         reflect-damp <=> root.reflect-damp;
                         reflect-decay <=> root.reflect-decay;
+                        reflect-post-gain <=> root.reflect-post-gain;
                         toggle-reflect-enabled => root.toggle-reflect-enabled();
                         toggle-reflect-freeze => root.toggle-reflect-freeze();
                         reflect-clear => root.reflect-clear();
@@ -792,6 +808,7 @@ export component TapeEngine inherits Rectangle {
                         reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
                         reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
                         reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
+                        reflect-post-gain-changed(value) => { root.reflect-post-gain-changed(value); }
                     }
                 }
             }
@@ -801,6 +818,8 @@ export component TapeEngine inherits Rectangle {
                 Rectangle {
                     width: parent.width;
                     height: 200px;
+
+                    // G8 Device
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
                         gate-rate-index <=> root.g8-rate-index;
