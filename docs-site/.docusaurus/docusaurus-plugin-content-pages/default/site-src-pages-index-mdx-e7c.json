@@ -1,11 +1,11 @@
 {
   "type": "mdx",
-  "permalink": "/./",
+  "permalink": "/",
   "source": "@site/src/pages/index.mdx",
-  "title": "GrainRust Documentation",
-  "description": "Welcome to the GrainRust documentation hub. Use the Developer Docs section for build/setup details and the Storybook MDX site for end-user UI walkthroughs.",
+  "title": "TLBX-1 Documentation",
+  "description": "Welcome to the TLBX-1 documentation hub. Use the Developer Docs section for build/setup details and the Storybook MDX site for end-user UI walkthroughs.",
   "frontMatter": {
-    "title": "GrainRust Documentation"
+    "title": "TLBX-1 Documentation"
   },
   "unlisted": false
 }

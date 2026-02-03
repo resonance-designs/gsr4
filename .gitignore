@@ -1,5 +1,7 @@
 /target
 /docs-site/node_modules
+/node_modules
+**/node_modules
 /ref/
 /BUGS.md
 
