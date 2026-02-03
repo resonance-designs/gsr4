@@ -1,4 +1,4 @@
-# Torso S-4 Video Gap Report vs grainrust
+# Torso S-4 Video Gap Report vs TLBX-1
 
 Date: 2026-01-31
 
@@ -55,7 +55,7 @@ Frame references below are from `ref/torso_docs/s4_video_frames_min/`:
   - Per-track Level + Filter with mute toggles for 4 tracks.
   - Example frames: `frame_0034.jpg`.
 
-## Current codebase coverage (grainrust)
+## Current codebase coverage (TLBX-1)
 
 ### Implemented (UI and DSP present)
 

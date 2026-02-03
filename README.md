@@ -13,7 +13,7 @@ The UI is built with Slint in combination with the [Resonance Designs Slint UI C
 - Engine loader per track
 - Engine 1: Tape-Deck (based on Torso S-4)
 - Engine 2: Animate (based on Korg Wavestation)
-- Engine 3: SynDRM (sequenced drum synth: kick + snare)
+- Engine 3: SynDRM (multi-channel drum synth + sampler with step sequencing)
 - Engine 4: Void Seed (generative drone engine)
 - Void Seed Moog filter + drive with pre/post toggle, Close Decay, and stereo width control
 - RDS Slint UI Component Kit for shared UI controls and theming

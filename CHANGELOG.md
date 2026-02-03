@@ -2,6 +2,14 @@
 
 ## [0.1.22] - 2026-02-01
 
+- SynDRM: added per-step retrig (toggle + 1/2, 1/4 rate) across all lanes with DSP support.
+- SynDRM: added per-lane probability knobs and randomization amount control.
+- SynDRM: added Cut Group / Cut By controls for channel choking.
+- SynDRM: added Utility Functions mode (Randomize/Clear/Copy-Paste) with copy/paste rules for steps/params.
+- SynDRM: edit-step outline highlight and 1-based page/step navigation.
+- SynDRM: tightened hat decay minimum for shorter hits.
+- UI: improved button label clipping/elide to keep long sample filenames inside buttons.
+
 ## [0.1.21] - 2026-02-01
 
 - SynDRM: tweaked step editor layout so Page/Step/Lane sit on one row, and Clear actions are always visible.

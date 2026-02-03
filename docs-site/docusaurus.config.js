@@ -48,7 +48,7 @@ const config = {
           label: 'Developer Docs',
         },
         {
-          href: 'https://github.com/resonance-designs/grainrust',
+          href: 'https://github.com/resonance-designs/tlbx-1',
           label: 'GitHub',
           position: 'right',
         },
@@ -66,7 +66,7 @@ const config = {
             },
             {
               label: 'GitHub',
-              href: 'https://github.com/resonance-designs/grainrust',
+              href: 'https://github.com/resonance-designs/tlbx-1',
             },
           ],
         },
