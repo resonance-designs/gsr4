@@ -1,0 +1,27 @@
+{
+  "id": "developer/audio-engine",
+  "title": "Audio Engine",
+  "description": "The TLBX-1 audio engine is a hybrid system combining imperative loop-based processing with functional DSP graphs.",
+  "source": "@site/docs/developer/audio-engine.md",
+  "sourceDirName": "developer",
+  "slug": "/developer/audio-engine",
+  "permalink": "/docs/developer/audio-engine",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 3,
+  "frontMatter": {
+    "title": "Audio Engine",
+    "sidebar_position": 3
+  },
+  "sidebar": "devSidebar",
+  "previous": {
+    "title": "Architecture Overview",
+    "permalink": "/docs/developer/architecture"
+  },
+  "next": {
+    "title": "UI System",
+    "permalink": "/docs/developer/ui-system"
+  }
+}

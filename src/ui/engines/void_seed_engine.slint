@@ -13,7 +13,7 @@ import { G8Device } from "../devices/g8_device.slint";
 import { TextureDevice } from "../devices/texture_device.slint";
 import { ReflectDevice } from "../devices/reflect_device.slint";
 
-export component VoidSeedEngine {
+export component VoidSeedEngine inherits Rectangle {
     in-out property <bool> track-muted: false;
     in-out property <float> void-base-freq: 40.0;
     in-out property <float> void-chaos-depth: 0.5;
@@ -170,6 +170,9 @@ export component VoidSeedEngine {
     callback reflect-damp-changed(float);
     callback reflect-decay-changed(float);
     callback reflect-post-gain-changed(float);
+
+    width: 1242px;
+    background: transparent;
 
     VerticalLayout {
         spacing: 12px;

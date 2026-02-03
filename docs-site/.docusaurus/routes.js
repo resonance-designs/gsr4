@@ -3,40 +3,112 @@ import ComponentCreator from '@docusaurus/ComponentCreator';
 
 export default [
   {
-    path: '/./docs',
-    component: ComponentCreator('/./docs', 'fa5'),
+    path: '/docs',
+    component: ComponentCreator('/docs', '6ce'),
     routes: [
       {
-        path: '/./docs',
-        component: ComponentCreator('/./docs', 'c32'),
+        path: '/docs',
+        component: ComponentCreator('/docs', '9fc'),
         routes: [
           {
-            path: '/./docs',
-            component: ComponentCreator('/./docs', '4ae'),
+            path: '/docs',
+            component: ComponentCreator('/docs', 'cde'),
             routes: [
               {
-                path: '/./docs/DEVELOPER_ONBOARDING',
-                component: ComponentCreator('/./docs/DEVELOPER_ONBOARDING', 'f60'),
+                path: '/docs/',
+                component: ComponentCreator('/docs/', 'd33'),
                 exact: true,
-                sidebar: "tutorialSidebar"
+                sidebar: "userSidebar"
               },
               {
-                path: '/./docs/intro',
-                component: ComponentCreator('/./docs/intro', 'f65'),
+                path: '/docs/developer/architecture',
+                component: ComponentCreator('/docs/developer/architecture', '05a'),
                 exact: true,
-                sidebar: "tutorialSidebar"
+                sidebar: "devSidebar"
               },
               {
-                path: '/./docs/TODO',
-                component: ComponentCreator('/./docs/TODO', 'ddb'),
+                path: '/docs/developer/audio-engine',
+                component: ComponentCreator('/docs/developer/audio-engine', '81e'),
                 exact: true,
-                sidebar: "tutorialSidebar"
+                sidebar: "devSidebar"
               },
               {
-                path: '/./docs/user-manual',
-                component: ComponentCreator('/./docs/user-manual', 'eb5'),
+                path: '/docs/developer/onboarding',
+                component: ComponentCreator('/docs/developer/onboarding', '172'),
                 exact: true,
-                sidebar: "tutorialSidebar"
+                sidebar: "devSidebar"
+              },
+              {
+                path: '/docs/developer/state-management',
+                component: ComponentCreator('/docs/developer/state-management', '29d'),
+                exact: true,
+                sidebar: "devSidebar"
+              },
+              {
+                path: '/docs/developer/ui-system',
+                component: ComponentCreator('/docs/developer/ui-system', 'd31'),
+                exact: true,
+                sidebar: "devSidebar"
+              },
+              {
+                path: '/docs/user/animate-engine',
+                component: ComponentCreator('/docs/user/animate-engine', 'd4d'),
+                exact: true,
+                sidebar: "userSidebar"
+              },
+              {
+                path: '/docs/user/g8-device',
+                component: ComponentCreator('/docs/user/g8-device', 'c94'),
+                exact: true,
+                sidebar: "userSidebar"
+              },
+              {
+                path: '/docs/user/granulator',
+                component: ComponentCreator('/docs/user/granulator', '4c2'),
+                exact: true,
+                sidebar: "userSidebar"
+              },
+              {
+                path: '/docs/user/reflect-device',
+                component: ComponentCreator('/docs/user/reflect-device', '242'),
+                exact: true,
+                sidebar: "userSidebar"
+              },
+              {
+                path: '/docs/user/silk-device',
+                component: ComponentCreator('/docs/user/silk-device', '8e1'),
+                exact: true,
+                sidebar: "userSidebar"
+              },
+              {
+                path: '/docs/user/syndrm-engine',
+                component: ComponentCreator('/docs/user/syndrm-engine', '4cd'),
+                exact: true,
+                sidebar: "userSidebar"
+              },
+              {
+                path: '/docs/user/tape-deck-engine',
+                component: ComponentCreator('/docs/user/tape-deck-engine', '988'),
+                exact: true,
+                sidebar: "userSidebar"
+              },
+              {
+                path: '/docs/user/texture-device',
+                component: ComponentCreator('/docs/user/texture-device', '050'),
+                exact: true,
+                sidebar: "userSidebar"
+              },
+              {
+                path: '/docs/user/user-manual',
+                component: ComponentCreator('/docs/user/user-manual', '12c'),
+                exact: true,
+                sidebar: "userSidebar"
+              },
+              {
+                path: '/docs/user/void-seed-engine',
+                component: ComponentCreator('/docs/user/void-seed-engine', '2e6'),
+                exact: true,
+                sidebar: "userSidebar"
               }
             ]
           }
@@ -45,8 +117,8 @@ export default [
     ]
   },
   {
-    path: '/./',
-    component: ComponentCreator('/./', 'ed5'),
+    path: '/',
+    component: ComponentCreator('/', '2e1'),
     exact: true
   },
   {

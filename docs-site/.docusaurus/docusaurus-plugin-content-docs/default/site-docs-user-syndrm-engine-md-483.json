@@ -1,0 +1,27 @@
+{
+  "id": "user/syndrm-engine",
+  "title": "SynDRM Engine",
+  "description": "SynDRM is a multi-channel drum synthesizer and sampler engine with an integrated step sequencer and per-step parameter automation.",
+  "source": "@site/docs/user/syndrm-engine.md",
+  "sourceDirName": "user",
+  "slug": "/user/syndrm-engine",
+  "permalink": "/docs/user/syndrm-engine",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 11,
+  "frontMatter": {
+    "title": "SynDRM Engine",
+    "sidebar_position": 11
+  },
+  "sidebar": "userSidebar",
+  "previous": {
+    "title": "Animate Engine",
+    "permalink": "/docs/user/animate-engine"
+  },
+  "next": {
+    "title": "Tape-Deck Engine",
+    "permalink": "/docs/user/tape-deck-engine"
+  }
+}

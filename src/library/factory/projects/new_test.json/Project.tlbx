@@ -1,0 +1,14 @@
+{
+  "title": "Project",
+  "description": "",
+  "bpm": 120.0,
+  "master_gain": 0.9314893,
+  "master_filter": 0.25,
+  "master_comp": 0.13,
+  "tracks": [
+    "1.trk",
+    "2.trk",
+    "3.trk",
+    "4.trk"
+  ]
+}

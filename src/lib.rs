@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.21
+ * Version: 0.1.22
  * Component: Core Logic
  */
 
@@ -74,7 +74,8 @@ pub const NUM_TRACKS: usize = 4;
 pub const SYNDRM_PAGE_SIZE: usize = 16;
 pub const SYNDRM_PAGES: usize = 8;
 pub const SYNDRM_STEPS: usize = SYNDRM_PAGE_SIZE * SYNDRM_PAGES;
-pub const SYNDRM_LANES: usize = 2;
+pub const SYNDRM_SAMPLE_CHANNELS: usize = 7;
+pub const SYNDRM_LANES: usize = 7 + SYNDRM_SAMPLE_CHANNELS;
 pub const SYNDRM_FILTER_TYPES: u32 = 4;
 pub const WAVEFORM_SUMMARY_SIZE: usize = 100;
 pub const RECORD_MAX_SECONDS: usize = 30;
@@ -89,6 +90,9 @@ const MOSAIC_RATE_MAX: f32 = 60.0;
 const MOSAIC_SIZE_MIN_MS: f32 = 10.0;
 const MOSAIC_SIZE_MAX_MS: f32 = 250.0;
 const MOSAIC_PITCH_SEMITONES: f32 = 36.0;
+const METAL_INHARM_RATIOS: [f32; 6] = [1.0, 1.483, 1.932, 2.546, 2.63, 3.897];
+const METAL_RESONANCE_HZ: f32 = 4000.0;
+const METAL_OCTAVES: f32 = 1.5;
 const MOSAIC_DETUNE_CENTS: f32 = 25.0;
 const MOSAIC_PARAM_SMOOTH_MS: f32 = 20.0;
 const MOSAIC_MAX_GRAINS: usize = 128;
@@ -120,6 +124,8 @@ const OSCILLOSCOPE_SAMPLES: usize = 256;
 const SPECTRUM_BINS: usize = 48;
 const SPECTRUM_WINDOW: usize = 256;
 const VECTORSCOPE_POINTS: usize = 128;
+const SYNDRM_SAMPLE_LABEL_MAX_CHARS: usize = 18;
+const SYNDRM_SAMPLE_LABEL_ELLIPSES: bool = true;
 
 fn default_window_size() -> baseview::Size {
     #[cfg(target_os = "windows")]
@@ -153,6 +159,100 @@ struct VideoCache {
     width: u32,
     height: u32,
     fps: f32,
+}
+
+#[derive(Clone)]
+enum SynDRMLaneParamsCopy {
+    None,
+    Kick {
+        override_enabled: Vec<bool>,
+        pitch: Vec<u32>,
+        decay: Vec<u32>,
+        attack: Vec<u32>,
+        drive: Vec<u32>,
+        level: Vec<u32>,
+        filter_type: Vec<u32>,
+        filter_cutoff: Vec<u32>,
+        filter_resonance: Vec<u32>,
+        retrig_enabled: Vec<bool>,
+        retrig_division: Vec<u32>,
+    },
+    Snare {
+        override_enabled: Vec<bool>,
+        tone: Vec<u32>,
+        decay: Vec<u32>,
+        snappy: Vec<u32>,
+        attack: Vec<u32>,
+        drive: Vec<u32>,
+        level: Vec<u32>,
+        filter_type: Vec<u32>,
+        filter_cutoff: Vec<u32>,
+        filter_resonance: Vec<u32>,
+        retrig_enabled: Vec<bool>,
+        retrig_division: Vec<u32>,
+    },
+    PitchTone {
+        override_enabled: Vec<bool>,
+        pitch: Vec<u32>,
+        decay: Vec<u32>,
+        tone: Vec<u32>,
+        drive: Vec<u32>,
+        level: Vec<u32>,
+        filter_type: Vec<u32>,
+        filter_cutoff: Vec<u32>,
+        filter_resonance: Vec<u32>,
+        retrig_enabled: Vec<bool>,
+        retrig_division: Vec<u32>,
+    },
+    Samp {
+        override_enabled: Vec<bool>,
+        pitch: Vec<u32>,
+        attack: Vec<u32>,
+        decay: Vec<u32>,
+        drive: Vec<u32>,
+        level: Vec<u32>,
+        filter_type: Vec<u32>,
+        filter_cutoff: Vec<u32>,
+        filter_resonance: Vec<u32>,
+        retrig_enabled: Vec<bool>,
+        retrig_division: Vec<u32>,
+    },
+}
+
+impl Default for SynDRMLaneParamsCopy {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+struct SynDRMCopyBuffer {
+    has_data: bool,
+    lanes_mask: u16,
+    start: usize,
+    len: usize,
+    include_steps: bool,
+    include_params: bool,
+    source_lane: Option<u32>,
+    page_scoped: bool,
+    steps: Vec<Vec<bool>>,
+    params: Vec<SynDRMLaneParamsCopy>,
+}
+
+impl SynDRMCopyBuffer {
+    fn new() -> Self {
+        Self {
+            has_data: false,
+            lanes_mask: 0,
+            start: 0,
+            len: 0,
+            include_steps: false,
+            include_params: false,
+            source_lane: None,
+            page_scoped: false,
+            steps: vec![Vec::new(); SYNDRM_LANES],
+            params: vec![SynDRMLaneParamsCopy::None; SYNDRM_LANES],
+        }
+    }
 }
 
 struct Track {
@@ -706,6 +806,12 @@ struct Track {
     kick_filter_resonance: AtomicU32,
     /// SynDRM kick filter pre-drive toggle.
     kick_filter_pre_drive: AtomicBool,
+    /// SynDRM kick cut group (0 = none, 1..14).
+    kick_cut_group: AtomicU32,
+    /// SynDRM kick cut by group (0 = none, 1..14).
+    kick_cut_by: AtomicU32,
+    /// SynDRM kick trigger probability (0..1).
+    kick_prob: AtomicU32,
     /// SynDRM kick sequencer grid (128 steps).
     kick_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM kick sequencer current step.
@@ -739,6 +845,12 @@ struct Track {
     snare_filter_resonance: AtomicU32,
     /// SynDRM snare filter pre-drive toggle.
     snare_filter_pre_drive: AtomicBool,
+    /// SynDRM snare cut group (0 = none, 1..14).
+    snare_cut_group: AtomicU32,
+    /// SynDRM snare cut by group (0 = none, 1..14).
+    snare_cut_by: AtomicU32,
+    /// SynDRM snare trigger probability (0..1).
+    snare_prob: AtomicU32,
     /// SynDRM snare sequencer grid (128 steps).
     snare_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM snare sequencer current step.
@@ -755,6 +867,242 @@ struct Track {
     snare_attack_remaining: AtomicU32,
     /// SynDRM snare noise RNG state.
     snare_noise_rng: AtomicU32,
+    /// SynDRM clap pitch (normalized 0..1).
+    clap_pitch: AtomicU32,
+    /// SynDRM clap decay (normalized 0..1).
+    clap_decay: AtomicU32,
+    /// SynDRM clap tone (normalized 0..1).
+    clap_tone: AtomicU32,
+    /// SynDRM clap drive (normalized 0..1).
+    clap_drive: AtomicU32,
+    /// SynDRM clap output level (normalized 0..1).
+    clap_level: AtomicU32,
+    /// SynDRM clap filter type (0 = Moog LP, 1 = LP, 2 = HP, 3 = BP).
+    clap_filter_type: AtomicU32,
+    /// SynDRM clap filter cutoff (normalized 0..1).
+    clap_filter_cutoff: AtomicU32,
+    /// SynDRM clap filter resonance (normalized 0..1).
+    clap_filter_resonance: AtomicU32,
+    /// SynDRM clap filter pre-drive toggle.
+    clap_filter_pre_drive: AtomicBool,
+    /// SynDRM clap cut group (0 = none, 1..14).
+    clap_cut_group: AtomicU32,
+    /// SynDRM clap cut by group (0 = none, 1..14).
+    clap_cut_by: AtomicU32,
+    /// SynDRM clap trigger probability (0..1).
+    clap_prob: AtomicU32,
+    /// SynDRM clap sequencer grid (128 steps).
+    clap_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM clap sequencer current step.
+    clap_sequencer_step: AtomicI32,
+    /// SynDRM clap sequencer phase in samples.
+    clap_sequencer_phase: AtomicU32,
+    /// SynDRM clap envelope (0..1).
+    clap_env: AtomicU32,
+    /// SynDRM clap phase (samples).
+    clap_phase: AtomicU32,
+    /// SynDRM hat pitch (normalized 0..1).
+    hat_pitch: AtomicU32,
+    /// SynDRM hat decay (normalized 0..1).
+    hat_decay: AtomicU32,
+    /// SynDRM hat tone (normalized 0..1).
+    hat_tone: AtomicU32,
+    /// SynDRM hat drive (normalized 0..1).
+    hat_drive: AtomicU32,
+    /// SynDRM hat output level (normalized 0..1).
+    hat_level: AtomicU32,
+    /// SynDRM hat filter type (0 = Moog LP, 1 = LP, 2 = HP, 3 = BP).
+    hat_filter_type: AtomicU32,
+    /// SynDRM hat filter cutoff (normalized 0..1).
+    hat_filter_cutoff: AtomicU32,
+    /// SynDRM hat filter resonance (normalized 0..1).
+    hat_filter_resonance: AtomicU32,
+    /// SynDRM hat filter pre-drive toggle.
+    hat_filter_pre_drive: AtomicBool,
+    /// SynDRM hat cut group (0 = none, 1..14).
+    hat_cut_group: AtomicU32,
+    /// SynDRM hat cut by group (0 = none, 1..14).
+    hat_cut_by: AtomicU32,
+    /// SynDRM hat trigger probability (0..1).
+    hat_prob: AtomicU32,
+    /// SynDRM hat sequencer grid (128 steps).
+    hat_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM hat sequencer current step.
+    hat_sequencer_step: AtomicI32,
+    /// SynDRM hat sequencer phase in samples.
+    hat_sequencer_phase: AtomicU32,
+    /// SynDRM hat oscillator phase (0..1).
+    hat_phase: AtomicU32,
+    /// SynDRM hat inharmonic oscillator phases (0..1).
+    hat_phases: Arc<[AtomicU32; 6]>,
+    /// SynDRM hat modulator phases (0..1).
+    hat_mod_phases: Arc<[AtomicU32; 6]>,
+    /// SynDRM hat amplitude envelope (0..1).
+    hat_env: AtomicU32,
+    /// SynDRM hat attack remaining samples.
+    hat_attack_remaining: AtomicU32,
+    /// SynDRM hat internal highpass filter state (x prev).
+    hat_hp_x_prev: AtomicU32,
+    /// SynDRM hat internal highpass filter state (y prev).
+    hat_hp_y_prev: AtomicU32,
+    /// SynDRM perc1 pitch (normalized 0..1).
+    perc1_pitch: AtomicU32,
+    /// SynDRM perc1 decay (normalized 0..1).
+    perc1_decay: AtomicU32,
+    /// SynDRM perc1 tone (normalized 0..1).
+    perc1_tone: AtomicU32,
+    /// SynDRM perc1 drive (normalized 0..1).
+    perc1_drive: AtomicU32,
+    /// SynDRM perc1 output level (normalized 0..1).
+    perc1_level: AtomicU32,
+    /// SynDRM perc1 filter type (0 = Moog LP, 1 = LP, 2 = HP, 3 = BP).
+    perc1_filter_type: AtomicU32,
+    /// SynDRM perc1 filter cutoff (normalized 0..1).
+    perc1_filter_cutoff: AtomicU32,
+    /// SynDRM perc1 filter resonance (normalized 0..1).
+    perc1_filter_resonance: AtomicU32,
+    /// SynDRM perc1 filter pre-drive toggle.
+    perc1_filter_pre_drive: AtomicBool,
+    /// SynDRM perc1 cut group (0 = none, 1..14).
+    perc1_cut_group: AtomicU32,
+    /// SynDRM perc1 cut by group (0 = none, 1..14).
+    perc1_cut_by: AtomicU32,
+    /// SynDRM perc1 trigger probability (0..1).
+    perc1_prob: AtomicU32,
+    /// SynDRM perc1 sequencer grid (128 steps).
+    perc1_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM perc1 sequencer current step.
+    perc1_sequencer_step: AtomicI32,
+    /// SynDRM perc1 sequencer phase in samples.
+    perc1_sequencer_phase: AtomicU32,
+    /// SynDRM perc1 excitation remaining samples.
+    perc1_attack_remaining: AtomicU32,
+    /// SynDRM perc2 pitch (normalized 0..1).
+    perc2_pitch: AtomicU32,
+    /// SynDRM perc2 decay (normalized 0..1).
+    perc2_decay: AtomicU32,
+    /// SynDRM perc2 tone (normalized 0..1).
+    perc2_tone: AtomicU32,
+    /// SynDRM perc2 drive (normalized 0..1).
+    perc2_drive: AtomicU32,
+    /// SynDRM perc2 output level (normalized 0..1).
+    perc2_level: AtomicU32,
+    /// SynDRM perc2 filter type (0 = Moog LP, 1 = LP, 2 = HP, 3 = BP).
+    perc2_filter_type: AtomicU32,
+    /// SynDRM perc2 filter cutoff (normalized 0..1).
+    perc2_filter_cutoff: AtomicU32,
+    /// SynDRM perc2 filter resonance (normalized 0..1).
+    perc2_filter_resonance: AtomicU32,
+    /// SynDRM perc2 filter pre-drive toggle.
+    perc2_filter_pre_drive: AtomicBool,
+    /// SynDRM perc2 cut group (0 = none, 1..14).
+    perc2_cut_group: AtomicU32,
+    /// SynDRM perc2 cut by group (0 = none, 1..14).
+    perc2_cut_by: AtomicU32,
+    /// SynDRM perc2 trigger probability (0..1).
+    perc2_prob: AtomicU32,
+    /// SynDRM perc2 sequencer grid (128 steps).
+    perc2_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM perc2 sequencer current step.
+    perc2_sequencer_step: AtomicI32,
+    /// SynDRM perc2 sequencer phase in samples.
+    perc2_sequencer_phase: AtomicU32,
+    /// SynDRM perc2 envelope (0..1).
+    perc2_env: AtomicU32,
+    /// SynDRM perc2 carrier phase (0..1).
+    perc2_carrier_phase: AtomicU32,
+    /// SynDRM perc2 modulator phase (0..1).
+    perc2_mod_phase: AtomicU32,
+    /// SynDRM crash pitch (normalized 0..1).
+    crash_pitch: AtomicU32,
+    /// SynDRM crash decay (normalized 0..1).
+    crash_decay: AtomicU32,
+    /// SynDRM crash tone (normalized 0..1).
+    crash_tone: AtomicU32,
+    /// SynDRM crash drive (normalized 0..1).
+    crash_drive: AtomicU32,
+    /// SynDRM crash output level (normalized 0..1).
+    crash_level: AtomicU32,
+    /// SynDRM crash filter type (0 = Moog LP, 1 = LP, 2 = HP, 3 = BP).
+    crash_filter_type: AtomicU32,
+    /// SynDRM crash filter cutoff (normalized 0..1).
+    crash_filter_cutoff: AtomicU32,
+    /// SynDRM crash filter resonance (normalized 0..1).
+    crash_filter_resonance: AtomicU32,
+    /// SynDRM crash filter pre-drive toggle.
+    crash_filter_pre_drive: AtomicBool,
+    /// SynDRM crash cut group (0 = none, 1..14).
+    crash_cut_group: AtomicU32,
+    /// SynDRM crash cut by group (0 = none, 1..14).
+    crash_cut_by: AtomicU32,
+    /// SynDRM crash trigger probability (0..1).
+    crash_prob: AtomicU32,
+    /// SynDRM crash sequencer grid (128 steps).
+    crash_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM crash sequencer current step.
+    crash_sequencer_step: AtomicI32,
+    /// SynDRM crash sequencer phase in samples.
+    crash_sequencer_phase: AtomicU32,
+    /// SynDRM crash oscillator phase (0..1).
+    crash_phase: AtomicU32,
+    /// SynDRM crash inharmonic oscillator phases (0..1).
+    crash_phases: Arc<[AtomicU32; 6]>,
+    /// SynDRM crash modulator phases (0..1).
+    crash_mod_phases: Arc<[AtomicU32; 6]>,
+    /// SynDRM crash amplitude envelope (0..1).
+    crash_env: AtomicU32,
+    /// SynDRM crash attack remaining samples.
+    crash_attack_remaining: AtomicU32,
+    /// SynDRM crash internal highpass filter state (x prev).
+    crash_hp_x_prev: AtomicU32,
+    /// SynDRM crash internal highpass filter state (y prev).
+    crash_hp_y_prev: AtomicU32,
+    /// SynDRM sample channel pitch (normalized 0..1).
+    samp_pitch: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel attack (normalized 0..1).
+    samp_attack: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel decay (normalized 0..1).
+    samp_decay: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel drive (normalized 0..1).
+    samp_drive: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel output level (normalized 0..1).
+    samp_level: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel filter type (0 = Moog LP, 1 = LP, 2 = HP, 3 = BP).
+    samp_filter_type: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel filter cutoff (normalized 0..1).
+    samp_filter_cutoff: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel filter resonance (normalized 0..1).
+    samp_filter_resonance: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel filter pre-drive toggle.
+    samp_filter_pre_drive: [AtomicBool; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel cut group (0 = none, 1..14).
+    samp_cut_group: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel cut by group (0 = none, 1..14).
+    samp_cut_by: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel trigger probability (0..1).
+    samp_prob: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel sequencer grid (128 steps).
+    samp_sequencer_grid: [Arc<[AtomicBool; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel sequencer current step.
+    samp_sequencer_step: [AtomicI32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel sequencer phase in samples.
+    samp_sequencer_phase: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel playback position (samples).
+    samp_playhead: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel envelope level.
+    samp_env: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel attack remaining samples.
+    samp_attack_remaining: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel decay remaining samples.
+    samp_decay_remaining: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel loaded sample buffer.
+    samp_samples: [Arc<Mutex<Option<Arc<Vec<Vec<f32>>>>>>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel sample path.
+    samp_sample_path: [Arc<Mutex<Option<String>>>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel sample rate.
+    samp_sample_rate: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel sample length in samples.
+    samp_sample_len: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
     kick_attack_remaining: AtomicU32,
     /// SynDRM sequencer page (0..7).
     syndrm_page: AtomicU32,
@@ -764,6 +1112,10 @@ struct Track {
     syndrm_edit_step: AtomicU32,
     /// SynDRM step hold mode (true = hold override).
     syndrm_step_hold: AtomicBool,
+    /// SynDRM randomize amount (0..1).
+    syndrm_randomize_amount: AtomicU32,
+    /// SynDRM copy/paste buffer.
+    syndrm_copy_buffer: Arc<Mutex<SynDRMCopyBuffer>>,
     /// SynDRM RNG state for sequencer randomization.
     syndrm_rng_state: AtomicU32,
     /// SynDRM kick step override enabled.
@@ -784,6 +1136,10 @@ struct Track {
     kick_step_filter_cutoff: Arc<[AtomicU32; SYNDRM_STEPS]>,
     /// SynDRM kick step filter resonance override.
     kick_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM kick step retrig enabled.
+    kick_step_retrig_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM kick step retrig division (2 or 4).
+    kick_step_retrig_division: Arc<[AtomicU32; SYNDRM_STEPS]>,
     /// SynDRM snare step override enabled.
     snare_step_override_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM snare step tone override.
@@ -804,6 +1160,174 @@ struct Track {
     snare_step_filter_cutoff: Arc<[AtomicU32; SYNDRM_STEPS]>,
     /// SynDRM snare step filter resonance override.
     snare_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM snare step retrig enabled.
+    snare_step_retrig_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM snare step retrig division (2 or 4).
+    snare_step_retrig_division: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM clap step override enabled.
+    clap_step_override_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM clap step pitch override.
+    clap_step_pitch: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM clap step decay override.
+    clap_step_decay: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM clap step tone override.
+    clap_step_tone: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM clap step drive override.
+    clap_step_drive: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM clap step level override.
+    clap_step_level: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM clap step filter type override.
+    clap_step_filter_type: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM clap step filter cutoff override.
+    clap_step_filter_cutoff: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM clap step filter resonance override.
+    clap_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM clap step retrig enabled.
+    clap_step_retrig_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM clap step retrig division (2 or 4).
+    clap_step_retrig_division: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM hat step override enabled.
+    hat_step_override_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM hat step pitch override.
+    hat_step_pitch: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM hat step decay override.
+    hat_step_decay: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM hat step tone override.
+    hat_step_tone: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM hat step drive override.
+    hat_step_drive: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM hat step level override.
+    hat_step_level: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM hat step filter type override.
+    hat_step_filter_type: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM hat step filter cutoff override.
+    hat_step_filter_cutoff: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM hat step filter resonance override.
+    hat_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM hat step retrig enabled.
+    hat_step_retrig_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM hat step retrig division (2 or 4).
+    hat_step_retrig_division: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step override enabled.
+    perc1_step_override_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step pitch override.
+    perc1_step_pitch: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step decay override.
+    perc1_step_decay: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step tone override.
+    perc1_step_tone: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step drive override.
+    perc1_step_drive: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step level override.
+    perc1_step_level: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step filter type override.
+    perc1_step_filter_type: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step filter cutoff override.
+    perc1_step_filter_cutoff: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step filter resonance override.
+    perc1_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step retrig enabled.
+    perc1_step_retrig_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM perc1 step retrig division (2 or 4).
+    perc1_step_retrig_division: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step override enabled.
+    perc2_step_override_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step pitch override.
+    perc2_step_pitch: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step decay override.
+    perc2_step_decay: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step tone override.
+    perc2_step_tone: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step drive override.
+    perc2_step_drive: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step level override.
+    perc2_step_level: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step filter type override.
+    perc2_step_filter_type: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step filter cutoff override.
+    perc2_step_filter_cutoff: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step filter resonance override.
+    perc2_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step retrig enabled.
+    perc2_step_retrig_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM perc2 step retrig division (2 or 4).
+    perc2_step_retrig_division: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM crash step override enabled.
+    crash_step_override_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM crash step pitch override.
+    crash_step_pitch: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM crash step decay override.
+    crash_step_decay: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM crash step tone override.
+    crash_step_tone: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM crash step drive override.
+    crash_step_drive: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM crash step level override.
+    crash_step_level: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM crash step filter type override.
+    crash_step_filter_type: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM crash step filter cutoff override.
+    crash_step_filter_cutoff: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM crash step filter resonance override.
+    crash_step_filter_resonance: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM crash step retrig enabled.
+    crash_step_retrig_enabled: Arc<[AtomicBool; SYNDRM_STEPS]>,
+    /// SynDRM crash step retrig division (2 or 4).
+    crash_step_retrig_division: Arc<[AtomicU32; SYNDRM_STEPS]>,
+    /// SynDRM sample step override enabled.
+    samp_step_override_enabled: [Arc<[AtomicBool; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step pitch override.
+    samp_step_pitch: [Arc<[AtomicU32; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step attack override.
+    samp_step_attack: [Arc<[AtomicU32; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step decay override.
+    samp_step_decay: [Arc<[AtomicU32; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step drive override.
+    samp_step_drive: [Arc<[AtomicU32; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step level override.
+    samp_step_level: [Arc<[AtomicU32; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step filter type override.
+    samp_step_filter_type: [Arc<[AtomicU32; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step filter cutoff override.
+    samp_step_filter_cutoff: [Arc<[AtomicU32; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step filter resonance override.
+    samp_step_filter_resonance: [Arc<[AtomicU32; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step retrig enabled.
+    samp_step_retrig_enabled: [Arc<[AtomicBool; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample step retrig division (2 or 4).
+    samp_step_retrig_division: [Arc<[AtomicU32; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM kick retrig remaining count within step.
+    kick_retrig_remaining: AtomicU32,
+    /// SynDRM kick retrig timer in samples.
+    kick_retrig_timer: AtomicU32,
+    /// SynDRM snare retrig remaining count within step.
+    snare_retrig_remaining: AtomicU32,
+    /// SynDRM snare retrig timer in samples.
+    snare_retrig_timer: AtomicU32,
+    /// SynDRM clap retrig remaining count within step.
+    clap_retrig_remaining: AtomicU32,
+    /// SynDRM clap retrig timer in samples.
+    clap_retrig_timer: AtomicU32,
+    /// SynDRM hat retrig remaining count within step.
+    hat_retrig_remaining: AtomicU32,
+    /// SynDRM hat retrig timer in samples.
+    hat_retrig_timer: AtomicU32,
+    /// SynDRM perc1 retrig remaining count within step.
+    perc1_retrig_remaining: AtomicU32,
+    /// SynDRM perc1 retrig timer in samples.
+    perc1_retrig_timer: AtomicU32,
+    /// SynDRM perc2 retrig remaining count within step.
+    perc2_retrig_remaining: AtomicU32,
+    /// SynDRM perc2 retrig timer in samples.
+    perc2_retrig_timer: AtomicU32,
+    /// SynDRM crash retrig remaining count within step.
+    crash_retrig_remaining: AtomicU32,
+    /// SynDRM crash retrig timer in samples.
+    crash_retrig_timer: AtomicU32,
+    /// SynDRM sample retrig remaining count within step.
+    samp_retrig_remaining: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample retrig timer in samples.
+    samp_retrig_timer: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
     /// Void Seed base frequency.
     void_base_freq: AtomicU32,
     /// Smoothed void base frequency.
@@ -1184,6 +1708,9 @@ impl Default for Track {
             kick_filter_cutoff: AtomicU32::new(0.6f32.to_bits()),
             kick_filter_resonance: AtomicU32::new(0.2f32.to_bits()),
             kick_filter_pre_drive: AtomicBool::new(true),
+            kick_cut_group: AtomicU32::new(0),
+            kick_cut_by: AtomicU32::new(0),
+            kick_prob: AtomicU32::new(1.0f32.to_bits()),
             kick_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             kick_sequencer_step: AtomicI32::new(-1),
             kick_sequencer_phase: AtomicU32::new(0),
@@ -1201,6 +1728,9 @@ impl Default for Track {
             snare_filter_cutoff: AtomicU32::new(0.6f32.to_bits()),
             snare_filter_resonance: AtomicU32::new(0.2f32.to_bits()),
             snare_filter_pre_drive: AtomicBool::new(true),
+            snare_cut_group: AtomicU32::new(0),
+            snare_cut_by: AtomicU32::new(0),
+            snare_prob: AtomicU32::new(1.0f32.to_bits()),
             snare_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             snare_sequencer_step: AtomicI32::new(-1),
             snare_sequencer_phase: AtomicU32::new(0),
@@ -1209,10 +1739,132 @@ impl Default for Track {
             snare_noise_env: AtomicU32::new(0.0f32.to_bits()),
             snare_attack_remaining: AtomicU32::new(0),
             snare_noise_rng: AtomicU32::new(0xdead_beef),
+            clap_pitch: AtomicU32::new(0.5f32.to_bits()),
+            clap_decay: AtomicU32::new(0.25f32.to_bits()),
+            clap_tone: AtomicU32::new(0.5f32.to_bits()),
+            clap_drive: AtomicU32::new(0.0f32.to_bits()),
+            clap_level: AtomicU32::new(0.8f32.to_bits()),
+            clap_filter_type: AtomicU32::new(0),
+            clap_filter_cutoff: AtomicU32::new(0.6f32.to_bits()),
+            clap_filter_resonance: AtomicU32::new(0.2f32.to_bits()),
+            clap_filter_pre_drive: AtomicBool::new(true),
+            clap_cut_group: AtomicU32::new(0),
+            clap_cut_by: AtomicU32::new(0),
+            clap_prob: AtomicU32::new(1.0f32.to_bits()),
+            clap_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            clap_sequencer_step: AtomicI32::new(-1),
+            clap_sequencer_phase: AtomicU32::new(0),
+            clap_env: AtomicU32::new(0.0f32.to_bits()),
+            clap_phase: AtomicU32::new(0),
+            hat_pitch: AtomicU32::new(0.664f32.to_bits()),
+            hat_decay: AtomicU32::new(0.048f32.to_bits()),
+            hat_tone: AtomicU32::new(0.5f32.to_bits()),
+            hat_drive: AtomicU32::new(0.0f32.to_bits()),
+            hat_level: AtomicU32::new(1.0f32.to_bits()),
+            hat_filter_type: AtomicU32::new(1),
+            hat_filter_cutoff: AtomicU32::new(1.0f32.to_bits()),
+            hat_filter_resonance: AtomicU32::new(0.667f32.to_bits()),
+            hat_filter_pre_drive: AtomicBool::new(true),
+            hat_cut_group: AtomicU32::new(0),
+            hat_cut_by: AtomicU32::new(0),
+            hat_prob: AtomicU32::new(1.0f32.to_bits()),
+            hat_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            hat_sequencer_step: AtomicI32::new(-1),
+            hat_sequencer_phase: AtomicU32::new(0),
+            hat_phase: AtomicU32::new(0.0f32.to_bits()),
+            hat_phases: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            hat_mod_phases: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            hat_env: AtomicU32::new(0.0f32.to_bits()),
+            hat_attack_remaining: AtomicU32::new(0),
+            hat_hp_x_prev: AtomicU32::new(0.0f32.to_bits()),
+            hat_hp_y_prev: AtomicU32::new(0.0f32.to_bits()),
+            perc1_pitch: AtomicU32::new(0.5f32.to_bits()),
+            perc1_decay: AtomicU32::new(0.5f32.to_bits()),
+            perc1_tone: AtomicU32::new(0.5f32.to_bits()),
+            perc1_drive: AtomicU32::new(0.0f32.to_bits()),
+            perc1_level: AtomicU32::new(0.8f32.to_bits()),
+            perc1_filter_type: AtomicU32::new(1),
+            perc1_filter_cutoff: AtomicU32::new(0.7f32.to_bits()),
+            perc1_filter_resonance: AtomicU32::new(0.2f32.to_bits()),
+            perc1_filter_pre_drive: AtomicBool::new(true),
+            perc1_cut_group: AtomicU32::new(0),
+            perc1_cut_by: AtomicU32::new(0),
+            perc1_prob: AtomicU32::new(1.0f32.to_bits()),
+            perc1_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            perc1_sequencer_step: AtomicI32::new(-1),
+            perc1_sequencer_phase: AtomicU32::new(0),
+            perc1_attack_remaining: AtomicU32::new(0),
+            perc2_pitch: AtomicU32::new(0.5f32.to_bits()),
+            perc2_decay: AtomicU32::new(0.25f32.to_bits()),
+            perc2_tone: AtomicU32::new(0.65f32.to_bits()),
+            perc2_drive: AtomicU32::new(0.0f32.to_bits()),
+            perc2_level: AtomicU32::new(0.8f32.to_bits()),
+            perc2_filter_type: AtomicU32::new(0),
+            perc2_filter_cutoff: AtomicU32::new(0.6f32.to_bits()),
+            perc2_filter_resonance: AtomicU32::new(0.2f32.to_bits()),
+            perc2_filter_pre_drive: AtomicBool::new(true),
+            perc2_cut_group: AtomicU32::new(0),
+            perc2_cut_by: AtomicU32::new(0),
+            perc2_prob: AtomicU32::new(1.0f32.to_bits()),
+            perc2_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            perc2_sequencer_step: AtomicI32::new(-1),
+            perc2_sequencer_phase: AtomicU32::new(0),
+            perc2_env: AtomicU32::new(0.0f32.to_bits()),
+            perc2_carrier_phase: AtomicU32::new(0.0f32.to_bits()),
+            perc2_mod_phase: AtomicU32::new(0.0f32.to_bits()),
+            crash_pitch: AtomicU32::new(0.7f32.to_bits()),
+            crash_decay: AtomicU32::new(0.7f32.to_bits()),
+            crash_tone: AtomicU32::new(0.5f32.to_bits()),
+            crash_drive: AtomicU32::new(0.0f32.to_bits()),
+            crash_level: AtomicU32::new(0.8f32.to_bits()),
+            crash_filter_type: AtomicU32::new(1),
+            crash_filter_cutoff: AtomicU32::new(1.0f32.to_bits()),
+            crash_filter_resonance: AtomicU32::new(0.5f32.to_bits()),
+            crash_filter_pre_drive: AtomicBool::new(true),
+            crash_cut_group: AtomicU32::new(0),
+            crash_cut_by: AtomicU32::new(0),
+            crash_prob: AtomicU32::new(1.0f32.to_bits()),
+            crash_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            crash_sequencer_step: AtomicI32::new(-1),
+            crash_sequencer_phase: AtomicU32::new(0),
+            crash_phase: AtomicU32::new(0.0f32.to_bits()),
+            crash_phases: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            crash_mod_phases: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            crash_env: AtomicU32::new(0.0f32.to_bits()),
+            crash_attack_remaining: AtomicU32::new(0),
+            crash_hp_x_prev: AtomicU32::new(0.0f32.to_bits()),
+            crash_hp_y_prev: AtomicU32::new(0.0f32.to_bits()),
+            samp_pitch: std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits())),
+            samp_attack: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            samp_decay: std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits())),
+            samp_drive: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            samp_level: std::array::from_fn(|_| AtomicU32::new(0.8f32.to_bits())),
+            samp_filter_type: std::array::from_fn(|_| AtomicU32::new(0)),
+            samp_filter_cutoff: std::array::from_fn(|_| AtomicU32::new(0.7f32.to_bits())),
+            samp_filter_resonance: std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits())),
+            samp_filter_pre_drive: std::array::from_fn(|_| AtomicBool::new(true)),
+            samp_cut_group: std::array::from_fn(|_| AtomicU32::new(0)),
+            samp_cut_by: std::array::from_fn(|_| AtomicU32::new(0)),
+            samp_prob: std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits())),
+            samp_sequencer_grid: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicBool::new(false)))
+            }),
+            samp_sequencer_step: std::array::from_fn(|_| AtomicI32::new(-1)),
+            samp_sequencer_phase: std::array::from_fn(|_| AtomicU32::new(0)),
+            samp_playhead: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            samp_env: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            samp_attack_remaining: std::array::from_fn(|_| AtomicU32::new(0)),
+            samp_decay_remaining: std::array::from_fn(|_| AtomicU32::new(0)),
+            samp_samples: std::array::from_fn(|_| Arc::new(Mutex::new(None))),
+            samp_sample_path: std::array::from_fn(|_| Arc::new(Mutex::new(None))),
+            samp_sample_rate: std::array::from_fn(|_| AtomicU32::new(0)),
+            samp_sample_len: std::array::from_fn(|_| AtomicU32::new(0)),
             syndrm_page: AtomicU32::new(0),
             syndrm_edit_lane: AtomicU32::new(0),
             syndrm_edit_step: AtomicU32::new(0),
             syndrm_step_hold: AtomicBool::new(false),
+            syndrm_randomize_amount: AtomicU32::new(1.0f32.to_bits()),
+            syndrm_copy_buffer: Arc::new(Mutex::new(SynDRMCopyBuffer::new())),
             syndrm_rng_state: AtomicU32::new(0x81c3_5f27),
             kick_step_override_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             kick_step_pitch: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
@@ -1223,6 +1875,8 @@ impl Default for Track {
             kick_step_filter_type: Arc::new(std::array::from_fn(|_| AtomicU32::new(0))),
             kick_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.6f32.to_bits()))),
             kick_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits()))),
+            kick_step_retrig_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            kick_step_retrig_division: Arc::new(std::array::from_fn(|_| AtomicU32::new(2))),
             snare_step_override_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             snare_step_tone: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
             snare_step_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.4f32.to_bits()))),
@@ -1233,6 +1887,112 @@ impl Default for Track {
             snare_step_filter_type: Arc::new(std::array::from_fn(|_| AtomicU32::new(0))),
             snare_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.6f32.to_bits()))),
             snare_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits()))),
+            snare_step_retrig_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            snare_step_retrig_division: Arc::new(std::array::from_fn(|_| AtomicU32::new(2))),
+            clap_step_override_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            clap_step_pitch: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            clap_step_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.25f32.to_bits()))),
+            clap_step_tone: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            clap_step_drive: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            clap_step_level: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.8f32.to_bits()))),
+            clap_step_filter_type: Arc::new(std::array::from_fn(|_| AtomicU32::new(0))),
+            clap_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.6f32.to_bits()))),
+            clap_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits()))),
+            clap_step_retrig_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            clap_step_retrig_division: Arc::new(std::array::from_fn(|_| AtomicU32::new(2))),
+            hat_step_override_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            hat_step_pitch: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.664f32.to_bits()))),
+            hat_step_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.048f32.to_bits()))),
+            hat_step_tone: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            hat_step_drive: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            hat_step_level: Arc::new(std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits()))),
+            hat_step_filter_type: Arc::new(std::array::from_fn(|_| AtomicU32::new(1))),
+            hat_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits()))),
+            hat_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.667f32.to_bits()))),
+            hat_step_retrig_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            hat_step_retrig_division: Arc::new(std::array::from_fn(|_| AtomicU32::new(2))),
+            perc1_step_override_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            perc1_step_pitch: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            perc1_step_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            perc1_step_tone: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            perc1_step_drive: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            perc1_step_level: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.8f32.to_bits()))),
+            perc1_step_filter_type: Arc::new(std::array::from_fn(|_| AtomicU32::new(1))),
+            perc1_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.7f32.to_bits()))),
+            perc1_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits()))),
+            perc1_step_retrig_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            perc1_step_retrig_division: Arc::new(std::array::from_fn(|_| AtomicU32::new(2))),
+            perc2_step_override_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            perc2_step_pitch: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            perc2_step_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.25f32.to_bits()))),
+            perc2_step_tone: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.65f32.to_bits()))),
+            perc2_step_drive: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            perc2_step_level: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.8f32.to_bits()))),
+            perc2_step_filter_type: Arc::new(std::array::from_fn(|_| AtomicU32::new(0))),
+            perc2_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.6f32.to_bits()))),
+            perc2_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits()))),
+            perc2_step_retrig_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            perc2_step_retrig_division: Arc::new(std::array::from_fn(|_| AtomicU32::new(2))),
+            crash_step_override_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            crash_step_pitch: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.7f32.to_bits()))),
+            crash_step_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.7f32.to_bits()))),
+            crash_step_tone: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            crash_step_drive: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits()))),
+            crash_step_level: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.8f32.to_bits()))),
+            crash_step_filter_type: Arc::new(std::array::from_fn(|_| AtomicU32::new(1))),
+            crash_step_filter_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits()))),
+            crash_step_filter_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits()))),
+            crash_step_retrig_enabled: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
+            crash_step_retrig_division: Arc::new(std::array::from_fn(|_| AtomicU32::new(2))),
+            samp_step_override_enabled: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicBool::new(false)))
+            }),
+            samp_step_pitch: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits())))
+            }),
+            samp_step_attack: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())))
+            }),
+            samp_step_decay: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits())))
+            }),
+            samp_step_drive: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())))
+            }),
+            samp_step_level: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(0.8f32.to_bits())))
+            }),
+            samp_step_filter_type: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(0)))
+            }),
+            samp_step_filter_cutoff: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(0.7f32.to_bits())))
+            }),
+            samp_step_filter_resonance: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(0.2f32.to_bits())))
+            }),
+            samp_step_retrig_enabled: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicBool::new(false)))
+            }),
+            samp_step_retrig_division: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(2)))
+            }),
+            kick_retrig_remaining: AtomicU32::new(0),
+            kick_retrig_timer: AtomicU32::new(0.0f32.to_bits()),
+            snare_retrig_remaining: AtomicU32::new(0),
+            snare_retrig_timer: AtomicU32::new(0.0f32.to_bits()),
+            clap_retrig_remaining: AtomicU32::new(0),
+            clap_retrig_timer: AtomicU32::new(0.0f32.to_bits()),
+            hat_retrig_remaining: AtomicU32::new(0),
+            hat_retrig_timer: AtomicU32::new(0.0f32.to_bits()),
+            perc1_retrig_remaining: AtomicU32::new(0),
+            perc1_retrig_timer: AtomicU32::new(0.0f32.to_bits()),
+            perc2_retrig_remaining: AtomicU32::new(0),
+            perc2_retrig_timer: AtomicU32::new(0.0f32.to_bits()),
+            crash_retrig_remaining: AtomicU32::new(0),
+            crash_retrig_timer: AtomicU32::new(0.0f32.to_bits()),
+            samp_retrig_remaining: std::array::from_fn(|_| AtomicU32::new(0)),
+            samp_retrig_timer: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
             void_base_freq: AtomicU32::new(40.0f32.to_bits()),
             void_base_freq_smooth: AtomicU32::new(40.0f32.to_bits()),
             void_enabled: AtomicBool::new(false),
@@ -1323,6 +2083,13 @@ struct SynDRMDspState {
     snare_osc: Box<dyn AudioUnit>,
     snare_noise: Box<dyn AudioUnit>,
     snare_drive: Box<dyn AudioUnit>,
+    clap_noise: Box<dyn AudioUnit>,
+    clap_drive: Box<dyn AudioUnit>,
+    hat_drive: Box<dyn AudioUnit>,
+    crash_drive: Box<dyn AudioUnit>,
+    perc1_noise: Box<dyn AudioUnit>,
+    perc1_drive: Box<dyn AudioUnit>,
+    perc2_drive: Box<dyn AudioUnit>,
     kick_filter_moog: Box<dyn AudioUnit>,
     kick_filter_lp: Box<dyn AudioUnit>,
     kick_filter_hp: Box<dyn AudioUnit>,
@@ -1331,6 +2098,34 @@ struct SynDRMDspState {
     snare_filter_lp: Box<dyn AudioUnit>,
     snare_filter_hp: Box<dyn AudioUnit>,
     snare_filter_bp: Box<dyn AudioUnit>,
+    clap_filter_moog: Box<dyn AudioUnit>,
+    clap_filter_lp: Box<dyn AudioUnit>,
+    clap_filter_hp: Box<dyn AudioUnit>,
+    clap_filter_bp: Box<dyn AudioUnit>,
+    hat_filter_moog: Box<dyn AudioUnit>,
+    hat_filter_lp: Box<dyn AudioUnit>,
+    hat_filter_hp: Box<dyn AudioUnit>,
+    hat_filter_bp: Box<dyn AudioUnit>,
+    crash_filter_moog: Box<dyn AudioUnit>,
+    crash_filter_lp: Box<dyn AudioUnit>,
+    crash_filter_hp: Box<dyn AudioUnit>,
+    crash_filter_bp: Box<dyn AudioUnit>,
+    perc1_filter_moog: Box<dyn AudioUnit>,
+    perc1_filter_lp: Box<dyn AudioUnit>,
+    perc1_filter_hp: Box<dyn AudioUnit>,
+    perc1_filter_bp: Box<dyn AudioUnit>,
+    perc2_filter_moog: Box<dyn AudioUnit>,
+    perc2_filter_lp: Box<dyn AudioUnit>,
+    perc2_filter_hp: Box<dyn AudioUnit>,
+    perc2_filter_bp: Box<dyn AudioUnit>,
+    samp_drive: [Box<dyn AudioUnit>; SYNDRM_SAMPLE_CHANNELS],
+    samp_filter_moog: [Box<dyn AudioUnit>; SYNDRM_SAMPLE_CHANNELS],
+    samp_filter_lp: [Box<dyn AudioUnit>; SYNDRM_SAMPLE_CHANNELS],
+    samp_filter_hp: [Box<dyn AudioUnit>; SYNDRM_SAMPLE_CHANNELS],
+    samp_filter_bp: [Box<dyn AudioUnit>; SYNDRM_SAMPLE_CHANNELS],
+    perc1_karplus_line: Vec<f32>,
+    perc1_karplus_pos: usize,
+    perc1_karplus_delay: usize,
 }
 
 impl SynDRMDspState {
@@ -1342,6 +2137,13 @@ impl SynDRMDspState {
             snare_osc: Box::new(sine()),
             snare_noise: Box::new(noise()),
             snare_drive: Box::new(shape(Tanh(1.0))),
+            clap_noise: Box::new(noise()),
+            clap_drive: Box::new(shape(Tanh(1.0))),
+            hat_drive: Box::new(shape(Tanh(1.0))),
+            crash_drive: Box::new(shape(Tanh(1.0))),
+            perc1_noise: Box::new(noise()),
+            perc1_drive: Box::new(shape(Tanh(1.0))),
+            perc2_drive: Box::new(shape(Tanh(1.0))),
             kick_filter_moog: Box::new(moog()),
             kick_filter_lp: Box::new(lowpass()),
             kick_filter_hp: Box::new(highpass()),
@@ -1350,6 +2152,34 @@ impl SynDRMDspState {
             snare_filter_lp: Box::new(lowpass()),
             snare_filter_hp: Box::new(highpass()),
             snare_filter_bp: Box::new(bandpass()),
+            clap_filter_moog: Box::new(moog()),
+            clap_filter_lp: Box::new(lowpass()),
+            clap_filter_hp: Box::new(highpass()),
+            clap_filter_bp: Box::new(bandpass()),
+            hat_filter_moog: Box::new(moog()),
+            hat_filter_lp: Box::new(lowpass()),
+            hat_filter_hp: Box::new(highpass()),
+            hat_filter_bp: Box::new(bandpass()),
+            crash_filter_moog: Box::new(moog()),
+            crash_filter_lp: Box::new(lowpass()),
+            crash_filter_hp: Box::new(highpass()),
+            crash_filter_bp: Box::new(bandpass()),
+            perc1_filter_moog: Box::new(moog()),
+            perc1_filter_lp: Box::new(lowpass()),
+            perc1_filter_hp: Box::new(highpass()),
+            perc1_filter_bp: Box::new(bandpass()),
+            perc2_filter_moog: Box::new(moog()),
+            perc2_filter_lp: Box::new(lowpass()),
+            perc2_filter_hp: Box::new(highpass()),
+            perc2_filter_bp: Box::new(bandpass()),
+            samp_drive: std::array::from_fn(|_| Box::new(shape(Tanh(1.0))) as Box<dyn AudioUnit>),
+            samp_filter_moog: std::array::from_fn(|_| Box::new(moog()) as Box<dyn AudioUnit>),
+            samp_filter_lp: std::array::from_fn(|_| Box::new(lowpass()) as Box<dyn AudioUnit>),
+            samp_filter_hp: std::array::from_fn(|_| Box::new(highpass()) as Box<dyn AudioUnit>),
+            samp_filter_bp: std::array::from_fn(|_| Box::new(bandpass()) as Box<dyn AudioUnit>),
+            perc1_karplus_line: vec![0.0; 8192],
+            perc1_karplus_pos: 0,
+            perc1_karplus_delay: 2,
         }
     }
 
@@ -1364,6 +2194,13 @@ impl SynDRMDspState {
         self.snare_osc.set_sample_rate(sr);
         self.snare_noise.set_sample_rate(sr);
         self.snare_drive.set_sample_rate(sr);
+        self.clap_noise.set_sample_rate(sr);
+        self.clap_drive.set_sample_rate(sr);
+        self.hat_drive.set_sample_rate(sr);
+        self.crash_drive.set_sample_rate(sr);
+        self.perc1_noise.set_sample_rate(sr);
+        self.perc1_drive.set_sample_rate(sr);
+        self.perc2_drive.set_sample_rate(sr);
         self.kick_filter_moog.set_sample_rate(sr);
         self.kick_filter_lp.set_sample_rate(sr);
         self.kick_filter_hp.set_sample_rate(sr);
@@ -1372,6 +2209,41 @@ impl SynDRMDspState {
         self.snare_filter_lp.set_sample_rate(sr);
         self.snare_filter_hp.set_sample_rate(sr);
         self.snare_filter_bp.set_sample_rate(sr);
+        self.clap_filter_moog.set_sample_rate(sr);
+        self.clap_filter_lp.set_sample_rate(sr);
+        self.clap_filter_hp.set_sample_rate(sr);
+        self.clap_filter_bp.set_sample_rate(sr);
+        self.hat_filter_moog.set_sample_rate(sr);
+        self.hat_filter_lp.set_sample_rate(sr);
+        self.hat_filter_hp.set_sample_rate(sr);
+        self.hat_filter_bp.set_sample_rate(sr);
+        self.crash_filter_moog.set_sample_rate(sr);
+        self.crash_filter_lp.set_sample_rate(sr);
+        self.crash_filter_hp.set_sample_rate(sr);
+        self.crash_filter_bp.set_sample_rate(sr);
+        self.perc1_filter_moog.set_sample_rate(sr);
+        self.perc1_filter_lp.set_sample_rate(sr);
+        self.perc1_filter_hp.set_sample_rate(sr);
+        self.perc1_filter_bp.set_sample_rate(sr);
+        self.perc2_filter_moog.set_sample_rate(sr);
+        self.perc2_filter_lp.set_sample_rate(sr);
+        self.perc2_filter_hp.set_sample_rate(sr);
+        self.perc2_filter_bp.set_sample_rate(sr);
+        for unit in self.samp_drive.iter_mut() {
+            unit.set_sample_rate(sr);
+        }
+        for unit in self.samp_filter_moog.iter_mut() {
+            unit.set_sample_rate(sr);
+        }
+        for unit in self.samp_filter_lp.iter_mut() {
+            unit.set_sample_rate(sr);
+        }
+        for unit in self.samp_filter_hp.iter_mut() {
+            unit.set_sample_rate(sr);
+        }
+        for unit in self.samp_filter_bp.iter_mut() {
+            unit.set_sample_rate(sr);
+        }
     }
 }
 
@@ -1658,6 +2530,7 @@ impl Default for TLBX1Params {
 
 pub enum TLBX1Task {
     LoadSample(usize, PathBuf),
+    LoadSyndrmSample { track_idx: usize, channel_idx: usize, path: PathBuf },
     SaveProject {
         path: PathBuf,
         title: String,
@@ -2175,6 +3048,9 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.kick_filter_cutoff.store(0.6f32.to_bits(), Ordering::Relaxed);
     track.kick_filter_resonance.store(0.2f32.to_bits(), Ordering::Relaxed);
     track.kick_filter_pre_drive.store(true, Ordering::Relaxed);
+    track.kick_cut_group.store(0, Ordering::Relaxed);
+    track.kick_cut_by.store(0, Ordering::Relaxed);
+    track.kick_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.kick_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -2194,6 +3070,9 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.snare_filter_cutoff.store(0.6f32.to_bits(), Ordering::Relaxed);
     track.snare_filter_resonance.store(0.2f32.to_bits(), Ordering::Relaxed);
     track.snare_filter_pre_drive.store(true, Ordering::Relaxed);
+    track.snare_cut_group.store(0, Ordering::Relaxed);
+    track.snare_cut_by.store(0, Ordering::Relaxed);
+    track.snare_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.snare_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -2204,10 +3083,131 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.snare_noise_env.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.snare_attack_remaining.store(0, Ordering::Relaxed);
     track.snare_noise_rng.store(0xdead_beef, Ordering::Relaxed);
+    track.clap_pitch.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.clap_decay.store(0.25f32.to_bits(), Ordering::Relaxed);
+    track.clap_tone.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.clap_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.clap_level.store(0.8f32.to_bits(), Ordering::Relaxed);
+    track.clap_filter_type.store(0, Ordering::Relaxed);
+    track.clap_filter_cutoff.store(0.6f32.to_bits(), Ordering::Relaxed);
+    track.clap_filter_resonance.store(0.2f32.to_bits(), Ordering::Relaxed);
+    track.clap_filter_pre_drive.store(true, Ordering::Relaxed);
+    track.clap_cut_group.store(0, Ordering::Relaxed);
+    track.clap_cut_by.store(0, Ordering::Relaxed);
+    track.clap_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    for i in 0..SYNDRM_STEPS {
+        track.clap_sequencer_grid[i].store(false, Ordering::Relaxed);
+    }
+    track.clap_sequencer_step.store(-1, Ordering::Relaxed);
+    track.clap_sequencer_phase.store(0, Ordering::Relaxed);
+    track.clap_env.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.clap_phase.store(0, Ordering::Relaxed);
+    track.hat_pitch.store(0.664f32.to_bits(), Ordering::Relaxed);
+    track.hat_decay.store(0.048f32.to_bits(), Ordering::Relaxed);
+    track.hat_tone.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.hat_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.hat_level.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.hat_filter_type.store(1, Ordering::Relaxed);
+    track.hat_filter_cutoff.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.hat_filter_resonance.store(0.667f32.to_bits(), Ordering::Relaxed);
+    track.hat_filter_pre_drive.store(true, Ordering::Relaxed);
+    track.hat_cut_group.store(0, Ordering::Relaxed);
+    track.hat_cut_by.store(0, Ordering::Relaxed);
+    track.hat_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    for i in 0..SYNDRM_STEPS {
+        track.hat_sequencer_grid[i].store(false, Ordering::Relaxed);
+    }
+    track.hat_sequencer_step.store(-1, Ordering::Relaxed);
+    track.hat_sequencer_phase.store(0, Ordering::Relaxed);
+    track.hat_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    for i in 0..METAL_INHARM_RATIOS.len() {
+        track.hat_phases[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.hat_mod_phases[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+    }
+    track.hat_env.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.hat_attack_remaining.store(0, Ordering::Relaxed);
+    track.hat_hp_x_prev.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.hat_hp_y_prev.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.perc1_pitch.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.perc1_decay.store(0.4f32.to_bits(), Ordering::Relaxed);
+    track.perc1_tone.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.perc1_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.perc1_level.store(0.8f32.to_bits(), Ordering::Relaxed);
+    track.perc1_filter_type.store(0, Ordering::Relaxed);
+    track.perc1_filter_cutoff.store(0.6f32.to_bits(), Ordering::Relaxed);
+    track.perc1_filter_resonance.store(0.2f32.to_bits(), Ordering::Relaxed);
+    track.perc1_filter_pre_drive.store(true, Ordering::Relaxed);
+    track.perc1_cut_group.store(0, Ordering::Relaxed);
+    track.perc1_cut_by.store(0, Ordering::Relaxed);
+    track.perc1_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    for i in 0..SYNDRM_STEPS {
+        track.perc1_sequencer_grid[i].store(false, Ordering::Relaxed);
+    }
+    track.perc1_sequencer_step.store(-1, Ordering::Relaxed);
+    track.perc1_sequencer_phase.store(0, Ordering::Relaxed);
+    track.perc1_attack_remaining.store(0, Ordering::Relaxed);
+    track.perc2_pitch.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.perc2_decay.store(0.25f32.to_bits(), Ordering::Relaxed);
+    track.perc2_tone.store(0.65f32.to_bits(), Ordering::Relaxed);
+    track.perc2_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.perc2_level.store(0.8f32.to_bits(), Ordering::Relaxed);
+    track.perc2_filter_type.store(0, Ordering::Relaxed);
+    track.perc2_filter_cutoff.store(0.6f32.to_bits(), Ordering::Relaxed);
+    track.perc2_filter_resonance.store(0.2f32.to_bits(), Ordering::Relaxed);
+    track.perc2_filter_pre_drive.store(true, Ordering::Relaxed);
+    track.perc2_cut_group.store(0, Ordering::Relaxed);
+    track.perc2_cut_by.store(0, Ordering::Relaxed);
+    track.perc2_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    for i in 0..SYNDRM_STEPS {
+        track.perc2_sequencer_grid[i].store(false, Ordering::Relaxed);
+    }
+    track.perc2_sequencer_step.store(-1, Ordering::Relaxed);
+    track.perc2_sequencer_phase.store(0, Ordering::Relaxed);
+    track.perc2_env.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.perc2_carrier_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.perc2_mod_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.crash_pitch.store(0.7f32.to_bits(), Ordering::Relaxed);
+    track.crash_decay.store(0.7f32.to_bits(), Ordering::Relaxed);
+    track.crash_tone.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.crash_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.crash_level.store(0.8f32.to_bits(), Ordering::Relaxed);
+    track.crash_filter_type.store(1, Ordering::Relaxed);
+    track.crash_filter_cutoff.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .crash_filter_resonance
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.crash_filter_pre_drive.store(true, Ordering::Relaxed);
+    track.crash_cut_group.store(0, Ordering::Relaxed);
+    track.crash_cut_by.store(0, Ordering::Relaxed);
+    track.crash_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    for i in 0..SYNDRM_STEPS {
+        track.crash_sequencer_grid[i].store(false, Ordering::Relaxed);
+    }
+    track.crash_sequencer_step.store(-1, Ordering::Relaxed);
+    track.crash_sequencer_phase.store(0, Ordering::Relaxed);
+    track.crash_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+    for i in 0..METAL_INHARM_RATIOS.len() {
+        track.crash_phases[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .crash_mod_phases[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+    }
+    track.crash_env.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.crash_attack_remaining.store(0, Ordering::Relaxed);
+    track.crash_hp_x_prev.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.crash_hp_y_prev.store(0.0f32.to_bits(), Ordering::Relaxed);
+    for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+        track.samp_cut_group[samp_idx].store(0, Ordering::Relaxed);
+        track.samp_cut_by[samp_idx].store(0, Ordering::Relaxed);
+        track.samp_prob[samp_idx].store(1.0f32.to_bits(), Ordering::Relaxed);
+    }
     track.syndrm_page.store(0, Ordering::Relaxed);
     track.syndrm_edit_lane.store(0, Ordering::Relaxed);
     track.syndrm_edit_step.store(0, Ordering::Relaxed);
     track.syndrm_step_hold.store(false, Ordering::Relaxed);
+    track
+        .syndrm_randomize_amount
+        .store(1.0f32.to_bits(), Ordering::Relaxed);
     track.syndrm_rng_state.store(0x81c3_5f27, Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.kick_step_override_enabled[i].store(false, Ordering::Relaxed);
@@ -2219,6 +3219,8 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
         track.kick_step_filter_type[i].store(0, Ordering::Relaxed);
         track.kick_step_filter_cutoff[i].store(0.6f32.to_bits(), Ordering::Relaxed);
         track.kick_step_filter_resonance[i].store(0.2f32.to_bits(), Ordering::Relaxed);
+        track.kick_step_retrig_enabled[i].store(false, Ordering::Relaxed);
+        track.kick_step_retrig_division[i].store(2, Ordering::Relaxed);
         track.snare_step_override_enabled[i].store(false, Ordering::Relaxed);
         track.snare_step_tone[i].store(0.5f32.to_bits(), Ordering::Relaxed);
         track.snare_step_decay[i].store(0.4f32.to_bits(), Ordering::Relaxed);
@@ -2229,6 +3231,93 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
         track.snare_step_filter_type[i].store(0, Ordering::Relaxed);
         track.snare_step_filter_cutoff[i].store(0.6f32.to_bits(), Ordering::Relaxed);
         track.snare_step_filter_resonance[i].store(0.2f32.to_bits(), Ordering::Relaxed);
+        track.snare_step_retrig_enabled[i].store(false, Ordering::Relaxed);
+        track.snare_step_retrig_division[i].store(2, Ordering::Relaxed);
+        track.clap_step_override_enabled[i].store(false, Ordering::Relaxed);
+        track.clap_step_pitch[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.clap_step_decay[i].store(0.25f32.to_bits(), Ordering::Relaxed);
+        track.clap_step_tone[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.clap_step_drive[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.clap_step_level[i].store(0.8f32.to_bits(), Ordering::Relaxed);
+        track.clap_step_filter_type[i].store(0, Ordering::Relaxed);
+        track.clap_step_filter_cutoff[i].store(0.6f32.to_bits(), Ordering::Relaxed);
+        track
+            .clap_step_filter_resonance[i]
+            .store(0.2f32.to_bits(), Ordering::Relaxed);
+        track.clap_step_retrig_enabled[i].store(false, Ordering::Relaxed);
+        track.clap_step_retrig_division[i].store(2, Ordering::Relaxed);
+        track.hat_step_override_enabled[i].store(false, Ordering::Relaxed);
+        track.hat_step_pitch[i].store(0.664f32.to_bits(), Ordering::Relaxed);
+        track.hat_step_decay[i].store(0.048f32.to_bits(), Ordering::Relaxed);
+        track.hat_step_tone[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.hat_step_drive[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.hat_step_level[i].store(1.0f32.to_bits(), Ordering::Relaxed);
+        track.hat_step_filter_type[i].store(1, Ordering::Relaxed);
+        track.hat_step_filter_cutoff[i].store(1.0f32.to_bits(), Ordering::Relaxed);
+        track.hat_step_filter_resonance[i].store(0.667f32.to_bits(), Ordering::Relaxed);
+        track.hat_step_retrig_enabled[i].store(false, Ordering::Relaxed);
+        track.hat_step_retrig_division[i].store(2, Ordering::Relaxed);
+        track.perc1_step_override_enabled[i].store(false, Ordering::Relaxed);
+        track.perc1_step_pitch[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.perc1_step_decay[i].store(0.4f32.to_bits(), Ordering::Relaxed);
+        track.perc1_step_tone[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.perc1_step_drive[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.perc1_step_level[i].store(0.8f32.to_bits(), Ordering::Relaxed);
+        track.perc1_step_filter_type[i].store(0, Ordering::Relaxed);
+        track.perc1_step_filter_cutoff[i].store(0.6f32.to_bits(), Ordering::Relaxed);
+        track
+            .perc1_step_filter_resonance[i]
+            .store(0.2f32.to_bits(), Ordering::Relaxed);
+        track.perc1_step_retrig_enabled[i].store(false, Ordering::Relaxed);
+        track.perc1_step_retrig_division[i].store(2, Ordering::Relaxed);
+        track.perc2_step_override_enabled[i].store(false, Ordering::Relaxed);
+        track.perc2_step_pitch[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.perc2_step_decay[i].store(0.25f32.to_bits(), Ordering::Relaxed);
+        track.perc2_step_tone[i].store(0.65f32.to_bits(), Ordering::Relaxed);
+        track.perc2_step_drive[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.perc2_step_level[i].store(0.8f32.to_bits(), Ordering::Relaxed);
+        track.perc2_step_filter_type[i].store(0, Ordering::Relaxed);
+        track.perc2_step_filter_cutoff[i].store(0.6f32.to_bits(), Ordering::Relaxed);
+        track
+            .perc2_step_filter_resonance[i]
+            .store(0.2f32.to_bits(), Ordering::Relaxed);
+        track.perc2_step_retrig_enabled[i].store(false, Ordering::Relaxed);
+        track.perc2_step_retrig_division[i].store(2, Ordering::Relaxed);
+        track.crash_step_override_enabled[i].store(false, Ordering::Relaxed);
+        track.crash_step_pitch[i].store(0.7f32.to_bits(), Ordering::Relaxed);
+        track.crash_step_decay[i].store(0.7f32.to_bits(), Ordering::Relaxed);
+        track.crash_step_tone[i].store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.crash_step_drive[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.crash_step_level[i].store(0.8f32.to_bits(), Ordering::Relaxed);
+        track.crash_step_filter_type[i].store(1, Ordering::Relaxed);
+        track
+            .crash_step_filter_cutoff[i]
+            .store(1.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .crash_step_filter_resonance[i]
+            .store(0.5f32.to_bits(), Ordering::Relaxed);
+        track.crash_step_retrig_enabled[i].store(false, Ordering::Relaxed);
+        track.crash_step_retrig_division[i].store(2, Ordering::Relaxed);
+    }
+    track.kick_retrig_remaining.store(0, Ordering::Relaxed);
+    track.kick_retrig_timer.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.snare_retrig_remaining.store(0, Ordering::Relaxed);
+    track.snare_retrig_timer.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.clap_retrig_remaining.store(0, Ordering::Relaxed);
+    track.clap_retrig_timer.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.hat_retrig_remaining.store(0, Ordering::Relaxed);
+    track.hat_retrig_timer.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.perc1_retrig_remaining.store(0, Ordering::Relaxed);
+    track.perc1_retrig_timer.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.perc2_retrig_remaining.store(0, Ordering::Relaxed);
+    track.perc2_retrig_timer.store(0.0f32.to_bits(), Ordering::Relaxed);
+    track.crash_retrig_remaining.store(0, Ordering::Relaxed);
+    track.crash_retrig_timer.store(0.0f32.to_bits(), Ordering::Relaxed);
+    for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+        track.samp_retrig_remaining[samp_idx].store(0, Ordering::Relaxed);
+        track
+            .samp_retrig_timer[samp_idx]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
     }
 
     track.void_base_freq.store(40.0f32.to_bits(), Ordering::Relaxed);
@@ -3320,9 +4409,22 @@ impl TLBX1 {
         dsp_state.set_sample_rate(sr);
         let mut max_active_step = None;
         for i in 0..SYNDRM_STEPS {
-            if track.kick_sequencer_grid[i].load(Ordering::Relaxed)
+            let mut active = track.kick_sequencer_grid[i].load(Ordering::Relaxed)
                 || track.snare_sequencer_grid[i].load(Ordering::Relaxed)
-            {
+                || track.clap_sequencer_grid[i].load(Ordering::Relaxed)
+                || track.hat_sequencer_grid[i].load(Ordering::Relaxed)
+                || track.perc1_sequencer_grid[i].load(Ordering::Relaxed)
+                || track.perc2_sequencer_grid[i].load(Ordering::Relaxed)
+                || track.crash_sequencer_grid[i].load(Ordering::Relaxed);
+            if !active {
+                for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                    if track.samp_sequencer_grid[samp_idx][i].load(Ordering::Relaxed) {
+                        active = true;
+                        break;
+                    }
+                }
+            }
+            if active {
                 max_active_step = Some(i);
             }
         }
@@ -3349,6 +4451,14 @@ impl TLBX1 {
         if transport_running {
             track.kick_sequencer_step.store(current_step, Ordering::Relaxed);
             track.snare_sequencer_step.store(current_step, Ordering::Relaxed);
+            track.clap_sequencer_step.store(current_step, Ordering::Relaxed);
+            track.hat_sequencer_step.store(current_step, Ordering::Relaxed);
+            track.perc1_sequencer_step.store(current_step, Ordering::Relaxed);
+            track.perc2_sequencer_step.store(current_step, Ordering::Relaxed);
+            track.crash_sequencer_step.store(current_step, Ordering::Relaxed);
+            for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                track.samp_sequencer_step[samp_idx].store(current_step, Ordering::Relaxed);
+            }
         }
 
         let mut kick_pitch_base =
@@ -3388,6 +4498,164 @@ impl TLBX1 {
         let mut snare_filter_resonance_base =
             f32::from_bits(track.snare_filter_resonance.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let snare_filter_pre_drive = track.snare_filter_pre_drive.load(Ordering::Relaxed);
+        let mut clap_pitch_base =
+            f32::from_bits(track.clap_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut clap_decay_base =
+            f32::from_bits(track.clap_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut clap_tone_base =
+            f32::from_bits(track.clap_tone.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut clap_drive_base =
+            f32::from_bits(track.clap_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut clap_level_base =
+            f32::from_bits(track.clap_level.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut clap_filter_type_base = track.clap_filter_type.load(Ordering::Relaxed);
+        let mut clap_filter_cutoff_base =
+            f32::from_bits(track.clap_filter_cutoff.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut clap_filter_resonance_base =
+            f32::from_bits(track.clap_filter_resonance.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let clap_filter_pre_drive = track.clap_filter_pre_drive.load(Ordering::Relaxed);
+        let mut hat_pitch_base =
+            f32::from_bits(track.hat_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut hat_decay_base =
+            f32::from_bits(track.hat_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut hat_tone_base =
+            f32::from_bits(track.hat_tone.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut hat_drive_base =
+            f32::from_bits(track.hat_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut hat_level_base =
+            f32::from_bits(track.hat_level.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut hat_filter_type_base = track.hat_filter_type.load(Ordering::Relaxed);
+        let mut hat_filter_cutoff_base =
+            f32::from_bits(track.hat_filter_cutoff.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut hat_filter_resonance_base =
+            f32::from_bits(track.hat_filter_resonance.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let hat_filter_pre_drive = track.hat_filter_pre_drive.load(Ordering::Relaxed);
+        let mut perc1_pitch_base =
+            f32::from_bits(track.perc1_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc1_decay_base =
+            f32::from_bits(track.perc1_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc1_tone_base =
+            f32::from_bits(track.perc1_tone.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc1_drive_base =
+            f32::from_bits(track.perc1_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc1_level_base =
+            f32::from_bits(track.perc1_level.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc1_filter_type_base = track.perc1_filter_type.load(Ordering::Relaxed);
+        let mut perc1_filter_cutoff_base =
+            f32::from_bits(track.perc1_filter_cutoff.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc1_filter_resonance_base =
+            f32::from_bits(track.perc1_filter_resonance.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let perc1_filter_pre_drive = track.perc1_filter_pre_drive.load(Ordering::Relaxed);
+        let mut perc2_pitch_base =
+            f32::from_bits(track.perc2_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc2_decay_base =
+            f32::from_bits(track.perc2_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc2_tone_base =
+            f32::from_bits(track.perc2_tone.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc2_drive_base =
+            f32::from_bits(track.perc2_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc2_level_base =
+            f32::from_bits(track.perc2_level.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc2_filter_type_base = track.perc2_filter_type.load(Ordering::Relaxed);
+        let mut perc2_filter_cutoff_base =
+            f32::from_bits(track.perc2_filter_cutoff.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut perc2_filter_resonance_base =
+            f32::from_bits(track.perc2_filter_resonance.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let perc2_filter_pre_drive = track.perc2_filter_pre_drive.load(Ordering::Relaxed);
+        let mut crash_pitch_base =
+            f32::from_bits(track.crash_pitch.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut crash_decay_base =
+            f32::from_bits(track.crash_decay.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut crash_tone_base =
+            f32::from_bits(track.crash_tone.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut crash_drive_base =
+            f32::from_bits(track.crash_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut crash_level_base =
+            f32::from_bits(track.crash_level.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut crash_filter_type_base = track.crash_filter_type.load(Ordering::Relaxed);
+        let mut crash_filter_cutoff_base =
+            f32::from_bits(track.crash_filter_cutoff.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut crash_filter_resonance_base =
+            f32::from_bits(track.crash_filter_resonance.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let crash_filter_pre_drive = track.crash_filter_pre_drive.load(Ordering::Relaxed);
+        let kick_cut_group = track.kick_cut_group.load(Ordering::Relaxed);
+        let kick_cut_by = track.kick_cut_by.load(Ordering::Relaxed);
+        let kick_prob = f32::from_bits(track.kick_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let snare_cut_group = track.snare_cut_group.load(Ordering::Relaxed);
+        let snare_cut_by = track.snare_cut_by.load(Ordering::Relaxed);
+        let snare_prob =
+            f32::from_bits(track.snare_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let clap_cut_group = track.clap_cut_group.load(Ordering::Relaxed);
+        let clap_cut_by = track.clap_cut_by.load(Ordering::Relaxed);
+        let clap_prob =
+            f32::from_bits(track.clap_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let hat_cut_group = track.hat_cut_group.load(Ordering::Relaxed);
+        let hat_cut_by = track.hat_cut_by.load(Ordering::Relaxed);
+        let hat_prob =
+            f32::from_bits(track.hat_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let perc1_cut_group = track.perc1_cut_group.load(Ordering::Relaxed);
+        let perc1_cut_by = track.perc1_cut_by.load(Ordering::Relaxed);
+        let perc1_prob =
+            f32::from_bits(track.perc1_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let perc2_cut_group = track.perc2_cut_group.load(Ordering::Relaxed);
+        let perc2_cut_by = track.perc2_cut_by.load(Ordering::Relaxed);
+        let perc2_prob =
+            f32::from_bits(track.perc2_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let crash_cut_group = track.crash_cut_group.load(Ordering::Relaxed);
+        let crash_cut_by = track.crash_cut_by.load(Ordering::Relaxed);
+        let crash_prob =
+            f32::from_bits(track.crash_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let samp_cut_group: [u32; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| track.samp_cut_group[idx].load(Ordering::Relaxed));
+        let samp_cut_by: [u32; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| track.samp_cut_by[idx].load(Ordering::Relaxed));
+        let samp_prob: [f32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_prob[idx].load(Ordering::Relaxed)).clamp(0.0, 1.0)
+        });
+        let mut samp_pitch_base: [f32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_pitch[idx].load(Ordering::Relaxed)).clamp(0.0, 1.0)
+        });
+        let mut samp_attack_base: [f32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_attack[idx].load(Ordering::Relaxed)).clamp(0.0, 1.0)
+        });
+        let mut samp_decay_base: [f32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_decay[idx].load(Ordering::Relaxed)).clamp(0.0, 1.0)
+        });
+        let mut samp_drive_base: [f32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_drive[idx].load(Ordering::Relaxed)).clamp(0.0, 1.0)
+        });
+        let mut samp_level_base: [f32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_level[idx].load(Ordering::Relaxed)).clamp(0.0, 1.0)
+        });
+        let mut samp_filter_type_base: [u32; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| track.samp_filter_type[idx].load(Ordering::Relaxed));
+        let mut samp_filter_cutoff_base: [f32; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_filter_cutoff[idx].load(Ordering::Relaxed)).clamp(0.0, 1.0)
+        });
+        let mut samp_filter_resonance_base: [f32; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_filter_resonance[idx].load(Ordering::Relaxed))
+                .clamp(0.0, 1.0)
+        });
+        let samp_filter_pre_drive: [bool; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| {
+            track.samp_filter_pre_drive[idx].load(Ordering::Relaxed)
+        });
+
+        let samp_samples: [Option<Arc<Vec<Vec<f32>>>>; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| {
+                if let Some(guard) = track.samp_samples[idx].try_lock() {
+                    guard.as_ref().map(Arc::clone)
+                } else {
+                    None
+                }
+            });
+        let samp_sample_rate: [u32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            track.samp_sample_rate[idx].load(Ordering::Relaxed).max(1)
+        });
+        let samp_sample_len: [u32; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| track.samp_sample_len[idx].load(Ordering::Relaxed));
 
         let mut env = f32::from_bits(track.kick_env.load(Ordering::Relaxed));
         let mut pitch_env = f32::from_bits(track.kick_pitch_env.load(Ordering::Relaxed));
@@ -3397,11 +4665,197 @@ impl TLBX1 {
             f32::from_bits(track.snare_noise_env.load(Ordering::Relaxed));
         let mut snare_attack_remaining =
             track.snare_attack_remaining.load(Ordering::Relaxed);
+        let mut clap_env = f32::from_bits(track.clap_env.load(Ordering::Relaxed));
+        let mut clap_phase = track.clap_phase.load(Ordering::Relaxed);
+        let mut hat_env = f32::from_bits(track.hat_env.load(Ordering::Relaxed));
+        let mut hat_attack_remaining = track.hat_attack_remaining.load(Ordering::Relaxed);
+        let mut hat_phase = f32::from_bits(track.hat_phase.load(Ordering::Relaxed));
+        let mut hat_phases = [0.0f32; 6];
+        let mut hat_mod_phases = [0.0f32; 6];
+        for i in 0..METAL_INHARM_RATIOS.len() {
+            hat_phases[i] = f32::from_bits(track.hat_phases[i].load(Ordering::Relaxed));
+            hat_mod_phases[i] = f32::from_bits(track.hat_mod_phases[i].load(Ordering::Relaxed));
+        }
+        let mut hat_hp_x_prev = f32::from_bits(track.hat_hp_x_prev.load(Ordering::Relaxed));
+        let mut hat_hp_y_prev = f32::from_bits(track.hat_hp_y_prev.load(Ordering::Relaxed));
+        let mut perc1_attack_remaining = track.perc1_attack_remaining.load(Ordering::Relaxed);
+        let perc1_line_len = dsp_state.perc1_karplus_line.len().max(2);
+        let mut perc1_pos = dsp_state.perc1_karplus_pos.min(perc1_line_len - 1);
+        let mut perc1_delay_len = dsp_state
+            .perc1_karplus_delay
+            .clamp(2, perc1_line_len - 1);
+        let mut perc2_env = f32::from_bits(track.perc2_env.load(Ordering::Relaxed));
+        let mut perc2_carrier_phase =
+            f32::from_bits(track.perc2_carrier_phase.load(Ordering::Relaxed));
+        let mut perc2_mod_phase = f32::from_bits(track.perc2_mod_phase.load(Ordering::Relaxed));
+        let mut crash_env = f32::from_bits(track.crash_env.load(Ordering::Relaxed));
+        let mut crash_attack_remaining = track.crash_attack_remaining.load(Ordering::Relaxed);
+        let mut crash_phase = f32::from_bits(track.crash_phase.load(Ordering::Relaxed));
+        let mut crash_phases = [0.0f32; 6];
+        let mut crash_mod_phases = [0.0f32; 6];
+        for i in 0..METAL_INHARM_RATIOS.len() {
+            crash_phases[i] = f32::from_bits(track.crash_phases[i].load(Ordering::Relaxed));
+            crash_mod_phases[i] = f32::from_bits(track.crash_mod_phases[i].load(Ordering::Relaxed));
+        }
+        let mut crash_hp_x_prev =
+            f32::from_bits(track.crash_hp_x_prev.load(Ordering::Relaxed));
+        let mut crash_hp_y_prev =
+            f32::from_bits(track.crash_hp_y_prev.load(Ordering::Relaxed));
+        let mut samp_env: [f32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_env[idx].load(Ordering::Relaxed))
+        });
+        let mut samp_playhead: [f32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_playhead[idx].load(Ordering::Relaxed))
+        });
+        let mut samp_attack_remaining: [u32; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| track.samp_attack_remaining[idx].load(Ordering::Relaxed));
+        let mut samp_decay_remaining: [u32; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| track.samp_decay_remaining[idx].load(Ordering::Relaxed));
 
         let cutoff_min = 20.0;
         let cutoff_max = 12_000.0;
         let cutoff_span: f32 = cutoff_max / cutoff_min;
         let step_hold = track.syndrm_step_hold.load(Ordering::Relaxed);
+        let mut rng_state = track.syndrm_rng_state.load(Ordering::Relaxed);
+        let mut kick_retrig_remaining = track.kick_retrig_remaining.load(Ordering::Relaxed);
+        let mut kick_retrig_timer =
+            f32::from_bits(track.kick_retrig_timer.load(Ordering::Relaxed));
+        let mut snare_retrig_remaining = track.snare_retrig_remaining.load(Ordering::Relaxed);
+        let mut snare_retrig_timer =
+            f32::from_bits(track.snare_retrig_timer.load(Ordering::Relaxed));
+        let mut clap_retrig_remaining = track.clap_retrig_remaining.load(Ordering::Relaxed);
+        let mut clap_retrig_timer =
+            f32::from_bits(track.clap_retrig_timer.load(Ordering::Relaxed));
+        let mut hat_retrig_remaining = track.hat_retrig_remaining.load(Ordering::Relaxed);
+        let mut hat_retrig_timer =
+            f32::from_bits(track.hat_retrig_timer.load(Ordering::Relaxed));
+        let mut perc1_retrig_remaining = track.perc1_retrig_remaining.load(Ordering::Relaxed);
+        let mut perc1_retrig_timer =
+            f32::from_bits(track.perc1_retrig_timer.load(Ordering::Relaxed));
+        let mut perc2_retrig_remaining = track.perc2_retrig_remaining.load(Ordering::Relaxed);
+        let mut perc2_retrig_timer =
+            f32::from_bits(track.perc2_retrig_timer.load(Ordering::Relaxed));
+        let mut crash_retrig_remaining = track.crash_retrig_remaining.load(Ordering::Relaxed);
+        let mut crash_retrig_timer =
+            f32::from_bits(track.crash_retrig_timer.load(Ordering::Relaxed));
+        let mut samp_retrig_remaining: [u32; SYNDRM_SAMPLE_CHANNELS] =
+            std::array::from_fn(|idx| track.samp_retrig_remaining[idx].load(Ordering::Relaxed));
+        let mut samp_retrig_timer: [f32; SYNDRM_SAMPLE_CHANNELS] = std::array::from_fn(|idx| {
+            f32::from_bits(track.samp_retrig_timer[idx].load(Ordering::Relaxed))
+        });
+        let mut kick_retrig_interval = 0.0f32;
+        let mut snare_retrig_interval = 0.0f32;
+        let mut clap_retrig_interval = 0.0f32;
+        let mut hat_retrig_interval = 0.0f32;
+        let mut perc1_retrig_interval = 0.0f32;
+        let mut perc2_retrig_interval = 0.0f32;
+        let mut crash_retrig_interval = 0.0f32;
+        let mut samp_retrig_interval = [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+        let mut arm_retrig = |enabled: bool,
+                              division: u32,
+                              triggered: bool,
+                              remaining: &mut u32,
+                              timer: &mut f32,
+                              interval: &mut f32| {
+            if triggered && enabled {
+                let div: u32 = if division <= 2 { 2 } else { 4 };
+                *interval = if samples_per_step > 0.0 {
+                    samples_per_step / div as f32
+                } else {
+                    0.0
+                };
+                *remaining = div.saturating_sub(1);
+                *timer = *interval;
+            } else {
+                *remaining = 0;
+                *timer = 0.0;
+                *interval = 0.0;
+            }
+        };
+        if !transport_running {
+            kick_retrig_remaining = 0;
+            kick_retrig_timer = 0.0;
+            snare_retrig_remaining = 0;
+            snare_retrig_timer = 0.0;
+            clap_retrig_remaining = 0;
+            clap_retrig_timer = 0.0;
+            hat_retrig_remaining = 0;
+            hat_retrig_timer = 0.0;
+            perc1_retrig_remaining = 0;
+            perc1_retrig_timer = 0.0;
+            perc2_retrig_remaining = 0;
+            perc2_retrig_timer = 0.0;
+            crash_retrig_remaining = 0;
+            crash_retrig_timer = 0.0;
+            for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                samp_retrig_remaining[samp_idx] = 0;
+                samp_retrig_timer[samp_idx] = 0.0;
+            }
+        } else if current_step >= 0 && samples_per_step > 0.0 {
+            let step_idx = current_step as usize;
+            if step_idx < SYNDRM_STEPS {
+                if kick_retrig_remaining > 0 && kick_retrig_interval <= 0.0 {
+                    let div = track.kick_step_retrig_division[step_idx]
+                        .load(Ordering::Relaxed)
+                        .max(1);
+                    let div = if div <= 2 { 2 } else { 4 };
+                    kick_retrig_interval = samples_per_step / div as f32;
+                }
+                if snare_retrig_remaining > 0 && snare_retrig_interval <= 0.0 {
+                    let div = track.snare_step_retrig_division[step_idx]
+                        .load(Ordering::Relaxed)
+                        .max(1);
+                    let div = if div <= 2 { 2 } else { 4 };
+                    snare_retrig_interval = samples_per_step / div as f32;
+                }
+                if clap_retrig_remaining > 0 && clap_retrig_interval <= 0.0 {
+                    let div = track.clap_step_retrig_division[step_idx]
+                        .load(Ordering::Relaxed)
+                        .max(1);
+                    let div = if div <= 2 { 2 } else { 4 };
+                    clap_retrig_interval = samples_per_step / div as f32;
+                }
+                if hat_retrig_remaining > 0 && hat_retrig_interval <= 0.0 {
+                    let div = track.hat_step_retrig_division[step_idx]
+                        .load(Ordering::Relaxed)
+                        .max(1);
+                    let div = if div <= 2 { 2 } else { 4 };
+                    hat_retrig_interval = samples_per_step / div as f32;
+                }
+                if perc1_retrig_remaining > 0 && perc1_retrig_interval <= 0.0 {
+                    let div = track.perc1_step_retrig_division[step_idx]
+                        .load(Ordering::Relaxed)
+                        .max(1);
+                    let div = if div <= 2 { 2 } else { 4 };
+                    perc1_retrig_interval = samples_per_step / div as f32;
+                }
+                if perc2_retrig_remaining > 0 && perc2_retrig_interval <= 0.0 {
+                    let div = track.perc2_step_retrig_division[step_idx]
+                        .load(Ordering::Relaxed)
+                        .max(1);
+                    let div = if div <= 2 { 2 } else { 4 };
+                    perc2_retrig_interval = samples_per_step / div as f32;
+                }
+                if crash_retrig_remaining > 0 && crash_retrig_interval <= 0.0 {
+                    let div = track.crash_step_retrig_division[step_idx]
+                        .load(Ordering::Relaxed)
+                        .max(1);
+                    let div = if div <= 2 { 2 } else { 4 };
+                    crash_retrig_interval = samples_per_step / div as f32;
+                }
+                for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                    if samp_retrig_remaining[samp_idx] > 0
+                        && samp_retrig_interval[samp_idx] <= 0.0
+                    {
+                        let div = track.samp_step_retrig_division[samp_idx][step_idx]
+                            .load(Ordering::Relaxed)
+                            .max(1);
+                        let div = if div <= 2 { 2 } else { 4 };
+                        samp_retrig_interval[samp_idx] = samples_per_step / div as f32;
+                    }
+                }
+            }
+        }
 
         let mut kick_pitch = kick_pitch_base;
         let mut kick_decay = kick_decay_base;
@@ -3420,6 +4874,54 @@ impl TLBX1 {
         let mut snare_filter_type = snare_filter_type_base;
         let mut snare_filter_cutoff = snare_filter_cutoff_base;
         let mut snare_filter_resonance = snare_filter_resonance_base;
+        let mut clap_pitch = clap_pitch_base;
+        let mut clap_decay = clap_decay_base;
+        let mut clap_tone = clap_tone_base;
+        let mut clap_drive = clap_drive_base;
+        let mut clap_level = clap_level_base;
+        let mut clap_filter_type = clap_filter_type_base;
+        let mut clap_filter_cutoff = clap_filter_cutoff_base;
+        let mut clap_filter_resonance = clap_filter_resonance_base;
+        let mut hat_pitch = hat_pitch_base;
+        let mut hat_decay = hat_decay_base;
+        let mut hat_tone = hat_tone_base;
+        let mut hat_drive = hat_drive_base;
+        let mut hat_level = hat_level_base;
+        let mut hat_filter_type = hat_filter_type_base;
+        let mut hat_filter_cutoff = hat_filter_cutoff_base;
+        let mut hat_filter_resonance = hat_filter_resonance_base;
+        let mut perc1_pitch = perc1_pitch_base;
+        let mut perc1_decay = perc1_decay_base;
+        let mut perc1_tone = perc1_tone_base;
+        let mut perc1_drive = perc1_drive_base;
+        let mut perc1_level = perc1_level_base;
+        let mut perc1_filter_type = perc1_filter_type_base;
+        let mut perc1_filter_cutoff = perc1_filter_cutoff_base;
+        let mut perc1_filter_resonance = perc1_filter_resonance_base;
+        let mut perc2_pitch = perc2_pitch_base;
+        let mut perc2_decay = perc2_decay_base;
+        let mut perc2_tone = perc2_tone_base;
+        let mut perc2_drive = perc2_drive_base;
+        let mut perc2_level = perc2_level_base;
+        let mut perc2_filter_type = perc2_filter_type_base;
+        let mut perc2_filter_cutoff = perc2_filter_cutoff_base;
+        let mut perc2_filter_resonance = perc2_filter_resonance_base;
+        let mut crash_pitch = crash_pitch_base;
+        let mut crash_decay = crash_decay_base;
+        let mut crash_tone = crash_tone_base;
+        let mut crash_drive = crash_drive_base;
+        let mut crash_level = crash_level_base;
+        let mut crash_filter_type = crash_filter_type_base;
+        let mut crash_filter_cutoff = crash_filter_cutoff_base;
+        let mut crash_filter_resonance = crash_filter_resonance_base;
+        let mut samp_pitch: [f32; SYNDRM_SAMPLE_CHANNELS] = samp_pitch_base;
+        let mut samp_attack: [f32; SYNDRM_SAMPLE_CHANNELS] = samp_attack_base;
+        let mut samp_decay: [f32; SYNDRM_SAMPLE_CHANNELS] = samp_decay_base;
+        let mut samp_drive: [f32; SYNDRM_SAMPLE_CHANNELS] = samp_drive_base;
+        let mut samp_level: [f32; SYNDRM_SAMPLE_CHANNELS] = samp_level_base;
+        let mut samp_filter_type: [u32; SYNDRM_SAMPLE_CHANNELS] = samp_filter_type_base;
+        let mut samp_filter_cutoff: [f32; SYNDRM_SAMPLE_CHANNELS] = samp_filter_cutoff_base;
+        let mut samp_filter_resonance: [f32; SYNDRM_SAMPLE_CHANNELS] = samp_filter_resonance_base;
 
         let mut decay_time = 0.05 + kick_decay * 1.5;
         let mut pitch_decay_time = (0.01 + kick_decay * 0.25)
@@ -3453,6 +4955,111 @@ impl TLBX1 {
         let mut snare_cutoff_hz = cutoff_min * cutoff_span.powf(snare_filter_cutoff);
         let mut snare_q = 0.1 + snare_filter_resonance * 0.9;
         let mut snare_drive_gain = 1.0 + snare_drive * 8.0;
+        let mut clap_decay_time = 0.04 + clap_decay * 0.6;
+        let mut clap_env_coeff = (-1.0 / (clap_decay_time * sr)).exp();
+        let mut clap_burst_decay_time = 0.005 + (1.0 - clap_tone) * 0.02;
+        let mut clap_burst_inv = 1.0 / (clap_burst_decay_time * sr);
+        let mut clap_cutoff_hz = cutoff_min * cutoff_span.powf(clap_filter_cutoff);
+        let mut clap_q = 0.1 + clap_filter_resonance * 0.9;
+        let mut clap_drive_gain = 1.0 + clap_drive * 8.0;
+        clap_cutoff_hz = (clap_cutoff_hz * (0.5 + clap_pitch * 1.5)).min(cutoff_min * cutoff_span);
+        let clap_burst_delay_1 = (0.012 * sr).round() as u32;
+        let clap_burst_delay_2 = (0.024 * sr).round() as u32;
+        let clap_burst_delay_3 = (0.036 * sr).round() as u32;
+        let mut hat_decay_time = 0.01 + hat_decay * 1.49;
+        let mut hat_env_coeff = (-1.0 / (hat_decay_time * sr)).exp();
+        let hat_attack_time = 0.001;
+        let mut hat_attack_samples = (hat_attack_time * sr).round().max(0.0) as u32;
+        let mut hat_attack_step = if hat_attack_samples > 0 {
+            1.0 / hat_attack_samples as f32
+        } else {
+            1.0
+        };
+        let mut hat_freq = 100.0 + hat_pitch * 11_900.0;
+        let mut hat_harmonicity = 5.0 + hat_tone * 3.0;
+        let mut hat_mod_index = 10.0 + hat_tone * 20.0;
+        let mut hat_cutoff_hz = cutoff_min * cutoff_span.powf(hat_filter_cutoff);
+        let mut hat_q = 0.1 + hat_filter_resonance * 0.9;
+        let mut hat_drive_gain = 1.0 + hat_drive * 8.0;
+        let mut perc1_decay_time = 0.05 + perc1_decay * 1.5;
+        let mut perc1_decay_coeff = (-1.0 / (perc1_decay_time * sr)).exp();
+        let mut perc1_attack_time = 0.002 + perc1_decay * 0.008;
+        let mut perc1_attack_samples = (perc1_attack_time * sr).round().max(0.0) as u32;
+        let mut perc1_attack_step = if perc1_attack_samples > 0 {
+            1.0 / perc1_attack_samples as f32
+        } else {
+            1.0
+        };
+        let mut perc1_freq = 80.0 + perc1_pitch * 6000.0;
+        let mut perc1_cutoff_hz = cutoff_min * cutoff_span.powf(perc1_filter_cutoff);
+        let mut perc1_q = 0.1 + perc1_filter_resonance * 0.9;
+        let mut perc1_drive_gain = 1.0 + perc1_drive * 8.0;
+        let mut perc1_damping = 0.5 + (1.0 - perc1_tone) * 0.45;
+        let mut perc2_decay_time = 0.001 + perc2_decay * 1.0;
+        let mut perc2_env_coeff = (-1.0 / (perc2_decay_time * sr)).exp();
+        let mut perc2_freq = 60.0 + perc2_pitch * 520.0;
+        let mut perc2_mod_index = 30.0 * perc2_tone + 5.0;
+        let mut perc2_cutoff_hz = cutoff_min * cutoff_span.powf(perc2_filter_cutoff);
+        let mut perc2_q = 0.1 + perc2_filter_resonance * 0.9;
+        let mut perc2_drive_gain = 1.0 + perc2_drive * 8.0;
+        let mut crash_decay_time = 0.2 + crash_decay * 3.0;
+        let mut crash_env_coeff = (-1.0 / (crash_decay_time * sr)).exp();
+        let crash_attack_time = 0.002;
+        let mut crash_attack_samples = (crash_attack_time * sr).round().max(0.0) as u32;
+        let mut crash_attack_step = if crash_attack_samples > 0 {
+            1.0 / crash_attack_samples as f32
+        } else {
+            1.0
+        };
+        let mut crash_freq = 80.0 + crash_pitch * 9000.0;
+        let mut crash_harmonicity = 6.0 + crash_tone * 3.0;
+        let mut crash_mod_index = 12.0 + crash_tone * 20.0;
+        let mut crash_cutoff_hz = cutoff_min * cutoff_span.powf(crash_filter_cutoff);
+        let mut crash_q = 0.1 + crash_filter_resonance * 0.9;
+        let mut crash_drive_gain = 1.0 + crash_drive * 8.0;
+        let mut samp_attack_samples: [u32; SYNDRM_SAMPLE_CHANNELS] =
+            [0u32; SYNDRM_SAMPLE_CHANNELS];
+        let mut samp_attack_step: [f32; SYNDRM_SAMPLE_CHANNELS] =
+            [1.0f32; SYNDRM_SAMPLE_CHANNELS];
+        let mut samp_decay_time: [f32; SYNDRM_SAMPLE_CHANNELS] =
+            [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+        let mut samp_decay_coeff: [f32; SYNDRM_SAMPLE_CHANNELS] =
+            [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+        let mut samp_rate: [f32; SYNDRM_SAMPLE_CHANNELS] =
+            [1.0f32; SYNDRM_SAMPLE_CHANNELS];
+        let mut samp_drive_gain: [f32; SYNDRM_SAMPLE_CHANNELS] =
+            [1.0f32; SYNDRM_SAMPLE_CHANNELS];
+        let mut samp_cutoff_hz: [f32; SYNDRM_SAMPLE_CHANNELS] =
+            [cutoff_min; SYNDRM_SAMPLE_CHANNELS];
+        let mut samp_q: [f32; SYNDRM_SAMPLE_CHANNELS] =
+            [0.1f32; SYNDRM_SAMPLE_CHANNELS];
+
+        for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+            let duration = if samp_sample_len[samp_idx] > 0 {
+                samp_sample_len[samp_idx] as f32 / samp_sample_rate[samp_idx] as f32
+            } else {
+                0.0
+            };
+            let attack_time = samp_attack[samp_idx] * duration;
+            let decay_max = (duration - attack_time).max(0.0);
+            samp_decay_time[samp_idx] = samp_decay[samp_idx] * decay_max;
+            samp_attack_samples[samp_idx] = (attack_time * sr).round().max(0.0) as u32;
+            samp_attack_step[samp_idx] = if samp_attack_samples[samp_idx] > 0 {
+                1.0 / samp_attack_samples[samp_idx] as f32
+            } else {
+                1.0
+            };
+            samp_decay_coeff[samp_idx] = if samp_decay_time[samp_idx] > 0.0 {
+                (-1.0 / (samp_decay_time[samp_idx] * sr)).exp()
+            } else {
+                0.0
+            };
+            let semitones = (samp_pitch[samp_idx] - 0.5) * 24.0;
+            samp_rate[samp_idx] = 2.0f32.powf(semitones / 12.0);
+            samp_drive_gain[samp_idx] = 1.0 + samp_drive[samp_idx] * 8.0;
+            samp_cutoff_hz[samp_idx] = cutoff_min * cutoff_span.powf(samp_filter_cutoff[samp_idx]);
+            samp_q[samp_idx] = 0.1 + samp_filter_resonance[samp_idx] * 0.9;
+        }
 
         fn apply_kick_step_params(
             track: &Track,
@@ -3745,6 +5352,835 @@ impl TLBX1 {
             }
         }
 
+        fn apply_clap_step_params(
+            track: &Track,
+            step_idx: usize,
+            step_hold: bool,
+            track_muted: bool,
+            cutoff_min: f32,
+            cutoff_span: f32,
+            sr: f32,
+            clap_pitch: &mut f32,
+            clap_decay: &mut f32,
+            clap_tone: &mut f32,
+            clap_drive: &mut f32,
+            clap_level: &mut f32,
+            clap_filter_type: &mut u32,
+            clap_filter_cutoff: &mut f32,
+            clap_filter_resonance: &mut f32,
+            clap_pitch_base: &mut f32,
+            clap_decay_base: &mut f32,
+            clap_tone_base: &mut f32,
+            clap_drive_base: &mut f32,
+            clap_level_base: &mut f32,
+            clap_filter_type_base: &mut u32,
+            clap_filter_cutoff_base: &mut f32,
+            clap_filter_resonance_base: &mut f32,
+            clap_decay_time: &mut f32,
+            clap_env_coeff: &mut f32,
+            clap_burst_decay_time: &mut f32,
+            clap_burst_inv: &mut f32,
+            clap_cutoff_hz: &mut f32,
+            clap_q: &mut f32,
+            clap_drive_gain: &mut f32,
+        ) {
+            let override_enabled =
+                track.clap_step_override_enabled[step_idx].load(Ordering::Relaxed);
+            if override_enabled {
+                let pitch =
+                    f32::from_bits(track.clap_step_pitch[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let decay =
+                    f32::from_bits(track.clap_step_decay[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let tone =
+                    f32::from_bits(track.clap_step_tone[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let drive_val =
+                    f32::from_bits(track.clap_step_drive[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let level =
+                    f32::from_bits(track.clap_step_level[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let filter_type = track.clap_step_filter_type[step_idx].load(Ordering::Relaxed);
+                let filter_cutoff = f32::from_bits(
+                    track.clap_step_filter_cutoff[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let filter_resonance = f32::from_bits(
+                    track.clap_step_filter_resonance[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+
+                *clap_pitch = pitch;
+                *clap_decay = decay;
+                *clap_tone = tone;
+                *clap_drive = drive_val;
+                *clap_level = if track_muted { 0.0 } else { level };
+                *clap_filter_type = filter_type;
+                *clap_filter_cutoff = filter_cutoff;
+                *clap_filter_resonance = filter_resonance;
+
+                *clap_decay_time = 0.04 + *clap_decay * 0.6;
+                *clap_env_coeff = (-1.0 / (*clap_decay_time * sr)).exp();
+                *clap_burst_decay_time = 0.005 + (1.0 - *clap_tone) * 0.02;
+                *clap_burst_inv = 1.0 / (*clap_burst_decay_time * sr);
+                let cutoff = cutoff_min * cutoff_span.powf(*clap_filter_cutoff);
+                *clap_cutoff_hz =
+                    (cutoff * (0.5 + *clap_pitch * 1.5)).min(cutoff_min * cutoff_span);
+                *clap_q = 0.1 + *clap_filter_resonance * 0.9;
+                *clap_drive_gain = 1.0 + *clap_drive * 8.0;
+
+                if step_hold {
+                    *clap_pitch_base = pitch;
+                    *clap_decay_base = decay;
+                    *clap_tone_base = tone;
+                    *clap_drive_base = drive_val;
+                    *clap_level_base = level;
+                    *clap_filter_type_base = filter_type;
+                    *clap_filter_cutoff_base = filter_cutoff;
+                    *clap_filter_resonance_base = filter_resonance;
+                    track.clap_pitch.store(pitch.to_bits(), Ordering::Relaxed);
+                    track.clap_decay.store(decay.to_bits(), Ordering::Relaxed);
+                    track.clap_tone.store(tone.to_bits(), Ordering::Relaxed);
+                    track.clap_drive.store(drive_val.to_bits(), Ordering::Relaxed);
+                    track.clap_level.store(level.to_bits(), Ordering::Relaxed);
+                    track.clap_filter_type.store(filter_type, Ordering::Relaxed);
+                    track
+                        .clap_filter_cutoff
+                        .store(filter_cutoff.to_bits(), Ordering::Relaxed);
+                    track
+                        .clap_filter_resonance
+                        .store(filter_resonance.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                *clap_pitch = *clap_pitch_base;
+                *clap_decay = *clap_decay_base;
+                *clap_tone = *clap_tone_base;
+                *clap_drive = *clap_drive_base;
+                *clap_level = if track_muted { 0.0 } else { *clap_level_base };
+                *clap_filter_type = *clap_filter_type_base;
+                *clap_filter_cutoff = *clap_filter_cutoff_base;
+                *clap_filter_resonance = *clap_filter_resonance_base;
+
+                *clap_decay_time = 0.04 + *clap_decay * 0.6;
+                *clap_env_coeff = (-1.0 / (*clap_decay_time * sr)).exp();
+                *clap_burst_decay_time = 0.005 + (1.0 - *clap_tone) * 0.02;
+                *clap_burst_inv = 1.0 / (*clap_burst_decay_time * sr);
+                let cutoff = cutoff_min * cutoff_span.powf(*clap_filter_cutoff);
+                *clap_cutoff_hz =
+                    (cutoff * (0.5 + *clap_pitch * 1.5)).min(cutoff_min * cutoff_span);
+                *clap_q = 0.1 + *clap_filter_resonance * 0.9;
+                *clap_drive_gain = 1.0 + *clap_drive * 8.0;
+            }
+        }
+
+        fn apply_hat_step_params(
+            track: &Track,
+            step_idx: usize,
+            step_hold: bool,
+            track_muted: bool,
+            cutoff_min: f32,
+            cutoff_span: f32,
+            sr: f32,
+            hat_pitch: &mut f32,
+            hat_decay: &mut f32,
+            hat_tone: &mut f32,
+            hat_drive: &mut f32,
+            hat_level: &mut f32,
+            hat_filter_type: &mut u32,
+            hat_filter_cutoff: &mut f32,
+            hat_filter_resonance: &mut f32,
+            hat_pitch_base: &mut f32,
+            hat_decay_base: &mut f32,
+            hat_tone_base: &mut f32,
+            hat_drive_base: &mut f32,
+            hat_level_base: &mut f32,
+            hat_filter_type_base: &mut u32,
+            hat_filter_cutoff_base: &mut f32,
+            hat_filter_resonance_base: &mut f32,
+            hat_decay_time: &mut f32,
+            hat_env_coeff: &mut f32,
+            hat_attack_samples: &mut u32,
+            hat_attack_step: &mut f32,
+            hat_freq: &mut f32,
+            hat_harmonicity: &mut f32,
+            hat_mod_index: &mut f32,
+            hat_cutoff_hz: &mut f32,
+            hat_q: &mut f32,
+            hat_drive_gain: &mut f32,
+        ) {
+            let override_enabled =
+                track.hat_step_override_enabled[step_idx].load(Ordering::Relaxed);
+            if override_enabled {
+                let pitch =
+                    f32::from_bits(track.hat_step_pitch[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let decay =
+                    f32::from_bits(track.hat_step_decay[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let tone =
+                    f32::from_bits(track.hat_step_tone[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let drive_val =
+                    f32::from_bits(track.hat_step_drive[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let level =
+                    f32::from_bits(track.hat_step_level[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let filter_type = track.hat_step_filter_type[step_idx].load(Ordering::Relaxed);
+                let filter_cutoff = f32::from_bits(
+                    track.hat_step_filter_cutoff[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let filter_resonance = f32::from_bits(
+                    track.hat_step_filter_resonance[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+
+                *hat_pitch = pitch;
+                *hat_decay = decay;
+                *hat_tone = tone;
+                *hat_drive = drive_val;
+                *hat_level = if track_muted { 0.0 } else { level };
+                *hat_filter_type = filter_type;
+                *hat_filter_cutoff = filter_cutoff;
+                *hat_filter_resonance = filter_resonance;
+
+                *hat_decay_time = 0.01 + *hat_decay * 1.49;
+                *hat_env_coeff = (-1.0 / (*hat_decay_time * sr)).exp();
+                *hat_attack_samples = (0.001 * sr).round().max(0.0) as u32;
+                *hat_attack_step = if *hat_attack_samples > 0 {
+                    1.0 / *hat_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *hat_freq = 100.0 + *hat_pitch * 11_900.0;
+                *hat_harmonicity = 5.0 + *hat_tone * 3.0;
+                *hat_mod_index = 10.0 + *hat_tone * 20.0;
+                *hat_cutoff_hz = cutoff_min * cutoff_span.powf(*hat_filter_cutoff);
+                *hat_q = 0.1 + *hat_filter_resonance * 0.9;
+                *hat_drive_gain = 1.0 + *hat_drive * 8.0;
+
+                if step_hold {
+                    *hat_pitch_base = pitch;
+                    *hat_decay_base = decay;
+                    *hat_tone_base = tone;
+                    *hat_drive_base = drive_val;
+                    *hat_level_base = level;
+                    *hat_filter_type_base = filter_type;
+                    *hat_filter_cutoff_base = filter_cutoff;
+                    *hat_filter_resonance_base = filter_resonance;
+                    track.hat_pitch.store(pitch.to_bits(), Ordering::Relaxed);
+                    track.hat_decay.store(decay.to_bits(), Ordering::Relaxed);
+                    track.hat_tone.store(tone.to_bits(), Ordering::Relaxed);
+                    track.hat_drive.store(drive_val.to_bits(), Ordering::Relaxed);
+                    track.hat_level.store(level.to_bits(), Ordering::Relaxed);
+                    track.hat_filter_type.store(filter_type, Ordering::Relaxed);
+                    track
+                        .hat_filter_cutoff
+                        .store(filter_cutoff.to_bits(), Ordering::Relaxed);
+                    track
+                        .hat_filter_resonance
+                        .store(filter_resonance.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                *hat_pitch = *hat_pitch_base;
+                *hat_decay = *hat_decay_base;
+                *hat_tone = *hat_tone_base;
+                *hat_drive = *hat_drive_base;
+                *hat_level = if track_muted { 0.0 } else { *hat_level_base };
+                *hat_filter_type = *hat_filter_type_base;
+                *hat_filter_cutoff = *hat_filter_cutoff_base;
+                *hat_filter_resonance = *hat_filter_resonance_base;
+
+                *hat_decay_time = 0.01 + *hat_decay * 1.49;
+                *hat_env_coeff = (-1.0 / (*hat_decay_time * sr)).exp();
+                *hat_attack_samples = (0.001 * sr).round().max(0.0) as u32;
+                *hat_attack_step = if *hat_attack_samples > 0 {
+                    1.0 / *hat_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *hat_freq = 100.0 + *hat_pitch * 11_900.0;
+                *hat_harmonicity = 5.0 + *hat_tone * 3.0;
+                *hat_mod_index = 10.0 + *hat_tone * 20.0;
+                *hat_cutoff_hz = cutoff_min * cutoff_span.powf(*hat_filter_cutoff);
+                *hat_q = 0.1 + *hat_filter_resonance * 0.9;
+                *hat_drive_gain = 1.0 + *hat_drive * 8.0;
+            }
+        }
+
+        fn apply_crash_step_params(
+            track: &Track,
+            step_idx: usize,
+            step_hold: bool,
+            track_muted: bool,
+            cutoff_min: f32,
+            cutoff_span: f32,
+            sr: f32,
+            crash_pitch: &mut f32,
+            crash_decay: &mut f32,
+            crash_tone: &mut f32,
+            crash_drive: &mut f32,
+            crash_level: &mut f32,
+            crash_filter_type: &mut u32,
+            crash_filter_cutoff: &mut f32,
+            crash_filter_resonance: &mut f32,
+            crash_pitch_base: &mut f32,
+            crash_decay_base: &mut f32,
+            crash_tone_base: &mut f32,
+            crash_drive_base: &mut f32,
+            crash_level_base: &mut f32,
+            crash_filter_type_base: &mut u32,
+            crash_filter_cutoff_base: &mut f32,
+            crash_filter_resonance_base: &mut f32,
+            crash_decay_time: &mut f32,
+            crash_env_coeff: &mut f32,
+            crash_attack_samples: &mut u32,
+            crash_attack_step: &mut f32,
+            crash_freq: &mut f32,
+            crash_harmonicity: &mut f32,
+            crash_mod_index: &mut f32,
+            crash_cutoff_hz: &mut f32,
+            crash_q: &mut f32,
+            crash_drive_gain: &mut f32,
+        ) {
+            let override_enabled =
+                track.crash_step_override_enabled[step_idx].load(Ordering::Relaxed);
+            if override_enabled {
+                let pitch =
+                    f32::from_bits(track.crash_step_pitch[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let decay =
+                    f32::from_bits(track.crash_step_decay[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let tone =
+                    f32::from_bits(track.crash_step_tone[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let drive_val =
+                    f32::from_bits(track.crash_step_drive[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let level =
+                    f32::from_bits(track.crash_step_level[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let filter_type = track.crash_step_filter_type[step_idx].load(Ordering::Relaxed);
+                let filter_cutoff = f32::from_bits(
+                    track.crash_step_filter_cutoff[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let filter_resonance = f32::from_bits(
+                    track
+                        .crash_step_filter_resonance[step_idx]
+                        .load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+
+                *crash_pitch = pitch;
+                *crash_decay = decay;
+                *crash_tone = tone;
+                *crash_drive = drive_val;
+                *crash_level = if track_muted { 0.0 } else { level };
+                *crash_filter_type = filter_type;
+                *crash_filter_cutoff = filter_cutoff;
+                *crash_filter_resonance = filter_resonance;
+
+                *crash_decay_time = 0.2 + *crash_decay * 3.0;
+                *crash_env_coeff = (-1.0 / (*crash_decay_time * sr)).exp();
+                *crash_attack_samples = (0.002 * sr).round().max(0.0) as u32;
+                *crash_attack_step = if *crash_attack_samples > 0 {
+                    1.0 / *crash_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *crash_freq = 80.0 + *crash_pitch * 9000.0;
+                *crash_harmonicity = 6.0 + *crash_tone * 3.0;
+                *crash_mod_index = 12.0 + *crash_tone * 20.0;
+                *crash_cutoff_hz = cutoff_min * cutoff_span.powf(*crash_filter_cutoff);
+                *crash_q = 0.1 + *crash_filter_resonance * 0.9;
+                *crash_drive_gain = 1.0 + *crash_drive * 8.0;
+
+                if step_hold {
+                    *crash_pitch_base = pitch;
+                    *crash_decay_base = decay;
+                    *crash_tone_base = tone;
+                    *crash_drive_base = drive_val;
+                    *crash_level_base = level;
+                    *crash_filter_type_base = filter_type;
+                    *crash_filter_cutoff_base = filter_cutoff;
+                    *crash_filter_resonance_base = filter_resonance;
+                    track.crash_pitch.store(pitch.to_bits(), Ordering::Relaxed);
+                    track.crash_decay.store(decay.to_bits(), Ordering::Relaxed);
+                    track.crash_tone.store(tone.to_bits(), Ordering::Relaxed);
+                    track.crash_drive.store(drive_val.to_bits(), Ordering::Relaxed);
+                    track.crash_level.store(level.to_bits(), Ordering::Relaxed);
+                    track.crash_filter_type.store(filter_type, Ordering::Relaxed);
+                    track
+                        .crash_filter_cutoff
+                        .store(filter_cutoff.to_bits(), Ordering::Relaxed);
+                    track
+                        .crash_filter_resonance
+                        .store(filter_resonance.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                *crash_pitch = *crash_pitch_base;
+                *crash_decay = *crash_decay_base;
+                *crash_tone = *crash_tone_base;
+                *crash_drive = *crash_drive_base;
+                *crash_level = if track_muted { 0.0 } else { *crash_level_base };
+                *crash_filter_type = *crash_filter_type_base;
+                *crash_filter_cutoff = *crash_filter_cutoff_base;
+                *crash_filter_resonance = *crash_filter_resonance_base;
+
+                *crash_decay_time = 0.2 + *crash_decay * 3.0;
+                *crash_env_coeff = (-1.0 / (*crash_decay_time * sr)).exp();
+                *crash_attack_samples = (0.002 * sr).round().max(0.0) as u32;
+                *crash_attack_step = if *crash_attack_samples > 0 {
+                    1.0 / *crash_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *crash_freq = 80.0 + *crash_pitch * 9000.0;
+                *crash_harmonicity = 6.0 + *crash_tone * 3.0;
+                *crash_mod_index = 12.0 + *crash_tone * 20.0;
+                *crash_cutoff_hz = cutoff_min * cutoff_span.powf(*crash_filter_cutoff);
+                *crash_q = 0.1 + *crash_filter_resonance * 0.9;
+                *crash_drive_gain = 1.0 + *crash_drive * 8.0;
+            }
+        }
+
+        fn apply_samp_step_params(
+            track: &Track,
+            channel_idx: usize,
+            step_idx: usize,
+            step_hold: bool,
+            track_muted: bool,
+            cutoff_min: f32,
+            cutoff_span: f32,
+            sr: f32,
+            samp_pitch: &mut f32,
+            samp_attack: &mut f32,
+            samp_decay: &mut f32,
+            samp_drive: &mut f32,
+            samp_level: &mut f32,
+            samp_filter_type: &mut u32,
+            samp_filter_cutoff: &mut f32,
+            samp_filter_resonance: &mut f32,
+            samp_pitch_base: &mut f32,
+            samp_attack_base: &mut f32,
+            samp_decay_base: &mut f32,
+            samp_drive_base: &mut f32,
+            samp_level_base: &mut f32,
+            samp_filter_type_base: &mut u32,
+            samp_filter_cutoff_base: &mut f32,
+            samp_filter_resonance_base: &mut f32,
+            samp_attack_samples: &mut u32,
+            samp_attack_step: &mut f32,
+            samp_decay_time: &mut f32,
+            samp_decay_coeff: &mut f32,
+            samp_rate: &mut f32,
+            samp_drive_gain: &mut f32,
+            samp_cutoff_hz: &mut f32,
+            samp_q: &mut f32,
+            samp_sample_len: u32,
+            samp_sample_rate: u32,
+        ) {
+            let override_enabled =
+                track.samp_step_override_enabled[channel_idx][step_idx].load(Ordering::Relaxed);
+            if override_enabled {
+                let pitch = f32::from_bits(
+                    track.samp_step_pitch[channel_idx][step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let attack = f32::from_bits(
+                    track.samp_step_attack[channel_idx][step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let decay = f32::from_bits(
+                    track.samp_step_decay[channel_idx][step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let drive_val = f32::from_bits(
+                    track.samp_step_drive[channel_idx][step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let level = f32::from_bits(
+                    track.samp_step_level[channel_idx][step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let filter_type =
+                    track.samp_step_filter_type[channel_idx][step_idx].load(Ordering::Relaxed);
+                let filter_cutoff = f32::from_bits(
+                    track.samp_step_filter_cutoff[channel_idx][step_idx]
+                        .load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let filter_resonance = f32::from_bits(
+                    track.samp_step_filter_resonance[channel_idx][step_idx]
+                        .load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+
+                *samp_pitch = pitch;
+                *samp_attack = attack;
+                *samp_decay = decay;
+                *samp_drive = drive_val;
+                *samp_level = if track_muted { 0.0 } else { level };
+                *samp_filter_type = filter_type;
+                *samp_filter_cutoff = filter_cutoff;
+                *samp_filter_resonance = filter_resonance;
+
+                let duration = if samp_sample_len > 0 {
+                    samp_sample_len as f32 / samp_sample_rate.max(1) as f32
+                } else {
+                    0.0
+                };
+                let attack_time = *samp_attack * duration;
+                let decay_max = (duration - attack_time).max(0.0);
+                *samp_decay_time = *samp_decay * decay_max;
+                *samp_attack_samples = (attack_time * sr).round().max(0.0) as u32;
+                *samp_attack_step = if *samp_attack_samples > 0 {
+                    1.0 / *samp_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *samp_decay_coeff = if *samp_decay_time > 0.0 {
+                    (-1.0 / (*samp_decay_time * sr)).exp()
+                } else {
+                    0.0
+                };
+                let semitones = (*samp_pitch - 0.5) * 24.0;
+                *samp_rate = 2.0f32.powf(semitones / 12.0);
+                *samp_drive_gain = 1.0 + *samp_drive * 8.0;
+                *samp_cutoff_hz = cutoff_min * cutoff_span.powf(*samp_filter_cutoff);
+                *samp_q = 0.1 + *samp_filter_resonance * 0.9;
+
+                if step_hold {
+                    *samp_pitch_base = pitch;
+                    *samp_attack_base = attack;
+                    *samp_decay_base = decay;
+                    *samp_drive_base = drive_val;
+                    *samp_level_base = level;
+                    *samp_filter_type_base = filter_type;
+                    *samp_filter_cutoff_base = filter_cutoff;
+                    *samp_filter_resonance_base = filter_resonance;
+                    track.samp_pitch[channel_idx].store(pitch.to_bits(), Ordering::Relaxed);
+                    track
+                        .samp_attack[channel_idx]
+                        .store(attack.to_bits(), Ordering::Relaxed);
+                    track
+                        .samp_decay[channel_idx]
+                        .store(decay.to_bits(), Ordering::Relaxed);
+                    track
+                        .samp_drive[channel_idx]
+                        .store(drive_val.to_bits(), Ordering::Relaxed);
+                    track
+                        .samp_level[channel_idx]
+                        .store(level.to_bits(), Ordering::Relaxed);
+                    track
+                        .samp_filter_type[channel_idx]
+                        .store(filter_type, Ordering::Relaxed);
+                    track
+                        .samp_filter_cutoff[channel_idx]
+                        .store(filter_cutoff.to_bits(), Ordering::Relaxed);
+                    track
+                        .samp_filter_resonance[channel_idx]
+                        .store(filter_resonance.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                *samp_pitch = *samp_pitch_base;
+                *samp_attack = *samp_attack_base;
+                *samp_decay = *samp_decay_base;
+                *samp_drive = *samp_drive_base;
+                *samp_level = if track_muted { 0.0 } else { *samp_level_base };
+                *samp_filter_type = *samp_filter_type_base;
+                *samp_filter_cutoff = *samp_filter_cutoff_base;
+                *samp_filter_resonance = *samp_filter_resonance_base;
+
+                let duration = if samp_sample_len > 0 {
+                    samp_sample_len as f32 / samp_sample_rate.max(1) as f32
+                } else {
+                    0.0
+                };
+                let attack_time = *samp_attack * duration;
+                let decay_max = (duration - attack_time).max(0.0);
+                *samp_decay_time = *samp_decay * decay_max;
+                *samp_attack_samples = (attack_time * sr).round().max(0.0) as u32;
+                *samp_attack_step = if *samp_attack_samples > 0 {
+                    1.0 / *samp_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *samp_decay_coeff = if *samp_decay_time > 0.0 {
+                    (-1.0 / (*samp_decay_time * sr)).exp()
+                } else {
+                    0.0
+                };
+                let semitones = (*samp_pitch - 0.5) * 24.0;
+                *samp_rate = 2.0f32.powf(semitones / 12.0);
+                *samp_drive_gain = 1.0 + *samp_drive * 8.0;
+                *samp_cutoff_hz = cutoff_min * cutoff_span.powf(*samp_filter_cutoff);
+                *samp_q = 0.1 + *samp_filter_resonance * 0.9;
+            }
+        }
+
+        fn apply_perc1_step_params(
+            track: &Track,
+            step_idx: usize,
+            step_hold: bool,
+            track_muted: bool,
+            cutoff_min: f32,
+            cutoff_span: f32,
+            sr: f32,
+            perc1_pitch: &mut f32,
+            perc1_decay: &mut f32,
+            perc1_tone: &mut f32,
+            perc1_drive: &mut f32,
+            perc1_level: &mut f32,
+            perc1_filter_type: &mut u32,
+            perc1_filter_cutoff: &mut f32,
+            perc1_filter_resonance: &mut f32,
+            perc1_pitch_base: &mut f32,
+            perc1_decay_base: &mut f32,
+            perc1_tone_base: &mut f32,
+            perc1_drive_base: &mut f32,
+            perc1_level_base: &mut f32,
+            perc1_filter_type_base: &mut u32,
+            perc1_filter_cutoff_base: &mut f32,
+            perc1_filter_resonance_base: &mut f32,
+            perc1_decay_time: &mut f32,
+            perc1_decay_coeff: &mut f32,
+            perc1_attack_time: &mut f32,
+            perc1_attack_samples: &mut u32,
+            perc1_attack_step: &mut f32,
+            perc1_freq: &mut f32,
+            perc1_cutoff_hz: &mut f32,
+            perc1_q: &mut f32,
+            perc1_drive_gain: &mut f32,
+            perc1_damping: &mut f32,
+        ) {
+            let override_enabled =
+                track.perc1_step_override_enabled[step_idx].load(Ordering::Relaxed);
+            if override_enabled {
+                let pitch =
+                    f32::from_bits(track.perc1_step_pitch[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let decay =
+                    f32::from_bits(track.perc1_step_decay[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let tone =
+                    f32::from_bits(track.perc1_step_tone[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let drive_val =
+                    f32::from_bits(track.perc1_step_drive[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let level =
+                    f32::from_bits(track.perc1_step_level[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let filter_type = track.perc1_step_filter_type[step_idx].load(Ordering::Relaxed);
+                let filter_cutoff = f32::from_bits(
+                    track.perc1_step_filter_cutoff[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let filter_resonance = f32::from_bits(
+                    track.perc1_step_filter_resonance[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+
+                *perc1_pitch = pitch;
+                *perc1_decay = decay;
+                *perc1_tone = tone;
+                *perc1_drive = drive_val;
+                *perc1_level = if track_muted { 0.0 } else { level };
+                *perc1_filter_type = filter_type;
+                *perc1_filter_cutoff = filter_cutoff;
+                *perc1_filter_resonance = filter_resonance;
+
+                *perc1_decay_time = 0.05 + *perc1_decay * 1.5;
+                *perc1_decay_coeff = (-1.0 / (*perc1_decay_time * sr)).exp();
+                *perc1_attack_time = 0.002 + *perc1_decay * 0.008;
+                *perc1_attack_samples = (*perc1_attack_time * sr).round().max(0.0) as u32;
+                *perc1_attack_step = if *perc1_attack_samples > 0 {
+                    1.0 / *perc1_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *perc1_freq = 80.0 + *perc1_pitch * 6000.0;
+                *perc1_cutoff_hz = cutoff_min * cutoff_span.powf(*perc1_filter_cutoff);
+                *perc1_q = 0.1 + *perc1_filter_resonance * 0.9;
+                *perc1_drive_gain = 1.0 + *perc1_drive * 8.0;
+                *perc1_damping = 0.5 + (1.0 - *perc1_tone) * 0.45;
+
+                if step_hold {
+                    *perc1_pitch_base = pitch;
+                    *perc1_decay_base = decay;
+                    *perc1_tone_base = tone;
+                    *perc1_drive_base = drive_val;
+                    *perc1_level_base = level;
+                    *perc1_filter_type_base = filter_type;
+                    *perc1_filter_cutoff_base = filter_cutoff;
+                    *perc1_filter_resonance_base = filter_resonance;
+                    track.perc1_pitch.store(pitch.to_bits(), Ordering::Relaxed);
+                    track.perc1_decay.store(decay.to_bits(), Ordering::Relaxed);
+                    track.perc1_tone.store(tone.to_bits(), Ordering::Relaxed);
+                    track.perc1_drive.store(drive_val.to_bits(), Ordering::Relaxed);
+                    track.perc1_level.store(level.to_bits(), Ordering::Relaxed);
+                    track.perc1_filter_type.store(filter_type, Ordering::Relaxed);
+                    track
+                        .perc1_filter_cutoff
+                        .store(filter_cutoff.to_bits(), Ordering::Relaxed);
+                    track
+                        .perc1_filter_resonance
+                        .store(filter_resonance.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                *perc1_pitch = *perc1_pitch_base;
+                *perc1_decay = *perc1_decay_base;
+                *perc1_tone = *perc1_tone_base;
+                *perc1_drive = *perc1_drive_base;
+                *perc1_level = if track_muted { 0.0 } else { *perc1_level_base };
+                *perc1_filter_type = *perc1_filter_type_base;
+                *perc1_filter_cutoff = *perc1_filter_cutoff_base;
+                *perc1_filter_resonance = *perc1_filter_resonance_base;
+
+                *perc1_decay_time = 0.05 + *perc1_decay * 1.5;
+                *perc1_decay_coeff = (-1.0 / (*perc1_decay_time * sr)).exp();
+                *perc1_attack_time = 0.002 + *perc1_decay * 0.008;
+                *perc1_attack_samples = (*perc1_attack_time * sr).round().max(0.0) as u32;
+                *perc1_attack_step = if *perc1_attack_samples > 0 {
+                    1.0 / *perc1_attack_samples as f32
+                } else {
+                    1.0
+                };
+                *perc1_freq = 80.0 + *perc1_pitch * 6000.0;
+                *perc1_cutoff_hz = cutoff_min * cutoff_span.powf(*perc1_filter_cutoff);
+                *perc1_q = 0.1 + *perc1_filter_resonance * 0.9;
+                *perc1_drive_gain = 1.0 + *perc1_drive * 8.0;
+                *perc1_damping = 0.5 + (1.0 - *perc1_tone) * 0.45;
+            }
+        }
+
+        fn apply_perc2_step_params(
+            track: &Track,
+            step_idx: usize,
+            step_hold: bool,
+            track_muted: bool,
+            cutoff_min: f32,
+            cutoff_span: f32,
+            sr: f32,
+            perc2_pitch: &mut f32,
+            perc2_decay: &mut f32,
+            perc2_tone: &mut f32,
+            perc2_drive: &mut f32,
+            perc2_level: &mut f32,
+            perc2_filter_type: &mut u32,
+            perc2_filter_cutoff: &mut f32,
+            perc2_filter_resonance: &mut f32,
+            perc2_pitch_base: &mut f32,
+            perc2_decay_base: &mut f32,
+            perc2_tone_base: &mut f32,
+            perc2_drive_base: &mut f32,
+            perc2_level_base: &mut f32,
+            perc2_filter_type_base: &mut u32,
+            perc2_filter_cutoff_base: &mut f32,
+            perc2_filter_resonance_base: &mut f32,
+            perc2_decay_time: &mut f32,
+            perc2_env_coeff: &mut f32,
+            perc2_freq: &mut f32,
+            perc2_mod_index: &mut f32,
+            perc2_cutoff_hz: &mut f32,
+            perc2_q: &mut f32,
+            perc2_drive_gain: &mut f32,
+        ) {
+            let override_enabled =
+                track.perc2_step_override_enabled[step_idx].load(Ordering::Relaxed);
+            if override_enabled {
+                let pitch =
+                    f32::from_bits(track.perc2_step_pitch[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let decay =
+                    f32::from_bits(track.perc2_step_decay[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let tone =
+                    f32::from_bits(track.perc2_step_tone[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let drive_val =
+                    f32::from_bits(track.perc2_step_drive[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let level =
+                    f32::from_bits(track.perc2_step_level[step_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let filter_type = track.perc2_step_filter_type[step_idx].load(Ordering::Relaxed);
+                let filter_cutoff = f32::from_bits(
+                    track.perc2_step_filter_cutoff[step_idx].load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+                let filter_resonance = f32::from_bits(
+                    track
+                        .perc2_step_filter_resonance[step_idx]
+                        .load(Ordering::Relaxed),
+                )
+                .clamp(0.0, 1.0);
+
+                *perc2_pitch = pitch;
+                *perc2_decay = decay;
+                *perc2_tone = tone;
+                *perc2_drive = drive_val;
+                *perc2_level = if track_muted { 0.0 } else { level };
+                *perc2_filter_type = filter_type;
+                *perc2_filter_cutoff = filter_cutoff;
+                *perc2_filter_resonance = filter_resonance;
+
+                *perc2_decay_time = 0.001 + *perc2_decay * 1.0;
+                *perc2_env_coeff = (-1.0 / (*perc2_decay_time * sr)).exp();
+                *perc2_freq = 60.0 + *perc2_pitch * 520.0;
+                *perc2_mod_index = 30.0 * *perc2_tone + 5.0;
+                *perc2_cutoff_hz = cutoff_min * cutoff_span.powf(*perc2_filter_cutoff);
+                *perc2_q = 0.1 + *perc2_filter_resonance * 0.9;
+                *perc2_drive_gain = 1.0 + *perc2_drive * 8.0;
+
+                if step_hold {
+                    *perc2_pitch_base = pitch;
+                    *perc2_decay_base = decay;
+                    *perc2_tone_base = tone;
+                    *perc2_drive_base = drive_val;
+                    *perc2_level_base = level;
+                    *perc2_filter_type_base = filter_type;
+                    *perc2_filter_cutoff_base = filter_cutoff;
+                    *perc2_filter_resonance_base = filter_resonance;
+                    track.perc2_pitch.store(pitch.to_bits(), Ordering::Relaxed);
+                    track.perc2_decay.store(decay.to_bits(), Ordering::Relaxed);
+                    track.perc2_tone.store(tone.to_bits(), Ordering::Relaxed);
+                    track.perc2_drive.store(drive_val.to_bits(), Ordering::Relaxed);
+                    track.perc2_level.store(level.to_bits(), Ordering::Relaxed);
+                    track.perc2_filter_type.store(filter_type, Ordering::Relaxed);
+                    track
+                        .perc2_filter_cutoff
+                        .store(filter_cutoff.to_bits(), Ordering::Relaxed);
+                    track
+                        .perc2_filter_resonance
+                        .store(filter_resonance.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                *perc2_pitch = *perc2_pitch_base;
+                *perc2_decay = *perc2_decay_base;
+                *perc2_tone = *perc2_tone_base;
+                *perc2_drive = *perc2_drive_base;
+                *perc2_level = if track_muted { 0.0 } else { *perc2_level_base };
+                *perc2_filter_type = *perc2_filter_type_base;
+                *perc2_filter_cutoff = *perc2_filter_cutoff_base;
+                *perc2_filter_resonance = *perc2_filter_resonance_base;
+
+                *perc2_decay_time = 0.001 + *perc2_decay * 1.0;
+                *perc2_env_coeff = (-1.0 / (*perc2_decay_time * sr)).exp();
+                *perc2_freq = 60.0 + *perc2_pitch * 520.0;
+                *perc2_mod_index = 30.0 * *perc2_tone + 5.0;
+                *perc2_cutoff_hz = cutoff_min * cutoff_span.powf(*perc2_filter_cutoff);
+                *perc2_q = 0.1 + *perc2_filter_resonance * 0.9;
+                *perc2_drive_gain = 1.0 + *perc2_drive * 8.0;
+            }
+        }
+
         if current_step >= 0 {
             let step_idx = current_step as usize;
             if step_idx < SYNDRM_STEPS {
@@ -3824,6 +6260,175 @@ impl TLBX1 {
                     &mut snare_q,
                     &mut snare_drive_gain,
                 );
+                apply_clap_step_params(
+                    track,
+                    step_idx,
+                    step_hold,
+                    track_muted,
+                    cutoff_min,
+                    cutoff_span,
+                    sr,
+                    &mut clap_pitch,
+                    &mut clap_decay,
+                    &mut clap_tone,
+                    &mut clap_drive,
+                    &mut clap_level,
+                    &mut clap_filter_type,
+                    &mut clap_filter_cutoff,
+                    &mut clap_filter_resonance,
+                    &mut clap_pitch_base,
+                    &mut clap_decay_base,
+                    &mut clap_tone_base,
+                    &mut clap_drive_base,
+                    &mut clap_level_base,
+                    &mut clap_filter_type_base,
+                    &mut clap_filter_cutoff_base,
+                    &mut clap_filter_resonance_base,
+                    &mut clap_decay_time,
+                    &mut clap_env_coeff,
+                    &mut clap_burst_decay_time,
+                    &mut clap_burst_inv,
+                    &mut clap_cutoff_hz,
+                    &mut clap_q,
+                    &mut clap_drive_gain,
+                );
+                apply_hat_step_params(
+                    track,
+                    step_idx,
+                    step_hold,
+                    track_muted,
+                    cutoff_min,
+                    cutoff_span,
+                    sr,
+                    &mut hat_pitch,
+                    &mut hat_decay,
+                    &mut hat_tone,
+                    &mut hat_drive,
+                    &mut hat_level,
+                    &mut hat_filter_type,
+                    &mut hat_filter_cutoff,
+                    &mut hat_filter_resonance,
+                    &mut hat_pitch_base,
+                    &mut hat_decay_base,
+                    &mut hat_tone_base,
+                    &mut hat_drive_base,
+                    &mut hat_level_base,
+                    &mut hat_filter_type_base,
+                    &mut hat_filter_cutoff_base,
+                    &mut hat_filter_resonance_base,
+                    &mut hat_decay_time,
+                    &mut hat_env_coeff,
+                    &mut hat_attack_samples,
+                    &mut hat_attack_step,
+                    &mut hat_freq,
+                    &mut hat_harmonicity,
+                    &mut hat_mod_index,
+                    &mut hat_cutoff_hz,
+                    &mut hat_q,
+                    &mut hat_drive_gain,
+                );
+                apply_perc1_step_params(
+                    track,
+                    step_idx,
+                    step_hold,
+                    track_muted,
+                    cutoff_min,
+                    cutoff_span,
+                    sr,
+                    &mut perc1_pitch,
+                    &mut perc1_decay,
+                    &mut perc1_tone,
+                    &mut perc1_drive,
+                    &mut perc1_level,
+                    &mut perc1_filter_type,
+                    &mut perc1_filter_cutoff,
+                    &mut perc1_filter_resonance,
+                    &mut perc1_pitch_base,
+                    &mut perc1_decay_base,
+                    &mut perc1_tone_base,
+                    &mut perc1_drive_base,
+                    &mut perc1_level_base,
+                    &mut perc1_filter_type_base,
+                    &mut perc1_filter_cutoff_base,
+                    &mut perc1_filter_resonance_base,
+                    &mut perc1_decay_time,
+                    &mut perc1_decay_coeff,
+                    &mut perc1_attack_time,
+                    &mut perc1_attack_samples,
+                    &mut perc1_attack_step,
+                    &mut perc1_freq,
+                    &mut perc1_cutoff_hz,
+                    &mut perc1_q,
+                    &mut perc1_drive_gain,
+                    &mut perc1_damping,
+                );
+                apply_perc2_step_params(
+                    track,
+                    step_idx,
+                    step_hold,
+                    track_muted,
+                    cutoff_min,
+                    cutoff_span,
+                    sr,
+                    &mut perc2_pitch,
+                    &mut perc2_decay,
+                    &mut perc2_tone,
+                    &mut perc2_drive,
+                    &mut perc2_level,
+                    &mut perc2_filter_type,
+                    &mut perc2_filter_cutoff,
+                    &mut perc2_filter_resonance,
+                    &mut perc2_pitch_base,
+                    &mut perc2_decay_base,
+                    &mut perc2_tone_base,
+                    &mut perc2_drive_base,
+                    &mut perc2_level_base,
+                    &mut perc2_filter_type_base,
+                    &mut perc2_filter_cutoff_base,
+                    &mut perc2_filter_resonance_base,
+                    &mut perc2_decay_time,
+                    &mut perc2_env_coeff,
+                    &mut perc2_freq,
+                    &mut perc2_mod_index,
+                    &mut perc2_cutoff_hz,
+                    &mut perc2_q,
+                    &mut perc2_drive_gain,
+                );
+                apply_crash_step_params(
+                    track,
+                    step_idx,
+                    step_hold,
+                    track_muted,
+                    cutoff_min,
+                    cutoff_span,
+                    sr,
+                    &mut crash_pitch,
+                    &mut crash_decay,
+                    &mut crash_tone,
+                    &mut crash_drive,
+                    &mut crash_level,
+                    &mut crash_filter_type,
+                    &mut crash_filter_cutoff,
+                    &mut crash_filter_resonance,
+                    &mut crash_pitch_base,
+                    &mut crash_decay_base,
+                    &mut crash_tone_base,
+                    &mut crash_drive_base,
+                    &mut crash_level_base,
+                    &mut crash_filter_type_base,
+                    &mut crash_filter_cutoff_base,
+                    &mut crash_filter_resonance_base,
+                    &mut crash_decay_time,
+                    &mut crash_env_coeff,
+                    &mut crash_attack_samples,
+                    &mut crash_attack_step,
+                    &mut crash_freq,
+                    &mut crash_harmonicity,
+                    &mut crash_mod_index,
+                    &mut crash_cutoff_hz,
+                    &mut crash_q,
+                    &mut crash_drive_gain,
+                );
             }
         }
 
@@ -3837,6 +6442,15 @@ impl TLBX1 {
                     current_step = (current_step + 1).rem_euclid(loop_steps_i32);
                     track.kick_sequencer_step.store(current_step, Ordering::Relaxed);
                     track.snare_sequencer_step.store(current_step, Ordering::Relaxed);
+                    track.clap_sequencer_step.store(current_step, Ordering::Relaxed);
+                    track.hat_sequencer_step.store(current_step, Ordering::Relaxed);
+                    track.perc1_sequencer_step.store(current_step, Ordering::Relaxed);
+                    track.perc2_sequencer_step.store(current_step, Ordering::Relaxed);
+                    track.crash_sequencer_step.store(current_step, Ordering::Relaxed);
+                    for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                        track.samp_sequencer_step[samp_idx]
+                            .store(current_step, Ordering::Relaxed);
+                    }
                     let step_idx = current_step as usize;
                     if step_idx < SYNDRM_STEPS {
                         apply_kick_step_params(
@@ -3915,8 +6529,356 @@ impl TLBX1 {
                             &mut snare_q,
                             &mut snare_drive_gain,
                         );
+                        apply_clap_step_params(
+                            track,
+                            step_idx,
+                            step_hold,
+                            track_muted,
+                            cutoff_min,
+                            cutoff_span,
+                            sr,
+                            &mut clap_pitch,
+                            &mut clap_decay,
+                            &mut clap_tone,
+                            &mut clap_drive,
+                            &mut clap_level,
+                            &mut clap_filter_type,
+                            &mut clap_filter_cutoff,
+                            &mut clap_filter_resonance,
+                            &mut clap_pitch_base,
+                            &mut clap_decay_base,
+                            &mut clap_tone_base,
+                            &mut clap_drive_base,
+                            &mut clap_level_base,
+                            &mut clap_filter_type_base,
+                            &mut clap_filter_cutoff_base,
+                            &mut clap_filter_resonance_base,
+                            &mut clap_decay_time,
+                            &mut clap_env_coeff,
+                            &mut clap_burst_decay_time,
+                            &mut clap_burst_inv,
+                            &mut clap_cutoff_hz,
+                            &mut clap_q,
+                            &mut clap_drive_gain,
+                        );
+                        apply_hat_step_params(
+                            track,
+                            step_idx,
+                            step_hold,
+                            track_muted,
+                            cutoff_min,
+                            cutoff_span,
+                            sr,
+                            &mut hat_pitch,
+                            &mut hat_decay,
+                            &mut hat_tone,
+                            &mut hat_drive,
+                            &mut hat_level,
+                            &mut hat_filter_type,
+                            &mut hat_filter_cutoff,
+                            &mut hat_filter_resonance,
+                            &mut hat_pitch_base,
+                            &mut hat_decay_base,
+                            &mut hat_tone_base,
+                            &mut hat_drive_base,
+                            &mut hat_level_base,
+                            &mut hat_filter_type_base,
+                            &mut hat_filter_cutoff_base,
+                            &mut hat_filter_resonance_base,
+                            &mut hat_decay_time,
+                            &mut hat_env_coeff,
+                            &mut hat_attack_samples,
+                            &mut hat_attack_step,
+                            &mut hat_freq,
+                            &mut hat_harmonicity,
+                            &mut hat_mod_index,
+                            &mut hat_cutoff_hz,
+                            &mut hat_q,
+                            &mut hat_drive_gain,
+                        );
+                        apply_perc1_step_params(
+                            track,
+                            step_idx,
+                            step_hold,
+                            track_muted,
+                            cutoff_min,
+                            cutoff_span,
+                            sr,
+                            &mut perc1_pitch,
+                            &mut perc1_decay,
+                            &mut perc1_tone,
+                            &mut perc1_drive,
+                            &mut perc1_level,
+                            &mut perc1_filter_type,
+                            &mut perc1_filter_cutoff,
+                            &mut perc1_filter_resonance,
+                            &mut perc1_pitch_base,
+                            &mut perc1_decay_base,
+                            &mut perc1_tone_base,
+                            &mut perc1_drive_base,
+                            &mut perc1_level_base,
+                            &mut perc1_filter_type_base,
+                            &mut perc1_filter_cutoff_base,
+                            &mut perc1_filter_resonance_base,
+                            &mut perc1_decay_time,
+                            &mut perc1_decay_coeff,
+                            &mut perc1_attack_time,
+                            &mut perc1_attack_samples,
+                            &mut perc1_attack_step,
+                            &mut perc1_freq,
+                            &mut perc1_cutoff_hz,
+                            &mut perc1_q,
+                            &mut perc1_drive_gain,
+                            &mut perc1_damping,
+                        );
+                        apply_perc2_step_params(
+                            track,
+                            step_idx,
+                            step_hold,
+                            track_muted,
+                            cutoff_min,
+                            cutoff_span,
+                            sr,
+                            &mut perc2_pitch,
+                            &mut perc2_decay,
+                            &mut perc2_tone,
+                            &mut perc2_drive,
+                            &mut perc2_level,
+                            &mut perc2_filter_type,
+                            &mut perc2_filter_cutoff,
+                            &mut perc2_filter_resonance,
+                            &mut perc2_pitch_base,
+                            &mut perc2_decay_base,
+                            &mut perc2_tone_base,
+                            &mut perc2_drive_base,
+                            &mut perc2_level_base,
+                            &mut perc2_filter_type_base,
+                            &mut perc2_filter_cutoff_base,
+                            &mut perc2_filter_resonance_base,
+                            &mut perc2_decay_time,
+                            &mut perc2_env_coeff,
+                            &mut perc2_freq,
+                            &mut perc2_mod_index,
+                            &mut perc2_cutoff_hz,
+                            &mut perc2_q,
+                            &mut perc2_drive_gain,
+                        );
+                        apply_crash_step_params(
+                            track,
+                            step_idx,
+                            step_hold,
+                            track_muted,
+                            cutoff_min,
+                            cutoff_span,
+                            sr,
+                            &mut crash_pitch,
+                            &mut crash_decay,
+                            &mut crash_tone,
+                            &mut crash_drive,
+                            &mut crash_level,
+                            &mut crash_filter_type,
+                            &mut crash_filter_cutoff,
+                            &mut crash_filter_resonance,
+                            &mut crash_pitch_base,
+                            &mut crash_decay_base,
+                            &mut crash_tone_base,
+                            &mut crash_drive_base,
+                            &mut crash_level_base,
+                            &mut crash_filter_type_base,
+                            &mut crash_filter_cutoff_base,
+                            &mut crash_filter_resonance_base,
+                            &mut crash_decay_time,
+                            &mut crash_env_coeff,
+                            &mut crash_attack_samples,
+                            &mut crash_attack_step,
+                            &mut crash_freq,
+                            &mut crash_harmonicity,
+                            &mut crash_mod_index,
+                            &mut crash_cutoff_hz,
+                            &mut crash_q,
+                            &mut crash_drive_gain,
+                        );
+                        for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                            apply_samp_step_params(
+                                track,
+                                samp_idx,
+                                step_idx,
+                                step_hold,
+                                track_muted,
+                                cutoff_min,
+                                cutoff_span,
+                                sr,
+                                &mut samp_pitch[samp_idx],
+                                &mut samp_attack[samp_idx],
+                                &mut samp_decay[samp_idx],
+                                &mut samp_drive[samp_idx],
+                                &mut samp_level[samp_idx],
+                                &mut samp_filter_type[samp_idx],
+                                &mut samp_filter_cutoff[samp_idx],
+                                &mut samp_filter_resonance[samp_idx],
+                                &mut samp_pitch_base[samp_idx],
+                                &mut samp_attack_base[samp_idx],
+                                &mut samp_decay_base[samp_idx],
+                                &mut samp_drive_base[samp_idx],
+                                &mut samp_level_base[samp_idx],
+                                &mut samp_filter_type_base[samp_idx],
+                                &mut samp_filter_cutoff_base[samp_idx],
+                                &mut samp_filter_resonance_base[samp_idx],
+                                &mut samp_attack_samples[samp_idx],
+                                &mut samp_attack_step[samp_idx],
+                                &mut samp_decay_time[samp_idx],
+                                &mut samp_decay_coeff[samp_idx],
+                                &mut samp_rate[samp_idx],
+                                &mut samp_drive_gain[samp_idx],
+                                &mut samp_cutoff_hz[samp_idx],
+                                &mut samp_q[samp_idx],
+                                samp_sample_len[samp_idx],
+                                samp_sample_rate[samp_idx],
+                            );
+                        }
 
-                        if track.kick_sequencer_grid[step_idx].load(Ordering::Relaxed) {
+                        let mut should_trigger = |active: bool, prob: f32| -> bool {
+                            if !active {
+                                false
+                            } else if prob >= 1.0 {
+                                true
+                            } else if prob <= 0.0 {
+                                false
+                            } else {
+                                syndrm_rand_unit(&mut rng_state) <= prob
+                            }
+                        };
+
+                        let kick_trigger = should_trigger(
+                            track.kick_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            kick_prob,
+                        );
+                        let snare_trigger = should_trigger(
+                            track.snare_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            snare_prob,
+                        );
+                        let clap_trigger = should_trigger(
+                            track.clap_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            clap_prob,
+                        );
+                        let hat_trigger = should_trigger(
+                            track.hat_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            hat_prob,
+                        );
+                        let perc1_trigger = should_trigger(
+                            track.perc1_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            perc1_prob,
+                        );
+                        let perc2_trigger = should_trigger(
+                            track.perc2_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            perc2_prob,
+                        );
+                        let crash_trigger = should_trigger(
+                            track.crash_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            crash_prob,
+                        );
+                        let mut samp_triggers = [false; SYNDRM_SAMPLE_CHANNELS];
+                        for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                            samp_triggers[samp_idx] = should_trigger(
+                                track.samp_sequencer_grid[samp_idx][step_idx]
+                                    .load(Ordering::Relaxed),
+                                samp_prob[samp_idx],
+                            );
+                        }
+
+                        let mut cut_groups = [false; 15];
+                        if kick_trigger {
+                            if kick_cut_group > 0 && (kick_cut_group as usize) < cut_groups.len() {
+                                cut_groups[kick_cut_group as usize] = true;
+                            }
+                        }
+                        if snare_trigger {
+                            if snare_cut_group > 0 && (snare_cut_group as usize) < cut_groups.len() {
+                                cut_groups[snare_cut_group as usize] = true;
+                            }
+                        }
+                        if clap_trigger {
+                            if clap_cut_group > 0 && (clap_cut_group as usize) < cut_groups.len() {
+                                cut_groups[clap_cut_group as usize] = true;
+                            }
+                        }
+                        if hat_trigger {
+                            if hat_cut_group > 0 && (hat_cut_group as usize) < cut_groups.len() {
+                                cut_groups[hat_cut_group as usize] = true;
+                            }
+                        }
+                        if perc1_trigger {
+                            if perc1_cut_group > 0 && (perc1_cut_group as usize) < cut_groups.len() {
+                                cut_groups[perc1_cut_group as usize] = true;
+                            }
+                        }
+                        if perc2_trigger {
+                            if perc2_cut_group > 0 && (perc2_cut_group as usize) < cut_groups.len() {
+                                cut_groups[perc2_cut_group as usize] = true;
+                            }
+                        }
+                        if crash_trigger {
+                            if crash_cut_group > 0 && (crash_cut_group as usize) < cut_groups.len() {
+                                cut_groups[crash_cut_group as usize] = true;
+                            }
+                        }
+                        for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                            if samp_triggers[samp_idx] {
+                                let cut_group = samp_cut_group[samp_idx];
+                                if cut_group > 0 && (cut_group as usize) < cut_groups.len() {
+                                    cut_groups[cut_group as usize] = true;
+                                }
+                            }
+                        }
+
+                        let should_cut = |cut_by: u32| -> bool {
+                            if cut_by == 0 {
+                                return false;
+                            }
+                            let idx = cut_by as usize;
+                            idx < cut_groups.len() && cut_groups[idx]
+                        };
+
+                        if should_cut(kick_cut_by) {
+                            env = 0.0;
+                            pitch_env = 0.0;
+                            attack_remaining = 0;
+                        }
+                        if should_cut(snare_cut_by) {
+                            snare_env = 0.0;
+                            snare_noise_env = 0.0;
+                            snare_attack_remaining = 0;
+                        }
+                        if should_cut(clap_cut_by) {
+                            clap_env = 0.0;
+                            clap_phase = 0;
+                        }
+                        if should_cut(hat_cut_by) {
+                            hat_env = 0.0;
+                            hat_attack_remaining = 0;
+                        }
+                        if should_cut(perc1_cut_by) {
+                            perc1_attack_remaining = 0;
+                            perc1_delay_len = 1;
+                            dsp_state.perc1_karplus_line.fill(0.0);
+                            perc1_pos = 0;
+                        }
+                        if should_cut(perc2_cut_by) {
+                            perc2_env = 0.0;
+                        }
+                        if should_cut(crash_cut_by) {
+                            crash_env = 0.0;
+                            crash_attack_remaining = 0;
+                        }
+                        for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                            if should_cut(samp_cut_by[samp_idx]) {
+                                samp_env[samp_idx] = 0.0;
+                                samp_attack_remaining[samp_idx] = 0;
+                                samp_decay_remaining[samp_idx] = 0;
+                            }
+                        }
+
+                        if kick_trigger {
                             pitch_env = 1.0;
                             if attack_samples > 0 {
                                 attack_remaining = attack_samples;
@@ -3924,7 +6886,7 @@ impl TLBX1 {
                                 env = 1.0;
                             }
                         }
-                        if track.snare_sequencer_grid[step_idx].load(Ordering::Relaxed) {
+                        if snare_trigger {
                             if snare_attack_samples > 0 {
                                 snare_attack_remaining = snare_attack_samples;
                                 snare_env = 0.0;
@@ -3933,6 +6895,296 @@ impl TLBX1 {
                                 snare_env = 1.0;
                                 snare_noise_env = 1.0;
                             }
+                        }
+                        if clap_trigger {
+                            clap_env = 1.0;
+                            clap_phase = 0;
+                        }
+                        if hat_trigger {
+                            if hat_attack_samples > 0 {
+                                hat_attack_remaining = hat_attack_samples;
+                                hat_env = 0.0;
+                            } else {
+                                hat_env = 1.0;
+                            }
+                            // Reset MetalSynth phase state on each trigger to match Tone.js behavior.
+                            for i in 0..METAL_INHARM_RATIOS.len() {
+                                hat_phases[i] = 0.0;
+                                hat_mod_phases[i] = 0.0;
+                            }
+                            hat_hp_x_prev = 0.0;
+                            hat_hp_y_prev = 0.0;
+                        }
+                        if perc1_trigger {
+                            if perc1_attack_samples > 0 {
+                                perc1_attack_remaining = perc1_attack_samples;
+                            } else {
+                                perc1_attack_remaining = 1;
+                            }
+                        }
+                        if perc2_trigger {
+                            perc2_env = 1.0;
+                            perc2_carrier_phase = 0.0;
+                            perc2_mod_phase = 0.0;
+                        }
+                        if crash_trigger {
+                            if crash_attack_samples > 0 {
+                                crash_attack_remaining = crash_attack_samples;
+                                crash_env = 0.0;
+                            } else {
+                                crash_env = 1.0;
+                            }
+                            for i in 0..METAL_INHARM_RATIOS.len() {
+                                crash_phases[i] = 0.0;
+                                crash_mod_phases[i] = 0.0;
+                            }
+                            crash_hp_x_prev = 0.0;
+                            crash_hp_y_prev = 0.0;
+                        }
+                        for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                            if samp_triggers[samp_idx] {
+                                samp_playhead[samp_idx] = 0.0;
+                                if samp_attack_samples[samp_idx] > 0 {
+                                    samp_attack_remaining[samp_idx] =
+                                        samp_attack_samples[samp_idx];
+                                    samp_env[samp_idx] = 0.0;
+                                } else {
+                                    samp_env[samp_idx] = 1.0;
+                                    samp_attack_remaining[samp_idx] = 0;
+                                }
+                                samp_decay_remaining[samp_idx] =
+                                    (samp_decay_time[samp_idx] * sr).round().max(0.0) as u32;
+                            }
+                        }
+
+                        let kick_retrig_enabled = track.kick_step_retrig_enabled[step_idx]
+                            .load(Ordering::Relaxed);
+                        let kick_retrig_division = track.kick_step_retrig_division[step_idx]
+                            .load(Ordering::Relaxed);
+                        arm_retrig(
+                            kick_retrig_enabled,
+                            kick_retrig_division,
+                            kick_trigger,
+                            &mut kick_retrig_remaining,
+                            &mut kick_retrig_timer,
+                            &mut kick_retrig_interval,
+                        );
+
+                        let snare_retrig_enabled = track.snare_step_retrig_enabled[step_idx]
+                            .load(Ordering::Relaxed);
+                        let snare_retrig_division = track.snare_step_retrig_division[step_idx]
+                            .load(Ordering::Relaxed);
+                        arm_retrig(
+                            snare_retrig_enabled,
+                            snare_retrig_division,
+                            snare_trigger,
+                            &mut snare_retrig_remaining,
+                            &mut snare_retrig_timer,
+                            &mut snare_retrig_interval,
+                        );
+
+                        let clap_retrig_enabled = track.clap_step_retrig_enabled[step_idx]
+                            .load(Ordering::Relaxed);
+                        let clap_retrig_division = track.clap_step_retrig_division[step_idx]
+                            .load(Ordering::Relaxed);
+                        arm_retrig(
+                            clap_retrig_enabled,
+                            clap_retrig_division,
+                            clap_trigger,
+                            &mut clap_retrig_remaining,
+                            &mut clap_retrig_timer,
+                            &mut clap_retrig_interval,
+                        );
+
+                        let hat_retrig_enabled = track.hat_step_retrig_enabled[step_idx]
+                            .load(Ordering::Relaxed);
+                        let hat_retrig_division = track.hat_step_retrig_division[step_idx]
+                            .load(Ordering::Relaxed);
+                        arm_retrig(
+                            hat_retrig_enabled,
+                            hat_retrig_division,
+                            hat_trigger,
+                            &mut hat_retrig_remaining,
+                            &mut hat_retrig_timer,
+                            &mut hat_retrig_interval,
+                        );
+
+                        let perc1_retrig_enabled = track.perc1_step_retrig_enabled[step_idx]
+                            .load(Ordering::Relaxed);
+                        let perc1_retrig_division = track.perc1_step_retrig_division[step_idx]
+                            .load(Ordering::Relaxed);
+                        arm_retrig(
+                            perc1_retrig_enabled,
+                            perc1_retrig_division,
+                            perc1_trigger,
+                            &mut perc1_retrig_remaining,
+                            &mut perc1_retrig_timer,
+                            &mut perc1_retrig_interval,
+                        );
+
+                        let perc2_retrig_enabled = track.perc2_step_retrig_enabled[step_idx]
+                            .load(Ordering::Relaxed);
+                        let perc2_retrig_division = track.perc2_step_retrig_division[step_idx]
+                            .load(Ordering::Relaxed);
+                        arm_retrig(
+                            perc2_retrig_enabled,
+                            perc2_retrig_division,
+                            perc2_trigger,
+                            &mut perc2_retrig_remaining,
+                            &mut perc2_retrig_timer,
+                            &mut perc2_retrig_interval,
+                        );
+
+                        let crash_retrig_enabled = track.crash_step_retrig_enabled[step_idx]
+                            .load(Ordering::Relaxed);
+                        let crash_retrig_division = track.crash_step_retrig_division[step_idx]
+                            .load(Ordering::Relaxed);
+                        arm_retrig(
+                            crash_retrig_enabled,
+                            crash_retrig_division,
+                            crash_trigger,
+                            &mut crash_retrig_remaining,
+                            &mut crash_retrig_timer,
+                            &mut crash_retrig_interval,
+                        );
+
+                        for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                            let samp_retrig_enabled = track.samp_step_retrig_enabled[samp_idx]
+                                [step_idx]
+                                .load(Ordering::Relaxed);
+                            let samp_retrig_division = track.samp_step_retrig_division[samp_idx]
+                                [step_idx]
+                                .load(Ordering::Relaxed);
+                            arm_retrig(
+                                samp_retrig_enabled,
+                                samp_retrig_division,
+                                samp_triggers[samp_idx],
+                                &mut samp_retrig_remaining[samp_idx],
+                                &mut samp_retrig_timer[samp_idx],
+                                &mut samp_retrig_interval[samp_idx],
+                            );
+                        }
+                    }
+                }
+            }
+
+            if transport_running {
+                if kick_retrig_remaining > 0 && kick_retrig_interval > 0.0 {
+                    kick_retrig_timer -= 1.0;
+                    if kick_retrig_timer <= 0.0 {
+                        if attack_samples > 0 {
+                            attack_remaining = attack_samples;
+                        } else {
+                            env = 1.0;
+                        }
+                        pitch_env = 1.0;
+                        kick_retrig_remaining = kick_retrig_remaining.saturating_sub(1);
+                        kick_retrig_timer += kick_retrig_interval;
+                    }
+                }
+                if snare_retrig_remaining > 0 && snare_retrig_interval > 0.0 {
+                    snare_retrig_timer -= 1.0;
+                    if snare_retrig_timer <= 0.0 {
+                        if snare_attack_samples > 0 {
+                            snare_attack_remaining = snare_attack_samples;
+                            snare_env = 0.0;
+                            snare_noise_env = 0.0;
+                        } else {
+                            snare_env = 1.0;
+                            snare_noise_env = 1.0;
+                        }
+                        snare_retrig_remaining = snare_retrig_remaining.saturating_sub(1);
+                        snare_retrig_timer += snare_retrig_interval;
+                    }
+                }
+                if clap_retrig_remaining > 0 && clap_retrig_interval > 0.0 {
+                    clap_retrig_timer -= 1.0;
+                    if clap_retrig_timer <= 0.0 {
+                        clap_env = 1.0;
+                        clap_phase = 0;
+                        clap_retrig_remaining = clap_retrig_remaining.saturating_sub(1);
+                        clap_retrig_timer += clap_retrig_interval;
+                    }
+                }
+                if hat_retrig_remaining > 0 && hat_retrig_interval > 0.0 {
+                    hat_retrig_timer -= 1.0;
+                    if hat_retrig_timer <= 0.0 {
+                        if hat_attack_samples > 0 {
+                            hat_attack_remaining = hat_attack_samples;
+                            hat_env = 0.0;
+                        } else {
+                            hat_env = 1.0;
+                        }
+                        for i in 0..METAL_INHARM_RATIOS.len() {
+                            hat_phases[i] = 0.0;
+                            hat_mod_phases[i] = 0.0;
+                        }
+                        hat_hp_x_prev = 0.0;
+                        hat_hp_y_prev = 0.0;
+                        hat_retrig_remaining = hat_retrig_remaining.saturating_sub(1);
+                        hat_retrig_timer += hat_retrig_interval;
+                    }
+                }
+                if perc1_retrig_remaining > 0 && perc1_retrig_interval > 0.0 {
+                    perc1_retrig_timer -= 1.0;
+                    if perc1_retrig_timer <= 0.0 {
+                        if perc1_attack_samples > 0 {
+                            perc1_attack_remaining = perc1_attack_samples;
+                        } else {
+                            perc1_attack_remaining = 1;
+                        }
+                        perc1_retrig_remaining = perc1_retrig_remaining.saturating_sub(1);
+                        perc1_retrig_timer += perc1_retrig_interval;
+                    }
+                }
+                if perc2_retrig_remaining > 0 && perc2_retrig_interval > 0.0 {
+                    perc2_retrig_timer -= 1.0;
+                    if perc2_retrig_timer <= 0.0 {
+                        perc2_env = 1.0;
+                        perc2_carrier_phase = 0.0;
+                        perc2_mod_phase = 0.0;
+                        perc2_retrig_remaining = perc2_retrig_remaining.saturating_sub(1);
+                        perc2_retrig_timer += perc2_retrig_interval;
+                    }
+                }
+                if crash_retrig_remaining > 0 && crash_retrig_interval > 0.0 {
+                    crash_retrig_timer -= 1.0;
+                    if crash_retrig_timer <= 0.0 {
+                        if crash_attack_samples > 0 {
+                            crash_attack_remaining = crash_attack_samples;
+                            crash_env = 0.0;
+                        } else {
+                            crash_env = 1.0;
+                        }
+                        for i in 0..METAL_INHARM_RATIOS.len() {
+                            crash_phases[i] = 0.0;
+                            crash_mod_phases[i] = 0.0;
+                        }
+                        crash_hp_x_prev = 0.0;
+                        crash_hp_y_prev = 0.0;
+                        crash_retrig_remaining = crash_retrig_remaining.saturating_sub(1);
+                        crash_retrig_timer += crash_retrig_interval;
+                    }
+                }
+                for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                    if samp_retrig_remaining[samp_idx] > 0
+                        && samp_retrig_interval[samp_idx] > 0.0
+                    {
+                        samp_retrig_timer[samp_idx] -= 1.0;
+                        if samp_retrig_timer[samp_idx] <= 0.0 {
+                            samp_playhead[samp_idx] = 0.0;
+                            if samp_attack_samples[samp_idx] > 0 {
+                                samp_attack_remaining[samp_idx] = samp_attack_samples[samp_idx];
+                                samp_env[samp_idx] = 0.0;
+                            } else {
+                                samp_env[samp_idx] = 1.0;
+                                samp_attack_remaining[samp_idx] = 0;
+                            }
+                            samp_decay_remaining[samp_idx] =
+                                (samp_decay_time[samp_idx] * sr).round().max(0.0) as u32;
+                            samp_retrig_remaining[samp_idx] =
+                                samp_retrig_remaining[samp_idx].saturating_sub(1);
+                            samp_retrig_timer[samp_idx] += samp_retrig_interval[samp_idx];
                         }
                     }
                 }
@@ -3953,6 +7205,49 @@ impl TLBX1 {
             } else {
                 snare_env *= snare_env_coeff;
                 snare_noise_env *= snare_noise_coeff;
+            }
+            if clap_env > 0.0 {
+                clap_env *= clap_env_coeff;
+                if clap_env < 1.0e-5 {
+                    clap_env = 0.0;
+                    clap_phase = 0;
+                }
+            }
+            if hat_attack_remaining > 0 {
+                hat_env = (hat_env + (1.0 - hat_env) * hat_attack_step).min(1.0);
+                hat_attack_remaining = hat_attack_remaining.saturating_sub(1);
+            } else {
+                hat_env *= hat_env_coeff;
+            }
+            if perc2_env > 0.0 {
+                perc2_env *= perc2_env_coeff;
+                if perc2_env < 1.0e-5 {
+                    perc2_env = 0.0;
+                }
+            }
+            if crash_attack_remaining > 0 {
+                crash_env = (crash_env + (1.0 - crash_env) * crash_attack_step).min(1.0);
+                crash_attack_remaining = crash_attack_remaining.saturating_sub(1);
+            } else {
+                crash_env *= crash_env_coeff;
+            }
+            for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                if samp_attack_remaining[samp_idx] > 0 {
+                    samp_env[samp_idx] =
+                        (samp_env[samp_idx] + (1.0 - samp_env[samp_idx]) * samp_attack_step[samp_idx])
+                            .min(1.0);
+                    samp_attack_remaining[samp_idx] =
+                        samp_attack_remaining[samp_idx].saturating_sub(1);
+                } else if samp_env[samp_idx] > 0.0 {
+                    if samp_decay_coeff[samp_idx] > 0.0 {
+                        samp_env[samp_idx] *= samp_decay_coeff[samp_idx];
+                        if samp_env[samp_idx] < 1.0e-5 {
+                            samp_env[samp_idx] = 0.0;
+                        }
+                    } else {
+                        samp_env[samp_idx] = 0.0;
+                    }
+                }
             }
 
             let freq = base_freq + pitch_env * sweep;
@@ -4031,6 +7326,382 @@ impl TLBX1 {
                 sample += snare_sample * snare_level;
             }
 
+            if clap_env > 0.0 {
+                let mut noise_out = [0.0f32];
+                dsp_state.clap_noise.tick(&[], &mut noise_out);
+                let phase = clap_phase;
+                let mut burst_env = 0.0f32;
+                let t = phase as f32;
+                burst_env += (-t * clap_burst_inv).exp();
+                if phase >= clap_burst_delay_1 {
+                    let dt = (phase - clap_burst_delay_1) as f32;
+                    burst_env += (-dt * clap_burst_inv).exp();
+                }
+                if phase >= clap_burst_delay_2 {
+                    let dt = (phase - clap_burst_delay_2) as f32;
+                    burst_env += (-dt * clap_burst_inv).exp();
+                }
+                if phase >= clap_burst_delay_3 {
+                    let dt = (phase - clap_burst_delay_3) as f32;
+                    burst_env += (-dt * clap_burst_inv).exp();
+                }
+
+                let mut clap_sample = noise_out[0] * clap_env * burst_env;
+                if clap_filter_pre_drive {
+                    clap_sample = Self::apply_syndrm_filter(
+                        clap_filter_type,
+                        clap_sample,
+                        clap_cutoff_hz,
+                        clap_q,
+                        &mut *dsp_state.clap_filter_moog,
+                        &mut *dsp_state.clap_filter_lp,
+                        &mut *dsp_state.clap_filter_hp,
+                        &mut *dsp_state.clap_filter_bp,
+                    );
+                }
+                if clap_drive > 0.0 {
+                    let mut drive_out = [0.0f32];
+                    dsp_state
+                        .clap_drive
+                        .tick(&[clap_sample * clap_drive_gain], &mut drive_out);
+                    clap_sample = drive_out[0];
+                }
+                if !clap_filter_pre_drive {
+                    clap_sample = Self::apply_syndrm_filter(
+                        clap_filter_type,
+                        clap_sample,
+                        clap_cutoff_hz,
+                        clap_q,
+                        &mut *dsp_state.clap_filter_moog,
+                        &mut *dsp_state.clap_filter_lp,
+                        &mut *dsp_state.clap_filter_hp,
+                        &mut *dsp_state.clap_filter_bp,
+                    );
+                }
+                sample += clap_sample * clap_level;
+                clap_phase = clap_phase.saturating_add(1);
+            }
+
+            if hat_env > 0.0 {
+                let mut osc_sum = 0.0f32;
+                for i in 0..METAL_INHARM_RATIOS.len() {
+                    let ratio = METAL_INHARM_RATIOS[i];
+                    let carrier_freq = hat_freq * ratio;
+                    let mod_freq = carrier_freq * hat_harmonicity;
+                    let mod_phase = hat_mod_phases[i];
+                    let mod_signal = if (mod_phase * 2.0 * PI).sin() >= 0.0 {
+                        1.0
+                    } else {
+                        -1.0
+                    };
+                    let carrier_phase = hat_phases[i];
+                    let phase_mod = carrier_phase * 2.0 * PI + hat_mod_index * mod_signal;
+                    let carrier = if phase_mod.sin() >= 0.0 { 1.0 } else { -1.0 };
+                    osc_sum += carrier;
+                    let mut next_mod = mod_phase + mod_freq / sr;
+                    if next_mod >= 1.0 {
+                        next_mod -= 1.0;
+                    }
+                    hat_mod_phases[i] = next_mod;
+                    let mut next_carrier = carrier_phase + carrier_freq / sr;
+                    if next_carrier >= 1.0 {
+                        next_carrier -= 1.0;
+                    }
+                    hat_phases[i] = next_carrier;
+                }
+                osc_sum *= 1.0 / METAL_INHARM_RATIOS.len() as f32;
+
+                let hp_min = METAL_RESONANCE_HZ;
+                let hp_max = hp_min * 2.0f32.powf(METAL_OCTAVES);
+                let hp_cutoff = hp_min + (hp_max - hp_min) * hat_env;
+                let hp_alpha = (-2.0 * PI * hp_cutoff / sr).exp();
+                let hp_out = hp_alpha * (hat_hp_y_prev + osc_sum - hat_hp_x_prev);
+                hat_hp_x_prev = osc_sum;
+                hat_hp_y_prev = hp_out;
+
+                let mut hat_sample = hp_out * hat_env;
+                if hat_filter_pre_drive {
+                    hat_sample = Self::apply_syndrm_filter(
+                        hat_filter_type,
+                        hat_sample,
+                        hat_cutoff_hz,
+                        hat_q,
+                        &mut *dsp_state.hat_filter_moog,
+                        &mut *dsp_state.hat_filter_lp,
+                        &mut *dsp_state.hat_filter_hp,
+                        &mut *dsp_state.hat_filter_bp,
+                    );
+                }
+                if hat_drive > 0.0 {
+                    let mut drive_out = [0.0f32];
+                    dsp_state
+                        .hat_drive
+                        .tick(&[hat_sample * hat_drive_gain], &mut drive_out);
+                    hat_sample = drive_out[0];
+                }
+                if !hat_filter_pre_drive {
+                    hat_sample = Self::apply_syndrm_filter(
+                        hat_filter_type,
+                        hat_sample,
+                        hat_cutoff_hz,
+                        hat_q,
+                        &mut *dsp_state.hat_filter_moog,
+                        &mut *dsp_state.hat_filter_lp,
+                        &mut *dsp_state.hat_filter_hp,
+                        &mut *dsp_state.hat_filter_bp,
+                    );
+                }
+                sample += hat_sample * hat_level;
+            }
+            if perc1_attack_remaining > 0 || perc1_delay_len > 1 {
+                let target_delay = ((sr / perc1_freq).round() as usize)
+                    .clamp(2, perc1_line_len - 1);
+                if target_delay != perc1_delay_len {
+                    perc1_delay_len = target_delay;
+                    if perc1_pos >= perc1_delay_len {
+                        perc1_pos %= perc1_delay_len;
+                    }
+                }
+
+                let excite = if perc1_attack_remaining > 0 {
+                    let mut noise_out = [0.0f32];
+                    dsp_state.perc1_noise.tick(&[], &mut noise_out);
+                    perc1_attack_remaining = perc1_attack_remaining.saturating_sub(1);
+                    noise_out[0] * (0.3 + perc1_tone * 0.7)
+                } else {
+                    0.0
+                };
+
+                let idx = perc1_pos;
+                let next_idx = if idx + 1 >= perc1_delay_len { 0 } else { idx + 1 };
+                let y = dsp_state.perc1_karplus_line[idx];
+                let next = dsp_state.perc1_karplus_line[next_idx];
+                let filtered = (y + next) * 0.5;
+                dsp_state.perc1_karplus_line[idx] =
+                    filtered * perc1_decay_coeff * perc1_damping + excite;
+                perc1_pos = if idx + 1 >= perc1_delay_len { 0 } else { idx + 1 };
+
+                let mut perc1_sample = y;
+                if perc1_filter_pre_drive {
+                    perc1_sample = Self::apply_syndrm_filter(
+                        perc1_filter_type,
+                        perc1_sample,
+                        perc1_cutoff_hz,
+                        perc1_q,
+                        &mut *dsp_state.perc1_filter_moog,
+                        &mut *dsp_state.perc1_filter_lp,
+                        &mut *dsp_state.perc1_filter_hp,
+                        &mut *dsp_state.perc1_filter_bp,
+                    );
+                }
+                if perc1_drive > 0.0 {
+                    let mut drive_out = [0.0f32];
+                    dsp_state
+                        .perc1_drive
+                        .tick(&[perc1_sample * perc1_drive_gain], &mut drive_out);
+                    perc1_sample = drive_out[0];
+                }
+                if !perc1_filter_pre_drive {
+                    perc1_sample = Self::apply_syndrm_filter(
+                        perc1_filter_type,
+                        perc1_sample,
+                        perc1_cutoff_hz,
+                        perc1_q,
+                        &mut *dsp_state.perc1_filter_moog,
+                        &mut *dsp_state.perc1_filter_lp,
+                        &mut *dsp_state.perc1_filter_hp,
+                        &mut *dsp_state.perc1_filter_bp,
+                    );
+                }
+                sample += perc1_sample * perc1_level;
+            }
+            if perc2_env > 0.0 {
+                let mod_freq = perc2_freq;
+                let mod_signal = (perc2_mod_phase * 2.0 * PI).sin();
+                let phase_mod = perc2_carrier_phase * 2.0 * PI + perc2_mod_index * mod_signal;
+                let mut perc2_sample = phase_mod.sin() * perc2_env;
+                if perc2_filter_pre_drive {
+                    perc2_sample = Self::apply_syndrm_filter(
+                        perc2_filter_type,
+                        perc2_sample,
+                        perc2_cutoff_hz,
+                        perc2_q,
+                        &mut *dsp_state.perc2_filter_moog,
+                        &mut *dsp_state.perc2_filter_lp,
+                        &mut *dsp_state.perc2_filter_hp,
+                        &mut *dsp_state.perc2_filter_bp,
+                    );
+                }
+                if perc2_drive > 0.0 {
+                    let mut drive_out = [0.0f32];
+                    dsp_state
+                        .perc2_drive
+                        .tick(&[perc2_sample * perc2_drive_gain], &mut drive_out);
+                    perc2_sample = drive_out[0];
+                }
+                if !perc2_filter_pre_drive {
+                    perc2_sample = Self::apply_syndrm_filter(
+                        perc2_filter_type,
+                        perc2_sample,
+                        perc2_cutoff_hz,
+                        perc2_q,
+                        &mut *dsp_state.perc2_filter_moog,
+                        &mut *dsp_state.perc2_filter_lp,
+                        &mut *dsp_state.perc2_filter_hp,
+                        &mut *dsp_state.perc2_filter_bp,
+                    );
+                }
+                sample += perc2_sample * perc2_level;
+
+                perc2_carrier_phase += perc2_freq / sr;
+                if perc2_carrier_phase >= 1.0 {
+                    perc2_carrier_phase -= 1.0;
+                }
+                perc2_mod_phase += mod_freq / sr;
+                if perc2_mod_phase >= 1.0 {
+                    perc2_mod_phase -= 1.0;
+                }
+            }
+            if crash_env > 0.0 {
+                let mut osc_sum = 0.0f32;
+                for i in 0..METAL_INHARM_RATIOS.len() {
+                    let ratio = METAL_INHARM_RATIOS[i];
+                    let carrier_freq = crash_freq * ratio;
+                    let mod_freq = carrier_freq * crash_harmonicity;
+                    let mod_phase = crash_mod_phases[i];
+                    let mod_signal = if (mod_phase * 2.0 * PI).sin() >= 0.0 {
+                        1.0
+                    } else {
+                        -1.0
+                    };
+                    let carrier_phase = crash_phases[i];
+                    let phase_mod = carrier_phase * 2.0 * PI + crash_mod_index * mod_signal;
+                    let carrier = if phase_mod.sin() >= 0.0 { 1.0 } else { -1.0 };
+                    osc_sum += carrier;
+                    let mut next_mod = mod_phase + mod_freq / sr;
+                    if next_mod >= 1.0 {
+                        next_mod -= 1.0;
+                    }
+                    crash_mod_phases[i] = next_mod;
+                    let mut next_carrier = carrier_phase + carrier_freq / sr;
+                    if next_carrier >= 1.0 {
+                        next_carrier -= 1.0;
+                    }
+                    crash_phases[i] = next_carrier;
+                }
+                osc_sum *= 1.0 / METAL_INHARM_RATIOS.len() as f32;
+
+                let hp_min = METAL_RESONANCE_HZ;
+                let hp_max = hp_min * 2.0f32.powf(METAL_OCTAVES);
+                let hp_cutoff = hp_min + (hp_max - hp_min) * crash_env;
+                let hp_alpha = (-2.0 * PI * hp_cutoff / sr).exp();
+                let hp_out = hp_alpha * (crash_hp_y_prev + osc_sum - crash_hp_x_prev);
+                crash_hp_x_prev = osc_sum;
+                crash_hp_y_prev = hp_out;
+
+                let mut crash_sample = hp_out * crash_env;
+                if crash_filter_pre_drive {
+                    crash_sample = Self::apply_syndrm_filter(
+                        crash_filter_type,
+                        crash_sample,
+                        crash_cutoff_hz,
+                        crash_q,
+                        &mut *dsp_state.crash_filter_moog,
+                        &mut *dsp_state.crash_filter_lp,
+                        &mut *dsp_state.crash_filter_hp,
+                        &mut *dsp_state.crash_filter_bp,
+                    );
+                }
+                if crash_drive > 0.0 {
+                    let mut drive_out = [0.0f32];
+                    dsp_state
+                        .crash_drive
+                        .tick(&[crash_sample * crash_drive_gain], &mut drive_out);
+                    crash_sample = drive_out[0];
+                }
+                if !crash_filter_pre_drive {
+                    crash_sample = Self::apply_syndrm_filter(
+                        crash_filter_type,
+                        crash_sample,
+                        crash_cutoff_hz,
+                        crash_q,
+                        &mut *dsp_state.crash_filter_moog,
+                        &mut *dsp_state.crash_filter_lp,
+                        &mut *dsp_state.crash_filter_hp,
+                        &mut *dsp_state.crash_filter_bp,
+                    );
+                }
+                sample += crash_sample * crash_level;
+            }
+            crash_phase = crash_phases[0];
+            hat_phase = hat_phases[0];
+
+            for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+                if samp_env[samp_idx] <= 0.0 && samp_attack_remaining[samp_idx] == 0 {
+                    continue;
+                }
+                let Some(samples) = samp_samples[samp_idx].as_ref() else {
+                    continue;
+                };
+                if samples.is_empty() || samp_sample_len[samp_idx] == 0 {
+                    continue;
+                }
+                let playhead = samp_playhead[samp_idx];
+                if playhead >= samp_sample_len[samp_idx] as f32 {
+                    samp_env[samp_idx] = 0.0;
+                    continue;
+                }
+                let idx = playhead.floor() as usize;
+                let frac = playhead - idx as f32;
+                let mut frame = 0.0f32;
+                let mut count = 0.0f32;
+                for channel in samples.iter() {
+                    if channel.is_empty() {
+                        continue;
+                    }
+                    let a = *channel.get(idx).unwrap_or(&0.0);
+                    let b = *channel.get(idx + 1).unwrap_or(&a);
+                    frame += a + (b - a) * frac;
+                    count += 1.0;
+                }
+                if count > 0.0 {
+                    let mut samp_sample = (frame / count) * samp_env[samp_idx];
+                    if samp_filter_pre_drive[samp_idx] {
+                        samp_sample = Self::apply_syndrm_filter(
+                            samp_filter_type[samp_idx],
+                            samp_sample,
+                            samp_cutoff_hz[samp_idx],
+                            samp_q[samp_idx],
+                            &mut *dsp_state.samp_filter_moog[samp_idx],
+                            &mut *dsp_state.samp_filter_lp[samp_idx],
+                            &mut *dsp_state.samp_filter_hp[samp_idx],
+                            &mut *dsp_state.samp_filter_bp[samp_idx],
+                        );
+                    }
+                    if samp_drive[samp_idx] > 0.0 {
+                        let mut drive_out = [0.0f32];
+                        dsp_state.samp_drive[samp_idx]
+                            .tick(&[samp_sample * samp_drive_gain[samp_idx]], &mut drive_out);
+                        samp_sample = drive_out[0];
+                    }
+                    if !samp_filter_pre_drive[samp_idx] {
+                        samp_sample = Self::apply_syndrm_filter(
+                            samp_filter_type[samp_idx],
+                            samp_sample,
+                            samp_cutoff_hz[samp_idx],
+                            samp_q[samp_idx],
+                            &mut *dsp_state.samp_filter_moog[samp_idx],
+                            &mut *dsp_state.samp_filter_lp[samp_idx],
+                            &mut *dsp_state.samp_filter_hp[samp_idx],
+                            &mut *dsp_state.samp_filter_bp[samp_idx],
+                        );
+                    }
+                    sample += samp_sample * samp_level[samp_idx];
+                }
+                let rate = samp_rate[samp_idx] * samp_sample_rate[samp_idx] as f32 / sr;
+                samp_playhead[samp_idx] = playhead + rate.max(0.0);
+            }
+
             for channel in output.iter_mut() {
                 channel[sample_idx] += sample;
             }
@@ -4041,6 +7712,21 @@ impl TLBX1 {
             .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
         track
             .snare_sequencer_phase
+            .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
+        track
+            .clap_sequencer_phase
+            .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
+        track
+            .hat_sequencer_phase
+            .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
+        track
+            .perc1_sequencer_phase
+            .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
+        track
+            .perc2_sequencer_phase
+            .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
+        track
+            .crash_sequencer_phase
             .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
         track.kick_env.store(env.to_bits(), Ordering::Relaxed);
         track
@@ -4056,6 +7742,122 @@ impl TLBX1 {
         track
             .snare_attack_remaining
             .store(snare_attack_remaining, Ordering::Relaxed);
+        track.clap_env.store(clap_env.to_bits(), Ordering::Relaxed);
+        track.clap_phase.store(clap_phase, Ordering::Relaxed);
+        track.hat_env.store(hat_env.to_bits(), Ordering::Relaxed);
+        track
+            .hat_attack_remaining
+            .store(hat_attack_remaining, Ordering::Relaxed);
+        track.hat_phase.store(hat_phase.to_bits(), Ordering::Relaxed);
+        for i in 0..METAL_INHARM_RATIOS.len() {
+            track.hat_phases[i].store(hat_phases[i].to_bits(), Ordering::Relaxed);
+            track
+                .hat_mod_phases[i]
+                .store(hat_mod_phases[i].to_bits(), Ordering::Relaxed);
+        }
+        track
+            .hat_hp_x_prev
+            .store(hat_hp_x_prev.to_bits(), Ordering::Relaxed);
+        track
+            .hat_hp_y_prev
+            .store(hat_hp_y_prev.to_bits(), Ordering::Relaxed);
+        track
+            .perc1_attack_remaining
+            .store(perc1_attack_remaining, Ordering::Relaxed);
+        track.perc2_env.store(perc2_env.to_bits(), Ordering::Relaxed);
+        track
+            .perc2_carrier_phase
+            .store(perc2_carrier_phase.to_bits(), Ordering::Relaxed);
+        track
+            .perc2_mod_phase
+            .store(perc2_mod_phase.to_bits(), Ordering::Relaxed);
+        track.crash_env.store(crash_env.to_bits(), Ordering::Relaxed);
+        track
+            .crash_attack_remaining
+            .store(crash_attack_remaining, Ordering::Relaxed);
+        track.crash_phase.store(crash_phase.to_bits(), Ordering::Relaxed);
+        for i in 0..METAL_INHARM_RATIOS.len() {
+            track
+                .crash_phases[i]
+                .store(crash_phases[i].to_bits(), Ordering::Relaxed);
+            track
+                .crash_mod_phases[i]
+                .store(crash_mod_phases[i].to_bits(), Ordering::Relaxed);
+        }
+        track
+            .crash_hp_x_prev
+            .store(crash_hp_x_prev.to_bits(), Ordering::Relaxed);
+        track
+            .crash_hp_y_prev
+            .store(crash_hp_y_prev.to_bits(), Ordering::Relaxed);
+        track
+            .kick_retrig_remaining
+            .store(kick_retrig_remaining, Ordering::Relaxed);
+        track
+            .kick_retrig_timer
+            .store(kick_retrig_timer.to_bits(), Ordering::Relaxed);
+        track
+            .snare_retrig_remaining
+            .store(snare_retrig_remaining, Ordering::Relaxed);
+        track
+            .snare_retrig_timer
+            .store(snare_retrig_timer.to_bits(), Ordering::Relaxed);
+        track
+            .clap_retrig_remaining
+            .store(clap_retrig_remaining, Ordering::Relaxed);
+        track
+            .clap_retrig_timer
+            .store(clap_retrig_timer.to_bits(), Ordering::Relaxed);
+        track
+            .hat_retrig_remaining
+            .store(hat_retrig_remaining, Ordering::Relaxed);
+        track
+            .hat_retrig_timer
+            .store(hat_retrig_timer.to_bits(), Ordering::Relaxed);
+        track
+            .perc1_retrig_remaining
+            .store(perc1_retrig_remaining, Ordering::Relaxed);
+        track
+            .perc1_retrig_timer
+            .store(perc1_retrig_timer.to_bits(), Ordering::Relaxed);
+        track
+            .perc2_retrig_remaining
+            .store(perc2_retrig_remaining, Ordering::Relaxed);
+        track
+            .perc2_retrig_timer
+            .store(perc2_retrig_timer.to_bits(), Ordering::Relaxed);
+        track
+            .crash_retrig_remaining
+            .store(crash_retrig_remaining, Ordering::Relaxed);
+        track
+            .crash_retrig_timer
+            .store(crash_retrig_timer.to_bits(), Ordering::Relaxed);
+        for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+            track
+                .samp_sequencer_phase[samp_idx]
+                .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
+            track
+                .samp_env[samp_idx]
+                .store(samp_env[samp_idx].to_bits(), Ordering::Relaxed);
+            track
+                .samp_playhead[samp_idx]
+                .store(samp_playhead[samp_idx].to_bits(), Ordering::Relaxed);
+            track
+                .samp_attack_remaining[samp_idx]
+                .store(samp_attack_remaining[samp_idx], Ordering::Relaxed);
+            track
+                .samp_decay_remaining[samp_idx]
+                .store(samp_decay_remaining[samp_idx], Ordering::Relaxed);
+            track
+                .samp_retrig_remaining[samp_idx]
+                .store(samp_retrig_remaining[samp_idx], Ordering::Relaxed);
+            track
+                .samp_retrig_timer[samp_idx]
+                .store(samp_retrig_timer[samp_idx].to_bits(), Ordering::Relaxed);
+        }
+        track.syndrm_rng_state.store(rng_state, Ordering::Relaxed);
+        dsp_state.perc1_karplus_pos = perc1_pos;
+        dsp_state.perc1_karplus_delay = perc1_delay_len;
     }
 
     fn apply_syndrm_filter(
@@ -6055,6 +9857,47 @@ impl Plugin for TLBX1 {
                     }
                 }
             }
+            TLBX1Task::LoadSyndrmSample {
+                track_idx,
+                channel_idx,
+                path,
+            } => {
+                if track_idx >= NUM_TRACKS || channel_idx >= SYNDRM_SAMPLE_CHANNELS {
+                    return;
+                }
+
+                match load_media_file(&path) {
+                    Ok((new_samples, sample_rate, _video)) => {
+                        let sample_len = new_samples.get(0).map(|ch| ch.len()).unwrap_or(0);
+                        if let Some(mut guard) = tracks[track_idx].samp_samples[channel_idx].try_lock()
+                        {
+                            *guard = Some(Arc::new(new_samples));
+                        }
+                        if let Some(mut guard) = tracks[track_idx]
+                            .samp_sample_path[channel_idx]
+                            .try_lock()
+                        {
+                            *guard = Some(path.to_string_lossy().to_string());
+                        }
+                        tracks[track_idx].samp_sample_rate[channel_idx]
+                            .store(sample_rate, Ordering::Relaxed);
+                        tracks[track_idx].samp_sample_len[channel_idx]
+                            .store(sample_len as u32, Ordering::Relaxed);
+                        tracks[track_idx].samp_playhead[channel_idx]
+                            .store(0.0f32.to_bits(), Ordering::Relaxed);
+                        tracks[track_idx].samp_env[channel_idx]
+                            .store(0.0f32.to_bits(), Ordering::Relaxed);
+                        tracks[track_idx].samp_attack_remaining[channel_idx]
+                            .store(0, Ordering::Relaxed);
+                        tracks[track_idx].samp_decay_remaining[channel_idx]
+                            .store(0, Ordering::Relaxed);
+                        nih_log!("Loaded SynDRM sample: {:?}", path);
+                    }
+                    Err(e) => {
+                        nih_log!("Failed to load SynDRM sample: {:?}", e);
+                    }
+                }
+            }
             TLBX1Task::SaveProject {
                 path,
                 title,
@@ -7478,20 +11321,104 @@ fn syndrm_rand_filter_type(state: &mut u32) -> u32 {
     idx.min(max - 1)
 }
 
+fn truncate_label(input: &str, max_chars: usize, ellipses: bool) -> String {
+    if max_chars == 0 {
+        return input.to_string();
+    }
+    let mut chars = input.chars();
+    let clipped: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        if ellipses {
+            format!("{clipped}...")
+        } else {
+            clipped
+        }
+    } else {
+        clipped
+    }
+}
+
+fn syndrm_lane_mask(lane: u32) -> u16 {
+    if lane < SYNDRM_LANES as u32 {
+        1u16 << lane
+    } else {
+        0
+    }
+}
+
+fn syndrm_all_lanes_mask() -> u16 {
+    if SYNDRM_LANES == 0 {
+        0
+    } else {
+        (1u16 << SYNDRM_LANES) - 1
+    }
+}
+
 fn syndrm_randomize_steps(
     track: &Track,
     rng_state: &mut u32,
-    lanes: u8,
+    lanes: u16,
     start: usize,
     len: usize,
+    amount: f32,
 ) {
+    let amt = amount.clamp(0.0, 1.0);
+    if amt <= 0.0 {
+        return;
+    }
     let end = (start + len).min(SYNDRM_STEPS);
     for step in start..end {
-        if (lanes & 0b01) != 0 {
-            track.kick_sequencer_grid[step].store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+        if (lanes & (1 << 0)) != 0 {
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.kick_sequencer_grid[step]
+                    .store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+            }
         }
-        if (lanes & 0b10) != 0 {
-            track.snare_sequencer_grid[step].store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+        if (lanes & (1 << 1)) != 0 {
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.snare_sequencer_grid[step]
+                    .store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+            }
+        }
+        if (lanes & (1 << 2)) != 0 {
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.clap_sequencer_grid[step]
+                    .store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+            }
+        }
+        if (lanes & (1 << 3)) != 0 {
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.hat_sequencer_grid[step]
+                    .store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+            }
+        }
+        if (lanes & (1 << 4)) != 0 {
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.perc1_sequencer_grid[step]
+                    .store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+            }
+        }
+        if (lanes & (1 << 5)) != 0 {
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.perc2_sequencer_grid[step]
+                    .store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+            }
+        }
+        if (lanes & (1 << 6)) != 0 {
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track
+                    .crash_sequencer_grid[step]
+                    .store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+            }
+        }
+        for channel_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+            let lane_bit = 1u16 << (7 + channel_idx);
+            if (lanes & lane_bit) != 0 {
+                if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                    track.samp_sequencer_grid[channel_idx][step]
+                        .store(syndrm_rand_bool(rng_state), Ordering::Relaxed);
+                }
+            }
         }
     }
 }
@@ -7499,86 +11426,462 @@ fn syndrm_randomize_steps(
 fn syndrm_randomize_params(
     track: &Track,
     rng_state: &mut u32,
-    lanes: u8,
+    lanes: u16,
     start: usize,
     len: usize,
+    amount: f32,
 ) {
+    let amt = amount.clamp(0.0, 1.0);
+    if amt <= 0.0 {
+        return;
+    }
+    let lerp = |current: f32, target: f32| current + (target - current) * amt;
+    if (lanes & (1 << 0)) != 0 {
+        let current_pitch_env =
+            f32::from_bits(track.kick_pitch_env_amount.load(Ordering::Relaxed));
+        track
+            .kick_pitch_env_amount
+            .store(lerp(current_pitch_env, syndrm_rand_unit(rng_state)).to_bits(), Ordering::Relaxed);
+    }
     let end = (start + len).min(SYNDRM_STEPS);
     for step in start..end {
-        if (lanes & 0b01) != 0 {
+        if (lanes & (1 << 0)) != 0 {
             track.kick_step_override_enabled[step].store(true, Ordering::Relaxed);
-            track.kick_step_pitch[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.kick_step_decay[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.kick_step_attack[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.kick_step_drive[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.kick_step_level[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.kick_step_filter_type[step]
-                .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
-            track.kick_step_filter_cutoff[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.kick_step_filter_resonance[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            let current_pitch = f32::from_bits(track.kick_step_pitch[step].load(Ordering::Relaxed));
+            let current_decay = f32::from_bits(track.kick_step_decay[step].load(Ordering::Relaxed));
+            let current_attack = f32::from_bits(track.kick_step_attack[step].load(Ordering::Relaxed));
+            let current_drive = f32::from_bits(track.kick_step_drive[step].load(Ordering::Relaxed));
+            let current_level = f32::from_bits(track.kick_step_level[step].load(Ordering::Relaxed));
+            let current_filter_cutoff =
+                f32::from_bits(track.kick_step_filter_cutoff[step].load(Ordering::Relaxed));
+            let current_filter_resonance =
+                f32::from_bits(track.kick_step_filter_resonance[step].load(Ordering::Relaxed));
+
+            track.kick_step_pitch[step].store(
+                lerp(current_pitch, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.kick_step_decay[step].store(
+                lerp(current_decay, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.kick_step_attack[step].store(
+                lerp(current_attack, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.kick_step_drive[step].store(
+                lerp(current_drive, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.kick_step_level[step].store(
+                lerp(current_level, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.kick_step_filter_type[step]
+                    .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+            }
+            track.kick_step_filter_cutoff[step].store(
+                lerp(current_filter_cutoff, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.kick_step_filter_resonance[step].store(
+                lerp(current_filter_resonance, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
         }
-        if (lanes & 0b10) != 0 {
+        if (lanes & (1 << 1)) != 0 {
             track.snare_step_override_enabled[step].store(true, Ordering::Relaxed);
-            track.snare_step_tone[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.snare_step_decay[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.snare_step_snappy[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.snare_step_attack[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.snare_step_drive[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.snare_step_level[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.snare_step_filter_type[step]
-                .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
-            track.snare_step_filter_cutoff[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
-            track.snare_step_filter_resonance[step]
-                .store(syndrm_rand_unit(rng_state).to_bits(), Ordering::Relaxed);
+            let current_tone = f32::from_bits(track.snare_step_tone[step].load(Ordering::Relaxed));
+            let current_decay = f32::from_bits(track.snare_step_decay[step].load(Ordering::Relaxed));
+            let current_snappy =
+                f32::from_bits(track.snare_step_snappy[step].load(Ordering::Relaxed));
+            let current_attack =
+                f32::from_bits(track.snare_step_attack[step].load(Ordering::Relaxed));
+            let current_drive = f32::from_bits(track.snare_step_drive[step].load(Ordering::Relaxed));
+            let current_level = f32::from_bits(track.snare_step_level[step].load(Ordering::Relaxed));
+            let current_filter_cutoff =
+                f32::from_bits(track.snare_step_filter_cutoff[step].load(Ordering::Relaxed));
+            let current_filter_resonance =
+                f32::from_bits(track.snare_step_filter_resonance[step].load(Ordering::Relaxed));
+
+            track.snare_step_tone[step].store(
+                lerp(current_tone, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.snare_step_decay[step].store(
+                lerp(current_decay, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.snare_step_snappy[step].store(
+                lerp(current_snappy, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.snare_step_attack[step].store(
+                lerp(current_attack, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.snare_step_drive[step].store(
+                lerp(current_drive, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.snare_step_level[step].store(
+                lerp(current_level, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.snare_step_filter_type[step]
+                    .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+            }
+            track.snare_step_filter_cutoff[step].store(
+                lerp(current_filter_cutoff, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.snare_step_filter_resonance[step].store(
+                lerp(current_filter_resonance, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+        }
+        if (lanes & (1 << 2)) != 0 {
+            track.clap_step_override_enabled[step].store(true, Ordering::Relaxed);
+            let current_pitch = f32::from_bits(track.clap_step_pitch[step].load(Ordering::Relaxed));
+            let current_decay = f32::from_bits(track.clap_step_decay[step].load(Ordering::Relaxed));
+            let current_tone = f32::from_bits(track.clap_step_tone[step].load(Ordering::Relaxed));
+            let current_drive = f32::from_bits(track.clap_step_drive[step].load(Ordering::Relaxed));
+            let current_level = f32::from_bits(track.clap_step_level[step].load(Ordering::Relaxed));
+            let current_filter_cutoff =
+                f32::from_bits(track.clap_step_filter_cutoff[step].load(Ordering::Relaxed));
+            let current_filter_resonance =
+                f32::from_bits(track.clap_step_filter_resonance[step].load(Ordering::Relaxed));
+
+            track.clap_step_pitch[step].store(
+                lerp(current_pitch, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.clap_step_decay[step].store(
+                lerp(current_decay, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.clap_step_tone[step].store(
+                lerp(current_tone, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.clap_step_drive[step].store(
+                lerp(current_drive, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.clap_step_level[step].store(
+                lerp(current_level, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.clap_step_filter_type[step]
+                    .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+            }
+            track.clap_step_filter_cutoff[step].store(
+                lerp(current_filter_cutoff, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.clap_step_filter_resonance[step].store(
+                lerp(current_filter_resonance, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+        }
+        if (lanes & (1 << 3)) != 0 {
+            track.hat_step_override_enabled[step].store(true, Ordering::Relaxed);
+            let current_pitch = f32::from_bits(track.hat_step_pitch[step].load(Ordering::Relaxed));
+            let current_decay = f32::from_bits(track.hat_step_decay[step].load(Ordering::Relaxed));
+            let current_tone = f32::from_bits(track.hat_step_tone[step].load(Ordering::Relaxed));
+            let current_drive = f32::from_bits(track.hat_step_drive[step].load(Ordering::Relaxed));
+            let current_level = f32::from_bits(track.hat_step_level[step].load(Ordering::Relaxed));
+            let current_filter_cutoff =
+                f32::from_bits(track.hat_step_filter_cutoff[step].load(Ordering::Relaxed));
+            let current_filter_resonance =
+                f32::from_bits(track.hat_step_filter_resonance[step].load(Ordering::Relaxed));
+
+            track.hat_step_pitch[step].store(
+                lerp(current_pitch, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.hat_step_decay[step].store(
+                lerp(current_decay, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.hat_step_tone[step].store(
+                lerp(current_tone, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.hat_step_drive[step].store(
+                lerp(current_drive, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.hat_step_level[step].store(
+                lerp(current_level, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.hat_step_filter_type[step]
+                    .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+            }
+            track.hat_step_filter_cutoff[step].store(
+                lerp(current_filter_cutoff, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.hat_step_filter_resonance[step].store(
+                lerp(current_filter_resonance, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+        }
+        if (lanes & (1 << 4)) != 0 {
+            track.perc1_step_override_enabled[step].store(true, Ordering::Relaxed);
+            let current_pitch = f32::from_bits(track.perc1_step_pitch[step].load(Ordering::Relaxed));
+            let current_decay = f32::from_bits(track.perc1_step_decay[step].load(Ordering::Relaxed));
+            let current_tone = f32::from_bits(track.perc1_step_tone[step].load(Ordering::Relaxed));
+            let current_drive = f32::from_bits(track.perc1_step_drive[step].load(Ordering::Relaxed));
+            let current_level = f32::from_bits(track.perc1_step_level[step].load(Ordering::Relaxed));
+            let current_filter_cutoff =
+                f32::from_bits(track.perc1_step_filter_cutoff[step].load(Ordering::Relaxed));
+            let current_filter_resonance =
+                f32::from_bits(track.perc1_step_filter_resonance[step].load(Ordering::Relaxed));
+
+            track.perc1_step_pitch[step].store(
+                lerp(current_pitch, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc1_step_decay[step].store(
+                lerp(current_decay, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc1_step_tone[step].store(
+                lerp(current_tone, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc1_step_drive[step].store(
+                lerp(current_drive, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc1_step_level[step].store(
+                lerp(current_level, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.perc1_step_filter_type[step]
+                    .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+            }
+            track.perc1_step_filter_cutoff[step].store(
+                lerp(current_filter_cutoff, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc1_step_filter_resonance[step].store(
+                lerp(current_filter_resonance, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+        }
+        if (lanes & (1 << 5)) != 0 {
+            track.perc2_step_override_enabled[step].store(true, Ordering::Relaxed);
+            let current_pitch = f32::from_bits(track.perc2_step_pitch[step].load(Ordering::Relaxed));
+            let current_decay = f32::from_bits(track.perc2_step_decay[step].load(Ordering::Relaxed));
+            let current_tone = f32::from_bits(track.perc2_step_tone[step].load(Ordering::Relaxed));
+            let current_drive = f32::from_bits(track.perc2_step_drive[step].load(Ordering::Relaxed));
+            let current_level = f32::from_bits(track.perc2_step_level[step].load(Ordering::Relaxed));
+            let current_filter_cutoff =
+                f32::from_bits(track.perc2_step_filter_cutoff[step].load(Ordering::Relaxed));
+            let current_filter_resonance =
+                f32::from_bits(track.perc2_step_filter_resonance[step].load(Ordering::Relaxed));
+
+            track.perc2_step_pitch[step].store(
+                lerp(current_pitch, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc2_step_decay[step].store(
+                lerp(current_decay, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc2_step_tone[step].store(
+                lerp(current_tone, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc2_step_drive[step].store(
+                lerp(current_drive, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc2_step_level[step].store(
+                lerp(current_level, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.perc2_step_filter_type[step]
+                    .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+            }
+            track.perc2_step_filter_cutoff[step].store(
+                lerp(current_filter_cutoff, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.perc2_step_filter_resonance[step].store(
+                lerp(current_filter_resonance, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+        }
+        if (lanes & (1 << 6)) != 0 {
+            track
+                .crash_step_override_enabled[step]
+                .store(true, Ordering::Relaxed);
+            let current_pitch = f32::from_bits(track.crash_step_pitch[step].load(Ordering::Relaxed));
+            let current_decay = f32::from_bits(track.crash_step_decay[step].load(Ordering::Relaxed));
+            let current_tone = f32::from_bits(track.crash_step_tone[step].load(Ordering::Relaxed));
+            let current_drive = f32::from_bits(track.crash_step_drive[step].load(Ordering::Relaxed));
+            let current_level = f32::from_bits(track.crash_step_level[step].load(Ordering::Relaxed));
+            let current_filter_cutoff =
+                f32::from_bits(track.crash_step_filter_cutoff[step].load(Ordering::Relaxed));
+            let current_filter_resonance =
+                f32::from_bits(track.crash_step_filter_resonance[step].load(Ordering::Relaxed));
+
+            track.crash_step_pitch[step].store(
+                lerp(current_pitch, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.crash_step_decay[step].store(
+                lerp(current_decay, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.crash_step_tone[step].store(
+                lerp(current_tone, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.crash_step_drive[step].store(
+                lerp(current_drive, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.crash_step_level[step].store(
+                lerp(current_level, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                track.crash_step_filter_type[step]
+                    .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+            }
+            track.crash_step_filter_cutoff[step].store(
+                lerp(current_filter_cutoff, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+            track.crash_step_filter_resonance[step].store(
+                lerp(current_filter_resonance, syndrm_rand_unit(rng_state)).to_bits(),
+                Ordering::Relaxed,
+            );
+        }
+        for channel_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+            let lane_bit = 1u16 << (7 + channel_idx);
+            if (lanes & lane_bit) != 0 {
+                track.samp_step_override_enabled[channel_idx][step]
+                    .store(true, Ordering::Relaxed);
+                let current_pitch =
+                    f32::from_bits(track.samp_step_pitch[channel_idx][step].load(Ordering::Relaxed));
+                let current_attack =
+                    f32::from_bits(track.samp_step_attack[channel_idx][step].load(Ordering::Relaxed));
+                let current_decay =
+                    f32::from_bits(track.samp_step_decay[channel_idx][step].load(Ordering::Relaxed));
+                let current_drive =
+                    f32::from_bits(track.samp_step_drive[channel_idx][step].load(Ordering::Relaxed));
+                let current_level =
+                    f32::from_bits(track.samp_step_level[channel_idx][step].load(Ordering::Relaxed));
+                let current_filter_cutoff = f32::from_bits(
+                    track.samp_step_filter_cutoff[channel_idx][step].load(Ordering::Relaxed),
+                );
+                let current_filter_resonance = f32::from_bits(
+                    track.samp_step_filter_resonance[channel_idx][step].load(Ordering::Relaxed),
+                );
+
+                track.samp_step_pitch[channel_idx][step].store(
+                    lerp(current_pitch, syndrm_rand_unit(rng_state)).to_bits(),
+                    Ordering::Relaxed,
+                );
+                track.samp_step_attack[channel_idx][step].store(
+                    lerp(current_attack, syndrm_rand_unit(rng_state)).to_bits(),
+                    Ordering::Relaxed,
+                );
+                track.samp_step_decay[channel_idx][step].store(
+                    lerp(current_decay, syndrm_rand_unit(rng_state)).to_bits(),
+                    Ordering::Relaxed,
+                );
+                track.samp_step_drive[channel_idx][step].store(
+                    lerp(current_drive, syndrm_rand_unit(rng_state)).to_bits(),
+                    Ordering::Relaxed,
+                );
+                track.samp_step_level[channel_idx][step].store(
+                    lerp(current_level, syndrm_rand_unit(rng_state)).to_bits(),
+                    Ordering::Relaxed,
+                );
+                if amt >= 1.0 || syndrm_rand_unit(rng_state) <= amt {
+                    track.samp_step_filter_type[channel_idx][step]
+                        .store(syndrm_rand_filter_type(rng_state), Ordering::Relaxed);
+                }
+                track.samp_step_filter_cutoff[channel_idx][step].store(
+                    lerp(current_filter_cutoff, syndrm_rand_unit(rng_state)).to_bits(),
+                    Ordering::Relaxed,
+                );
+                track.samp_step_filter_resonance[channel_idx][step].store(
+                    lerp(current_filter_resonance, syndrm_rand_unit(rng_state)).to_bits(),
+                    Ordering::Relaxed,
+                );
+            }
         }
     }
 }
 
 fn syndrm_randomize_apply(
     track: &Track,
-    lanes: u8,
+    lanes: u16,
     start: usize,
     len: usize,
     randomize_steps: bool,
     randomize_params: bool,
+    amount: f32,
 ) {
     let mut rng_state = track.syndrm_rng_state.load(Ordering::Relaxed);
     if randomize_steps {
-        syndrm_randomize_steps(track, &mut rng_state, lanes, start, len);
+        syndrm_randomize_steps(track, &mut rng_state, lanes, start, len, amount);
     }
     if randomize_params {
-        syndrm_randomize_params(track, &mut rng_state, lanes, start, len);
+        syndrm_randomize_params(track, &mut rng_state, lanes, start, len, amount);
     }
     track.syndrm_rng_state.store(rng_state, Ordering::Relaxed);
 }
 
-fn syndrm_clear_steps(track: &Track, lanes: u8, start: usize, len: usize) {
+fn syndrm_clear_steps(track: &Track, lanes: u16, start: usize, len: usize) {
     let end = (start + len).min(SYNDRM_STEPS);
     for step in start..end {
-        if (lanes & 0b01) != 0 {
+        if (lanes & (1 << 0)) != 0 {
             track.kick_sequencer_grid[step].store(false, Ordering::Relaxed);
         }
-        if (lanes & 0b10) != 0 {
+        if (lanes & (1 << 1)) != 0 {
             track.snare_sequencer_grid[step].store(false, Ordering::Relaxed);
+        }
+        if (lanes & (1 << 2)) != 0 {
+            track.clap_sequencer_grid[step].store(false, Ordering::Relaxed);
+        }
+        if (lanes & (1 << 3)) != 0 {
+            track.hat_sequencer_grid[step].store(false, Ordering::Relaxed);
+        }
+        if (lanes & (1 << 4)) != 0 {
+            track.perc1_sequencer_grid[step].store(false, Ordering::Relaxed);
+        }
+        if (lanes & (1 << 5)) != 0 {
+            track.perc2_sequencer_grid[step].store(false, Ordering::Relaxed);
+        }
+        if (lanes & (1 << 6)) != 0 {
+            track.crash_sequencer_grid[step].store(false, Ordering::Relaxed);
+        }
+        for channel_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+            let lane_bit = 1u16 << (7 + channel_idx);
+            if (lanes & lane_bit) != 0 {
+                track.samp_sequencer_grid[channel_idx][step]
+                    .store(false, Ordering::Relaxed);
+            }
         }
     }
 }
 
-fn syndrm_clear_params(track: &Track, lanes: u8, start: usize, len: usize) {
+fn syndrm_clear_params(track: &Track, lanes: u16, start: usize, len: usize) {
     let end = (start + len).min(SYNDRM_STEPS);
     let kick_pitch = f32::from_bits(track.kick_pitch.load(Ordering::Relaxed));
     let kick_decay = f32::from_bits(track.kick_decay.load(Ordering::Relaxed));
@@ -7601,8 +11904,85 @@ fn syndrm_clear_params(track: &Track, lanes: u8, start: usize, len: usize) {
     let snare_filter_resonance =
         f32::from_bits(track.snare_filter_resonance.load(Ordering::Relaxed));
 
+    let clap_pitch = f32::from_bits(track.clap_pitch.load(Ordering::Relaxed));
+    let clap_decay = f32::from_bits(track.clap_decay.load(Ordering::Relaxed));
+    let clap_tone = f32::from_bits(track.clap_tone.load(Ordering::Relaxed));
+    let clap_drive = f32::from_bits(track.clap_drive.load(Ordering::Relaxed));
+    let clap_level = f32::from_bits(track.clap_level.load(Ordering::Relaxed));
+    let clap_filter_type = track.clap_filter_type.load(Ordering::Relaxed);
+    let clap_filter_cutoff = f32::from_bits(track.clap_filter_cutoff.load(Ordering::Relaxed));
+    let clap_filter_resonance =
+        f32::from_bits(track.clap_filter_resonance.load(Ordering::Relaxed));
+
+    let hat_pitch = f32::from_bits(track.hat_pitch.load(Ordering::Relaxed));
+    let hat_decay = f32::from_bits(track.hat_decay.load(Ordering::Relaxed));
+    let hat_tone = f32::from_bits(track.hat_tone.load(Ordering::Relaxed));
+    let hat_drive = f32::from_bits(track.hat_drive.load(Ordering::Relaxed));
+    let hat_level = f32::from_bits(track.hat_level.load(Ordering::Relaxed));
+    let hat_filter_type = track.hat_filter_type.load(Ordering::Relaxed);
+    let hat_filter_cutoff = f32::from_bits(track.hat_filter_cutoff.load(Ordering::Relaxed));
+    let hat_filter_resonance =
+        f32::from_bits(track.hat_filter_resonance.load(Ordering::Relaxed));
+    let perc1_pitch = f32::from_bits(track.perc1_pitch.load(Ordering::Relaxed));
+    let perc1_decay = f32::from_bits(track.perc1_decay.load(Ordering::Relaxed));
+    let perc1_tone = f32::from_bits(track.perc1_tone.load(Ordering::Relaxed));
+    let perc1_drive = f32::from_bits(track.perc1_drive.load(Ordering::Relaxed));
+    let perc1_level = f32::from_bits(track.perc1_level.load(Ordering::Relaxed));
+    let perc1_filter_type = track.perc1_filter_type.load(Ordering::Relaxed);
+    let perc1_filter_cutoff =
+        f32::from_bits(track.perc1_filter_cutoff.load(Ordering::Relaxed));
+    let perc1_filter_resonance =
+        f32::from_bits(track.perc1_filter_resonance.load(Ordering::Relaxed));
+    let perc2_pitch = f32::from_bits(track.perc2_pitch.load(Ordering::Relaxed));
+    let perc2_decay = f32::from_bits(track.perc2_decay.load(Ordering::Relaxed));
+    let perc2_tone = f32::from_bits(track.perc2_tone.load(Ordering::Relaxed));
+    let perc2_drive = f32::from_bits(track.perc2_drive.load(Ordering::Relaxed));
+    let perc2_level = f32::from_bits(track.perc2_level.load(Ordering::Relaxed));
+    let perc2_filter_type = track.perc2_filter_type.load(Ordering::Relaxed);
+    let perc2_filter_cutoff =
+        f32::from_bits(track.perc2_filter_cutoff.load(Ordering::Relaxed));
+    let perc2_filter_resonance =
+        f32::from_bits(track.perc2_filter_resonance.load(Ordering::Relaxed));
+    let crash_pitch = f32::from_bits(track.crash_pitch.load(Ordering::Relaxed));
+    let crash_decay = f32::from_bits(track.crash_decay.load(Ordering::Relaxed));
+    let crash_tone = f32::from_bits(track.crash_tone.load(Ordering::Relaxed));
+    let crash_drive = f32::from_bits(track.crash_drive.load(Ordering::Relaxed));
+    let crash_level = f32::from_bits(track.crash_level.load(Ordering::Relaxed));
+    let crash_filter_type = track.crash_filter_type.load(Ordering::Relaxed);
+    let crash_filter_cutoff =
+        f32::from_bits(track.crash_filter_cutoff.load(Ordering::Relaxed));
+    let crash_filter_resonance =
+        f32::from_bits(track.crash_filter_resonance.load(Ordering::Relaxed));
+
+    let mut samp_pitch = [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+    let mut samp_attack = [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+    let mut samp_decay = [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+    let mut samp_drive = [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+    let mut samp_level = [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+    let mut samp_filter_type = [0u32; SYNDRM_SAMPLE_CHANNELS];
+    let mut samp_filter_cutoff = [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+    let mut samp_filter_resonance = [0.0f32; SYNDRM_SAMPLE_CHANNELS];
+    for channel_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+        samp_pitch[channel_idx] =
+            f32::from_bits(track.samp_pitch[channel_idx].load(Ordering::Relaxed));
+        samp_attack[channel_idx] =
+            f32::from_bits(track.samp_attack[channel_idx].load(Ordering::Relaxed));
+        samp_decay[channel_idx] =
+            f32::from_bits(track.samp_decay[channel_idx].load(Ordering::Relaxed));
+        samp_drive[channel_idx] =
+            f32::from_bits(track.samp_drive[channel_idx].load(Ordering::Relaxed));
+        samp_level[channel_idx] =
+            f32::from_bits(track.samp_level[channel_idx].load(Ordering::Relaxed));
+        samp_filter_type[channel_idx] =
+            track.samp_filter_type[channel_idx].load(Ordering::Relaxed);
+        samp_filter_cutoff[channel_idx] =
+            f32::from_bits(track.samp_filter_cutoff[channel_idx].load(Ordering::Relaxed));
+        samp_filter_resonance[channel_idx] =
+            f32::from_bits(track.samp_filter_resonance[channel_idx].load(Ordering::Relaxed));
+    }
+
     for step in start..end {
-        if (lanes & 0b01) != 0 {
+        if (lanes & (1 << 0)) != 0 {
             track.kick_step_override_enabled[step].store(false, Ordering::Relaxed);
             track.kick_step_pitch[step].store(kick_pitch.to_bits(), Ordering::Relaxed);
             track.kick_step_decay[step].store(kick_decay.to_bits(), Ordering::Relaxed);
@@ -7614,7 +11994,7 @@ fn syndrm_clear_params(track: &Track, lanes: u8, start: usize, len: usize) {
             track.kick_step_filter_resonance[step]
                 .store(kick_filter_resonance.to_bits(), Ordering::Relaxed);
         }
-        if (lanes & 0b10) != 0 {
+        if (lanes & (1 << 1)) != 0 {
             track.snare_step_override_enabled[step].store(false, Ordering::Relaxed);
             track.snare_step_tone[step].store(snare_tone.to_bits(), Ordering::Relaxed);
             track.snare_step_decay[step].store(snare_decay.to_bits(), Ordering::Relaxed);
@@ -7627,12 +12007,143 @@ fn syndrm_clear_params(track: &Track, lanes: u8, start: usize, len: usize) {
             track.snare_step_filter_resonance[step]
                 .store(snare_filter_resonance.to_bits(), Ordering::Relaxed);
         }
+        if (lanes & (1 << 2)) != 0 {
+            track.clap_step_override_enabled[step].store(false, Ordering::Relaxed);
+            track.clap_step_pitch[step].store(clap_pitch.to_bits(), Ordering::Relaxed);
+            track.clap_step_decay[step].store(clap_decay.to_bits(), Ordering::Relaxed);
+            track.clap_step_tone[step].store(clap_tone.to_bits(), Ordering::Relaxed);
+            track.clap_step_drive[step].store(clap_drive.to_bits(), Ordering::Relaxed);
+            track.clap_step_level[step].store(clap_level.to_bits(), Ordering::Relaxed);
+            track.clap_step_filter_type[step].store(clap_filter_type, Ordering::Relaxed);
+            track.clap_step_filter_cutoff[step]
+                .store(clap_filter_cutoff.to_bits(), Ordering::Relaxed);
+            track.clap_step_filter_resonance[step]
+                .store(clap_filter_resonance.to_bits(), Ordering::Relaxed);
+        }
+        if (lanes & (1 << 3)) != 0 {
+            track.hat_step_override_enabled[step].store(false, Ordering::Relaxed);
+            track.hat_step_pitch[step].store(hat_pitch.to_bits(), Ordering::Relaxed);
+            track.hat_step_decay[step].store(hat_decay.to_bits(), Ordering::Relaxed);
+            track.hat_step_tone[step].store(hat_tone.to_bits(), Ordering::Relaxed);
+            track.hat_step_drive[step].store(hat_drive.to_bits(), Ordering::Relaxed);
+            track.hat_step_level[step].store(hat_level.to_bits(), Ordering::Relaxed);
+            track.hat_step_filter_type[step].store(hat_filter_type, Ordering::Relaxed);
+            track.hat_step_filter_cutoff[step].store(hat_filter_cutoff.to_bits(), Ordering::Relaxed);
+            track.hat_step_filter_resonance[step]
+                .store(hat_filter_resonance.to_bits(), Ordering::Relaxed);
+        }
+        if (lanes & (1 << 4)) != 0 {
+            track.perc1_step_override_enabled[step].store(false, Ordering::Relaxed);
+            track
+                .perc1_step_pitch[step]
+                .store(perc1_pitch.to_bits(), Ordering::Relaxed);
+            track
+                .perc1_step_decay[step]
+                .store(perc1_decay.to_bits(), Ordering::Relaxed);
+            track
+                .perc1_step_tone[step]
+                .store(perc1_tone.to_bits(), Ordering::Relaxed);
+            track
+                .perc1_step_drive[step]
+                .store(perc1_drive.to_bits(), Ordering::Relaxed);
+            track
+                .perc1_step_level[step]
+                .store(perc1_level.to_bits(), Ordering::Relaxed);
+            track
+                .perc1_step_filter_type[step]
+                .store(perc1_filter_type, Ordering::Relaxed);
+            track
+                .perc1_step_filter_cutoff[step]
+                .store(perc1_filter_cutoff.to_bits(), Ordering::Relaxed);
+            track
+                .perc1_step_filter_resonance[step]
+                .store(perc1_filter_resonance.to_bits(), Ordering::Relaxed);
+        }
+        if (lanes & (1 << 5)) != 0 {
+            track.perc2_step_override_enabled[step].store(false, Ordering::Relaxed);
+            track
+                .perc2_step_pitch[step]
+                .store(perc2_pitch.to_bits(), Ordering::Relaxed);
+            track
+                .perc2_step_decay[step]
+                .store(perc2_decay.to_bits(), Ordering::Relaxed);
+            track
+                .perc2_step_tone[step]
+                .store(perc2_tone.to_bits(), Ordering::Relaxed);
+            track
+                .perc2_step_drive[step]
+                .store(perc2_drive.to_bits(), Ordering::Relaxed);
+            track
+                .perc2_step_level[step]
+                .store(perc2_level.to_bits(), Ordering::Relaxed);
+            track
+                .perc2_step_filter_type[step]
+                .store(perc2_filter_type, Ordering::Relaxed);
+            track
+                .perc2_step_filter_cutoff[step]
+                .store(perc2_filter_cutoff.to_bits(), Ordering::Relaxed);
+            track
+                .perc2_step_filter_resonance[step]
+                .store(perc2_filter_resonance.to_bits(), Ordering::Relaxed);
+        }
+        if (lanes & (1 << 6)) != 0 {
+            track
+                .crash_step_override_enabled[step]
+                .store(false, Ordering::Relaxed);
+            track
+                .crash_step_pitch[step]
+                .store(crash_pitch.to_bits(), Ordering::Relaxed);
+            track
+                .crash_step_decay[step]
+                .store(crash_decay.to_bits(), Ordering::Relaxed);
+            track
+                .crash_step_tone[step]
+                .store(crash_tone.to_bits(), Ordering::Relaxed);
+            track
+                .crash_step_drive[step]
+                .store(crash_drive.to_bits(), Ordering::Relaxed);
+            track
+                .crash_step_level[step]
+                .store(crash_level.to_bits(), Ordering::Relaxed);
+            track
+                .crash_step_filter_type[step]
+                .store(crash_filter_type, Ordering::Relaxed);
+            track
+                .crash_step_filter_cutoff[step]
+                .store(crash_filter_cutoff.to_bits(), Ordering::Relaxed);
+            track
+                .crash_step_filter_resonance[step]
+                .store(crash_filter_resonance.to_bits(), Ordering::Relaxed);
+        }
+        for channel_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+            let lane_bit = 1u16 << (7 + channel_idx);
+            if (lanes & lane_bit) != 0 {
+                track.samp_step_override_enabled[channel_idx][step]
+                    .store(false, Ordering::Relaxed);
+                track.samp_step_pitch[channel_idx][step]
+                    .store(samp_pitch[channel_idx].to_bits(), Ordering::Relaxed);
+                track.samp_step_attack[channel_idx][step]
+                    .store(samp_attack[channel_idx].to_bits(), Ordering::Relaxed);
+                track.samp_step_decay[channel_idx][step]
+                    .store(samp_decay[channel_idx].to_bits(), Ordering::Relaxed);
+                track.samp_step_drive[channel_idx][step]
+                    .store(samp_drive[channel_idx].to_bits(), Ordering::Relaxed);
+                track.samp_step_level[channel_idx][step]
+                    .store(samp_level[channel_idx].to_bits(), Ordering::Relaxed);
+                track.samp_step_filter_type[channel_idx][step]
+                    .store(samp_filter_type[channel_idx], Ordering::Relaxed);
+                track.samp_step_filter_cutoff[channel_idx][step]
+                    .store(samp_filter_cutoff[channel_idx].to_bits(), Ordering::Relaxed);
+                track.samp_step_filter_resonance[channel_idx][step]
+                    .store(samp_filter_resonance[channel_idx].to_bits(), Ordering::Relaxed);
+            }
+        }
     }
 }
 
 fn syndrm_clear_apply(
     track: &Track,
-    lanes: u8,
+    lanes: u16,
     start: usize,
     len: usize,
     clear_steps: bool,
@@ -7643,6 +12154,682 @@ fn syndrm_clear_apply(
     }
     if clear_params {
         syndrm_clear_params(track, lanes, start, len);
+    }
+}
+
+fn syndrm_copy_steps_lane(track: &Track, lane: usize, start: usize, len: usize) -> Vec<bool> {
+    let end = (start + len).min(SYNDRM_STEPS);
+    let mut data = Vec::with_capacity(end.saturating_sub(start));
+    for step in start..end {
+        let value = match lane {
+            0 => track.kick_sequencer_grid[step].load(Ordering::Relaxed),
+            1 => track.snare_sequencer_grid[step].load(Ordering::Relaxed),
+            2 => track.clap_sequencer_grid[step].load(Ordering::Relaxed),
+            3 => track.hat_sequencer_grid[step].load(Ordering::Relaxed),
+            4 => track.perc1_sequencer_grid[step].load(Ordering::Relaxed),
+            5 => track.perc2_sequencer_grid[step].load(Ordering::Relaxed),
+            6 => track.crash_sequencer_grid[step].load(Ordering::Relaxed),
+            _ => {
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let samp_idx = lane - 7;
+                    track.samp_sequencer_grid[samp_idx][step].load(Ordering::Relaxed)
+                } else {
+                    false
+                }
+            }
+        };
+        data.push(value);
+    }
+    data
+}
+
+fn syndrm_paste_steps_lane(track: &Track, lane: usize, dest_start: usize, data: &[bool]) {
+    let end = (dest_start + data.len()).min(SYNDRM_STEPS);
+    let len = end.saturating_sub(dest_start);
+    for offset in 0..len {
+        let step = dest_start + offset;
+        let value = data[offset];
+        match lane {
+            0 => track.kick_sequencer_grid[step].store(value, Ordering::Relaxed),
+            1 => track.snare_sequencer_grid[step].store(value, Ordering::Relaxed),
+            2 => track.clap_sequencer_grid[step].store(value, Ordering::Relaxed),
+            3 => track.hat_sequencer_grid[step].store(value, Ordering::Relaxed),
+            4 => track.perc1_sequencer_grid[step].store(value, Ordering::Relaxed),
+            5 => track.perc2_sequencer_grid[step].store(value, Ordering::Relaxed),
+            6 => track.crash_sequencer_grid[step].store(value, Ordering::Relaxed),
+            _ => {
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let samp_idx = lane - 7;
+                    track.samp_sequencer_grid[samp_idx][step].store(value, Ordering::Relaxed);
+                }
+            }
+        }
+    }
+}
+
+fn syndrm_copy_params_lane(
+    track: &Track,
+    lane: usize,
+    start: usize,
+    len: usize,
+) -> SynDRMLaneParamsCopy {
+    let end = (start + len).min(SYNDRM_STEPS);
+    let count = end.saturating_sub(start);
+    if count == 0 {
+        return SynDRMLaneParamsCopy::None;
+    }
+
+    match lane {
+        0 => {
+            let mut override_enabled = Vec::with_capacity(count);
+            let mut pitch = Vec::with_capacity(count);
+            let mut decay = Vec::with_capacity(count);
+            let mut attack = Vec::with_capacity(count);
+            let mut drive = Vec::with_capacity(count);
+            let mut level = Vec::with_capacity(count);
+            let mut filter_type = Vec::with_capacity(count);
+            let mut filter_cutoff = Vec::with_capacity(count);
+            let mut filter_resonance = Vec::with_capacity(count);
+            let mut retrig_enabled = Vec::with_capacity(count);
+            let mut retrig_division = Vec::with_capacity(count);
+            for step in start..end {
+                override_enabled.push(track.kick_step_override_enabled[step].load(Ordering::Relaxed));
+                pitch.push(track.kick_step_pitch[step].load(Ordering::Relaxed));
+                decay.push(track.kick_step_decay[step].load(Ordering::Relaxed));
+                attack.push(track.kick_step_attack[step].load(Ordering::Relaxed));
+                drive.push(track.kick_step_drive[step].load(Ordering::Relaxed));
+                level.push(track.kick_step_level[step].load(Ordering::Relaxed));
+                filter_type.push(track.kick_step_filter_type[step].load(Ordering::Relaxed));
+                filter_cutoff.push(track.kick_step_filter_cutoff[step].load(Ordering::Relaxed));
+                filter_resonance.push(
+                    track.kick_step_filter_resonance[step].load(Ordering::Relaxed),
+                );
+                retrig_enabled.push(track.kick_step_retrig_enabled[step].load(Ordering::Relaxed));
+                retrig_division.push(
+                    track.kick_step_retrig_division[step].load(Ordering::Relaxed),
+                );
+            }
+            SynDRMLaneParamsCopy::Kick {
+                override_enabled,
+                pitch,
+                decay,
+                attack,
+                drive,
+                level,
+                filter_type,
+                filter_cutoff,
+                filter_resonance,
+                retrig_enabled,
+                retrig_division,
+            }
+        }
+        1 => {
+            let mut override_enabled = Vec::with_capacity(count);
+            let mut tone = Vec::with_capacity(count);
+            let mut decay = Vec::with_capacity(count);
+            let mut snappy = Vec::with_capacity(count);
+            let mut attack = Vec::with_capacity(count);
+            let mut drive = Vec::with_capacity(count);
+            let mut level = Vec::with_capacity(count);
+            let mut filter_type = Vec::with_capacity(count);
+            let mut filter_cutoff = Vec::with_capacity(count);
+            let mut filter_resonance = Vec::with_capacity(count);
+            let mut retrig_enabled = Vec::with_capacity(count);
+            let mut retrig_division = Vec::with_capacity(count);
+            for step in start..end {
+                override_enabled.push(track.snare_step_override_enabled[step].load(Ordering::Relaxed));
+                tone.push(track.snare_step_tone[step].load(Ordering::Relaxed));
+                decay.push(track.snare_step_decay[step].load(Ordering::Relaxed));
+                snappy.push(track.snare_step_snappy[step].load(Ordering::Relaxed));
+                attack.push(track.snare_step_attack[step].load(Ordering::Relaxed));
+                drive.push(track.snare_step_drive[step].load(Ordering::Relaxed));
+                level.push(track.snare_step_level[step].load(Ordering::Relaxed));
+                filter_type.push(track.snare_step_filter_type[step].load(Ordering::Relaxed));
+                filter_cutoff.push(track.snare_step_filter_cutoff[step].load(Ordering::Relaxed));
+                filter_resonance.push(
+                    track.snare_step_filter_resonance[step].load(Ordering::Relaxed),
+                );
+                retrig_enabled.push(track.snare_step_retrig_enabled[step].load(Ordering::Relaxed));
+                retrig_division.push(
+                    track.snare_step_retrig_division[step].load(Ordering::Relaxed),
+                );
+            }
+            SynDRMLaneParamsCopy::Snare {
+                override_enabled,
+                tone,
+                decay,
+                snappy,
+                attack,
+                drive,
+                level,
+                filter_type,
+                filter_cutoff,
+                filter_resonance,
+                retrig_enabled,
+                retrig_division,
+            }
+        }
+        2 | 3 | 4 | 5 | 6 => {
+            let mut override_enabled = Vec::with_capacity(count);
+            let mut pitch = Vec::with_capacity(count);
+            let mut decay = Vec::with_capacity(count);
+            let mut tone = Vec::with_capacity(count);
+            let mut drive = Vec::with_capacity(count);
+            let mut level = Vec::with_capacity(count);
+            let mut filter_type = Vec::with_capacity(count);
+            let mut filter_cutoff = Vec::with_capacity(count);
+            let mut filter_resonance = Vec::with_capacity(count);
+            let mut retrig_enabled = Vec::with_capacity(count);
+            let mut retrig_division = Vec::with_capacity(count);
+            for step in start..end {
+                match lane {
+                    2 => {
+                        override_enabled.push(
+                            track.clap_step_override_enabled[step].load(Ordering::Relaxed),
+                        );
+                        pitch.push(track.clap_step_pitch[step].load(Ordering::Relaxed));
+                        decay.push(track.clap_step_decay[step].load(Ordering::Relaxed));
+                        tone.push(track.clap_step_tone[step].load(Ordering::Relaxed));
+                        drive.push(track.clap_step_drive[step].load(Ordering::Relaxed));
+                        level.push(track.clap_step_level[step].load(Ordering::Relaxed));
+                        filter_type.push(track.clap_step_filter_type[step].load(Ordering::Relaxed));
+                        filter_cutoff.push(
+                            track.clap_step_filter_cutoff[step].load(Ordering::Relaxed),
+                        );
+                        filter_resonance.push(
+                            track.clap_step_filter_resonance[step].load(Ordering::Relaxed),
+                        );
+                        retrig_enabled.push(
+                            track.clap_step_retrig_enabled[step].load(Ordering::Relaxed),
+                        );
+                        retrig_division.push(
+                            track.clap_step_retrig_division[step].load(Ordering::Relaxed),
+                        );
+                    }
+                    3 => {
+                        override_enabled.push(
+                            track.hat_step_override_enabled[step].load(Ordering::Relaxed),
+                        );
+                        pitch.push(track.hat_step_pitch[step].load(Ordering::Relaxed));
+                        decay.push(track.hat_step_decay[step].load(Ordering::Relaxed));
+                        tone.push(track.hat_step_tone[step].load(Ordering::Relaxed));
+                        drive.push(track.hat_step_drive[step].load(Ordering::Relaxed));
+                        level.push(track.hat_step_level[step].load(Ordering::Relaxed));
+                        filter_type.push(track.hat_step_filter_type[step].load(Ordering::Relaxed));
+                        filter_cutoff.push(
+                            track.hat_step_filter_cutoff[step].load(Ordering::Relaxed),
+                        );
+                        filter_resonance.push(
+                            track.hat_step_filter_resonance[step].load(Ordering::Relaxed),
+                        );
+                        retrig_enabled.push(
+                            track.hat_step_retrig_enabled[step].load(Ordering::Relaxed),
+                        );
+                        retrig_division.push(
+                            track.hat_step_retrig_division[step].load(Ordering::Relaxed),
+                        );
+                    }
+                    4 => {
+                        override_enabled.push(
+                            track.perc1_step_override_enabled[step].load(Ordering::Relaxed),
+                        );
+                        pitch.push(track.perc1_step_pitch[step].load(Ordering::Relaxed));
+                        decay.push(track.perc1_step_decay[step].load(Ordering::Relaxed));
+                        tone.push(track.perc1_step_tone[step].load(Ordering::Relaxed));
+                        drive.push(track.perc1_step_drive[step].load(Ordering::Relaxed));
+                        level.push(track.perc1_step_level[step].load(Ordering::Relaxed));
+                        filter_type.push(track.perc1_step_filter_type[step].load(Ordering::Relaxed));
+                        filter_cutoff.push(
+                            track.perc1_step_filter_cutoff[step].load(Ordering::Relaxed),
+                        );
+                        filter_resonance.push(
+                            track.perc1_step_filter_resonance[step].load(Ordering::Relaxed),
+                        );
+                        retrig_enabled.push(
+                            track.perc1_step_retrig_enabled[step].load(Ordering::Relaxed),
+                        );
+                        retrig_division.push(
+                            track.perc1_step_retrig_division[step].load(Ordering::Relaxed),
+                        );
+                    }
+                    5 => {
+                        override_enabled.push(
+                            track.perc2_step_override_enabled[step].load(Ordering::Relaxed),
+                        );
+                        pitch.push(track.perc2_step_pitch[step].load(Ordering::Relaxed));
+                        decay.push(track.perc2_step_decay[step].load(Ordering::Relaxed));
+                        tone.push(track.perc2_step_tone[step].load(Ordering::Relaxed));
+                        drive.push(track.perc2_step_drive[step].load(Ordering::Relaxed));
+                        level.push(track.perc2_step_level[step].load(Ordering::Relaxed));
+                        filter_type.push(track.perc2_step_filter_type[step].load(Ordering::Relaxed));
+                        filter_cutoff.push(
+                            track.perc2_step_filter_cutoff[step].load(Ordering::Relaxed),
+                        );
+                        filter_resonance.push(
+                            track.perc2_step_filter_resonance[step].load(Ordering::Relaxed),
+                        );
+                        retrig_enabled.push(
+                            track.perc2_step_retrig_enabled[step].load(Ordering::Relaxed),
+                        );
+                        retrig_division.push(
+                            track.perc2_step_retrig_division[step].load(Ordering::Relaxed),
+                        );
+                    }
+                    _ => {
+                        override_enabled.push(
+                            track.crash_step_override_enabled[step].load(Ordering::Relaxed),
+                        );
+                        pitch.push(track.crash_step_pitch[step].load(Ordering::Relaxed));
+                        decay.push(track.crash_step_decay[step].load(Ordering::Relaxed));
+                        tone.push(track.crash_step_tone[step].load(Ordering::Relaxed));
+                        drive.push(track.crash_step_drive[step].load(Ordering::Relaxed));
+                        level.push(track.crash_step_level[step].load(Ordering::Relaxed));
+                        filter_type.push(track.crash_step_filter_type[step].load(Ordering::Relaxed));
+                        filter_cutoff.push(
+                            track.crash_step_filter_cutoff[step].load(Ordering::Relaxed),
+                        );
+                        filter_resonance.push(
+                            track.crash_step_filter_resonance[step].load(Ordering::Relaxed),
+                        );
+                        retrig_enabled.push(
+                            track.crash_step_retrig_enabled[step].load(Ordering::Relaxed),
+                        );
+                        retrig_division.push(
+                            track.crash_step_retrig_division[step].load(Ordering::Relaxed),
+                        );
+                    }
+                }
+            }
+            SynDRMLaneParamsCopy::PitchTone {
+                override_enabled,
+                pitch,
+                decay,
+                tone,
+                drive,
+                level,
+                filter_type,
+                filter_cutoff,
+                filter_resonance,
+                retrig_enabled,
+                retrig_division,
+            }
+        }
+        _ => {
+            if lane >= 7 && lane < SYNDRM_LANES {
+                let samp_idx = lane - 7;
+                let mut override_enabled = Vec::with_capacity(count);
+                let mut pitch = Vec::with_capacity(count);
+                let mut attack = Vec::with_capacity(count);
+                let mut decay = Vec::with_capacity(count);
+                let mut drive = Vec::with_capacity(count);
+                let mut level = Vec::with_capacity(count);
+                let mut filter_type = Vec::with_capacity(count);
+                let mut filter_cutoff = Vec::with_capacity(count);
+                let mut filter_resonance = Vec::with_capacity(count);
+                let mut retrig_enabled = Vec::with_capacity(count);
+                let mut retrig_division = Vec::with_capacity(count);
+                for step in start..end {
+                    override_enabled.push(
+                        track.samp_step_override_enabled[samp_idx][step].load(Ordering::Relaxed),
+                    );
+                    pitch.push(track.samp_step_pitch[samp_idx][step].load(Ordering::Relaxed));
+                    attack.push(track.samp_step_attack[samp_idx][step].load(Ordering::Relaxed));
+                    decay.push(track.samp_step_decay[samp_idx][step].load(Ordering::Relaxed));
+                    drive.push(track.samp_step_drive[samp_idx][step].load(Ordering::Relaxed));
+                    level.push(track.samp_step_level[samp_idx][step].load(Ordering::Relaxed));
+                    filter_type.push(
+                        track.samp_step_filter_type[samp_idx][step].load(Ordering::Relaxed),
+                    );
+                    filter_cutoff.push(
+                        track.samp_step_filter_cutoff[samp_idx][step].load(Ordering::Relaxed),
+                    );
+                    filter_resonance.push(
+                        track.samp_step_filter_resonance[samp_idx][step].load(Ordering::Relaxed),
+                    );
+                    retrig_enabled.push(
+                        track.samp_step_retrig_enabled[samp_idx][step].load(Ordering::Relaxed),
+                    );
+                    retrig_division.push(
+                        track.samp_step_retrig_division[samp_idx][step].load(Ordering::Relaxed),
+                    );
+                }
+                SynDRMLaneParamsCopy::Samp {
+                    override_enabled,
+                    pitch,
+                    attack,
+                    decay,
+                    drive,
+                    level,
+                    filter_type,
+                    filter_cutoff,
+                    filter_resonance,
+                    retrig_enabled,
+                    retrig_division,
+                }
+            } else {
+                SynDRMLaneParamsCopy::None
+            }
+        }
+    }
+}
+
+fn syndrm_paste_params_lane(
+    track: &Track,
+    lane: usize,
+    dest_start: usize,
+    params: &SynDRMLaneParamsCopy,
+) {
+    let max_len = match params {
+        SynDRMLaneParamsCopy::Kick { override_enabled, .. } => override_enabled.len(),
+        SynDRMLaneParamsCopy::Snare { override_enabled, .. } => override_enabled.len(),
+        SynDRMLaneParamsCopy::PitchTone { override_enabled, .. } => override_enabled.len(),
+        SynDRMLaneParamsCopy::Samp { override_enabled, .. } => override_enabled.len(),
+        SynDRMLaneParamsCopy::None => 0,
+    };
+    let end = (dest_start + max_len).min(SYNDRM_STEPS);
+    let len = end.saturating_sub(dest_start);
+    if len == 0 {
+        return;
+    }
+
+    match params {
+        SynDRMLaneParamsCopy::Kick {
+            override_enabled,
+            pitch,
+            decay,
+            attack,
+            drive,
+            level,
+            filter_type,
+            filter_cutoff,
+            filter_resonance,
+            retrig_enabled,
+            retrig_division,
+        } if lane == 0 => {
+            for offset in 0..len {
+                let step = dest_start + offset;
+                track.kick_step_override_enabled[step]
+                    .store(override_enabled[offset], Ordering::Relaxed);
+                track.kick_step_pitch[step].store(pitch[offset], Ordering::Relaxed);
+                track.kick_step_decay[step].store(decay[offset], Ordering::Relaxed);
+                track.kick_step_attack[step].store(attack[offset], Ordering::Relaxed);
+                track.kick_step_drive[step].store(drive[offset], Ordering::Relaxed);
+                track.kick_step_level[step].store(level[offset], Ordering::Relaxed);
+                track.kick_step_filter_type[step].store(filter_type[offset], Ordering::Relaxed);
+                track.kick_step_filter_cutoff[step].store(filter_cutoff[offset], Ordering::Relaxed);
+                track.kick_step_filter_resonance[step]
+                    .store(filter_resonance[offset], Ordering::Relaxed);
+                track.kick_step_retrig_enabled[step]
+                    .store(retrig_enabled[offset], Ordering::Relaxed);
+                track.kick_step_retrig_division[step]
+                    .store(retrig_division[offset], Ordering::Relaxed);
+            }
+        }
+        SynDRMLaneParamsCopy::Snare {
+            override_enabled,
+            tone,
+            decay,
+            snappy,
+            attack,
+            drive,
+            level,
+            filter_type,
+            filter_cutoff,
+            filter_resonance,
+            retrig_enabled,
+            retrig_division,
+        } if lane == 1 => {
+            for offset in 0..len {
+                let step = dest_start + offset;
+                track.snare_step_override_enabled[step]
+                    .store(override_enabled[offset], Ordering::Relaxed);
+                track.snare_step_tone[step].store(tone[offset], Ordering::Relaxed);
+                track.snare_step_decay[step].store(decay[offset], Ordering::Relaxed);
+                track.snare_step_snappy[step].store(snappy[offset], Ordering::Relaxed);
+                track.snare_step_attack[step].store(attack[offset], Ordering::Relaxed);
+                track.snare_step_drive[step].store(drive[offset], Ordering::Relaxed);
+                track.snare_step_level[step].store(level[offset], Ordering::Relaxed);
+                track.snare_step_filter_type[step].store(filter_type[offset], Ordering::Relaxed);
+                track.snare_step_filter_cutoff[step].store(filter_cutoff[offset], Ordering::Relaxed);
+                track.snare_step_filter_resonance[step]
+                    .store(filter_resonance[offset], Ordering::Relaxed);
+                track.snare_step_retrig_enabled[step]
+                    .store(retrig_enabled[offset], Ordering::Relaxed);
+                track.snare_step_retrig_division[step]
+                    .store(retrig_division[offset], Ordering::Relaxed);
+            }
+        }
+        SynDRMLaneParamsCopy::PitchTone {
+            override_enabled,
+            pitch,
+            decay,
+            tone,
+            drive,
+            level,
+            filter_type,
+            filter_cutoff,
+            filter_resonance,
+            retrig_enabled,
+            retrig_division,
+        } if (2..=6).contains(&lane) => {
+            for offset in 0..len {
+                let step = dest_start + offset;
+                match lane {
+                    2 => {
+                        track.clap_step_override_enabled[step]
+                            .store(override_enabled[offset], Ordering::Relaxed);
+                        track.clap_step_pitch[step].store(pitch[offset], Ordering::Relaxed);
+                        track.clap_step_decay[step].store(decay[offset], Ordering::Relaxed);
+                        track.clap_step_tone[step].store(tone[offset], Ordering::Relaxed);
+                        track.clap_step_drive[step].store(drive[offset], Ordering::Relaxed);
+                        track.clap_step_level[step].store(level[offset], Ordering::Relaxed);
+                        track.clap_step_filter_type[step].store(filter_type[offset], Ordering::Relaxed);
+                        track.clap_step_filter_cutoff[step]
+                            .store(filter_cutoff[offset], Ordering::Relaxed);
+                        track.clap_step_filter_resonance[step]
+                            .store(filter_resonance[offset], Ordering::Relaxed);
+                        track.clap_step_retrig_enabled[step]
+                            .store(retrig_enabled[offset], Ordering::Relaxed);
+                        track.clap_step_retrig_division[step]
+                            .store(retrig_division[offset], Ordering::Relaxed);
+                    }
+                    3 => {
+                        track.hat_step_override_enabled[step]
+                            .store(override_enabled[offset], Ordering::Relaxed);
+                        track.hat_step_pitch[step].store(pitch[offset], Ordering::Relaxed);
+                        track.hat_step_decay[step].store(decay[offset], Ordering::Relaxed);
+                        track.hat_step_tone[step].store(tone[offset], Ordering::Relaxed);
+                        track.hat_step_drive[step].store(drive[offset], Ordering::Relaxed);
+                        track.hat_step_level[step].store(level[offset], Ordering::Relaxed);
+                        track.hat_step_filter_type[step].store(filter_type[offset], Ordering::Relaxed);
+                        track.hat_step_filter_cutoff[step]
+                            .store(filter_cutoff[offset], Ordering::Relaxed);
+                        track.hat_step_filter_resonance[step]
+                            .store(filter_resonance[offset], Ordering::Relaxed);
+                        track.hat_step_retrig_enabled[step]
+                            .store(retrig_enabled[offset], Ordering::Relaxed);
+                        track.hat_step_retrig_division[step]
+                            .store(retrig_division[offset], Ordering::Relaxed);
+                    }
+                    4 => {
+                        track.perc1_step_override_enabled[step]
+                            .store(override_enabled[offset], Ordering::Relaxed);
+                        track.perc1_step_pitch[step].store(pitch[offset], Ordering::Relaxed);
+                        track.perc1_step_decay[step].store(decay[offset], Ordering::Relaxed);
+                        track.perc1_step_tone[step].store(tone[offset], Ordering::Relaxed);
+                        track.perc1_step_drive[step].store(drive[offset], Ordering::Relaxed);
+                        track.perc1_step_level[step].store(level[offset], Ordering::Relaxed);
+                        track.perc1_step_filter_type[step]
+                            .store(filter_type[offset], Ordering::Relaxed);
+                        track.perc1_step_filter_cutoff[step]
+                            .store(filter_cutoff[offset], Ordering::Relaxed);
+                        track.perc1_step_filter_resonance[step]
+                            .store(filter_resonance[offset], Ordering::Relaxed);
+                        track.perc1_step_retrig_enabled[step]
+                            .store(retrig_enabled[offset], Ordering::Relaxed);
+                        track.perc1_step_retrig_division[step]
+                            .store(retrig_division[offset], Ordering::Relaxed);
+                    }
+                    5 => {
+                        track.perc2_step_override_enabled[step]
+                            .store(override_enabled[offset], Ordering::Relaxed);
+                        track.perc2_step_pitch[step].store(pitch[offset], Ordering::Relaxed);
+                        track.perc2_step_decay[step].store(decay[offset], Ordering::Relaxed);
+                        track.perc2_step_tone[step].store(tone[offset], Ordering::Relaxed);
+                        track.perc2_step_drive[step].store(drive[offset], Ordering::Relaxed);
+                        track.perc2_step_level[step].store(level[offset], Ordering::Relaxed);
+                        track.perc2_step_filter_type[step]
+                            .store(filter_type[offset], Ordering::Relaxed);
+                        track.perc2_step_filter_cutoff[step]
+                            .store(filter_cutoff[offset], Ordering::Relaxed);
+                        track.perc2_step_filter_resonance[step]
+                            .store(filter_resonance[offset], Ordering::Relaxed);
+                        track.perc2_step_retrig_enabled[step]
+                            .store(retrig_enabled[offset], Ordering::Relaxed);
+                        track.perc2_step_retrig_division[step]
+                            .store(retrig_division[offset], Ordering::Relaxed);
+                    }
+                    _ => {
+                        track.crash_step_override_enabled[step]
+                            .store(override_enabled[offset], Ordering::Relaxed);
+                        track.crash_step_pitch[step].store(pitch[offset], Ordering::Relaxed);
+                        track.crash_step_decay[step].store(decay[offset], Ordering::Relaxed);
+                        track.crash_step_tone[step].store(tone[offset], Ordering::Relaxed);
+                        track.crash_step_drive[step].store(drive[offset], Ordering::Relaxed);
+                        track.crash_step_level[step].store(level[offset], Ordering::Relaxed);
+                        track.crash_step_filter_type[step]
+                            .store(filter_type[offset], Ordering::Relaxed);
+                        track.crash_step_filter_cutoff[step]
+                            .store(filter_cutoff[offset], Ordering::Relaxed);
+                        track.crash_step_filter_resonance[step]
+                            .store(filter_resonance[offset], Ordering::Relaxed);
+                        track.crash_step_retrig_enabled[step]
+                            .store(retrig_enabled[offset], Ordering::Relaxed);
+                        track.crash_step_retrig_division[step]
+                            .store(retrig_division[offset], Ordering::Relaxed);
+                    }
+                }
+            }
+        }
+        SynDRMLaneParamsCopy::Samp {
+            override_enabled,
+            pitch,
+            attack,
+            decay,
+            drive,
+            level,
+            filter_type,
+            filter_cutoff,
+            filter_resonance,
+            retrig_enabled,
+            retrig_division,
+        } if lane >= 7 && lane < SYNDRM_LANES => {
+            let samp_idx = lane - 7;
+            for offset in 0..len {
+                let step = dest_start + offset;
+                track.samp_step_override_enabled[samp_idx][step]
+                    .store(override_enabled[offset], Ordering::Relaxed);
+                track.samp_step_pitch[samp_idx][step].store(pitch[offset], Ordering::Relaxed);
+                track.samp_step_attack[samp_idx][step].store(attack[offset], Ordering::Relaxed);
+                track.samp_step_decay[samp_idx][step].store(decay[offset], Ordering::Relaxed);
+                track.samp_step_drive[samp_idx][step].store(drive[offset], Ordering::Relaxed);
+                track.samp_step_level[samp_idx][step].store(level[offset], Ordering::Relaxed);
+                track.samp_step_filter_type[samp_idx][step]
+                    .store(filter_type[offset], Ordering::Relaxed);
+                track.samp_step_filter_cutoff[samp_idx][step]
+                    .store(filter_cutoff[offset], Ordering::Relaxed);
+                track.samp_step_filter_resonance[samp_idx][step]
+                    .store(filter_resonance[offset], Ordering::Relaxed);
+                track.samp_step_retrig_enabled[samp_idx][step]
+                    .store(retrig_enabled[offset], Ordering::Relaxed);
+                track.samp_step_retrig_division[samp_idx][step]
+                    .store(retrig_division[offset], Ordering::Relaxed);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn syndrm_copy_apply(
+    track: &Track,
+    lanes: u16,
+    start: usize,
+    len: usize,
+    copy_steps: bool,
+    copy_params: bool,
+    page_scoped: bool,
+) {
+    let end = (start + len).min(SYNDRM_STEPS);
+    let len = end.saturating_sub(start);
+    let mut buffer = track.syndrm_copy_buffer.lock();
+    buffer.has_data = len > 0 && (copy_steps || copy_params);
+    buffer.lanes_mask = lanes;
+    buffer.start = start;
+    buffer.len = len;
+    buffer.include_steps = copy_steps;
+    buffer.include_params = copy_params;
+    buffer.page_scoped = page_scoped;
+    buffer.source_lane = if lanes.count_ones() == 1 {
+        Some(lanes.trailing_zeros())
+    } else {
+        None
+    };
+    buffer.steps = vec![Vec::new(); SYNDRM_LANES];
+    buffer.params = vec![SynDRMLaneParamsCopy::None; SYNDRM_LANES];
+    if !buffer.has_data {
+        return;
+    }
+    for lane in 0..SYNDRM_LANES {
+        if (lanes & (1 << lane)) == 0 {
+            continue;
+        }
+        if copy_steps {
+            buffer.steps[lane] = syndrm_copy_steps_lane(track, lane, start, len);
+        }
+        if copy_params {
+            buffer.params[lane] = syndrm_copy_params_lane(track, lane, start, len);
+        }
+    }
+}
+
+fn syndrm_paste_apply(track: &Track, target_lane: u32, target_page: usize) {
+    let buffer = track.syndrm_copy_buffer.lock();
+    if !buffer.has_data || buffer.len == 0 {
+        return;
+    }
+    let dest_start = if buffer.page_scoped {
+        target_page * SYNDRM_PAGE_SIZE
+    } else {
+        0
+    };
+    let end = (dest_start + buffer.len).min(SYNDRM_STEPS);
+    let len = end.saturating_sub(dest_start);
+    if len == 0 {
+        return;
+    }
+    let target_lanes = if buffer.source_lane.is_some() {
+        syndrm_lane_mask(target_lane)
+    } else {
+        buffer.lanes_mask
+    };
+    for lane in 0..SYNDRM_LANES {
+        if (target_lanes & (1 << lane)) == 0 {
+            continue;
+        }
+        let source_lane = buffer.source_lane.map(|lane| lane as usize).unwrap_or(lane);
+        if buffer.include_steps {
+            let data = &buffer.steps[source_lane];
+            if !data.is_empty() {
+                let data_len = data.len().min(len);
+                syndrm_paste_steps_lane(track, lane, dest_start, &data[..data_len]);
+            }
+        }
+        let allow_params = buffer.include_params
+            && (buffer.source_lane.is_none() || source_lane == lane);
+        if allow_params {
+            let params = &buffer.params[source_lane];
+            syndrm_paste_params_lane(track, lane, dest_start, params);
+        }
     }
 }
 
@@ -8370,6 +13557,9 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("kick_filter_cutoff".to_string(), f(&track.kick_filter_cutoff));
     params.insert("kick_filter_resonance".to_string(), f(&track.kick_filter_resonance));
     params.insert("kick_filter_pre_drive".to_string(), b(&track.kick_filter_pre_drive));
+    params.insert("kick_cut_group".to_string(), u(&track.kick_cut_group));
+    params.insert("kick_cut_by".to_string(), u(&track.kick_cut_by));
+    params.insert("kick_prob".to_string(), f(&track.kick_prob));
     params.insert("snare_tone".to_string(), f(&track.snare_tone));
     params.insert("snare_decay".to_string(), f(&track.snare_decay));
     params.insert("snare_snappy".to_string(), f(&track.snare_snappy));
@@ -8380,15 +13570,115 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("snare_filter_cutoff".to_string(), f(&track.snare_filter_cutoff));
     params.insert("snare_filter_resonance".to_string(), f(&track.snare_filter_resonance));
     params.insert("snare_filter_pre_drive".to_string(), b(&track.snare_filter_pre_drive));
-    params.insert("snare_tone".to_string(), f(&track.snare_tone));
-    params.insert("snare_decay".to_string(), f(&track.snare_decay));
-    params.insert("snare_snappy".to_string(), f(&track.snare_snappy));
-    params.insert("snare_attack".to_string(), f(&track.snare_attack));
-    params.insert("snare_level".to_string(), f(&track.snare_level));
+    params.insert("snare_cut_group".to_string(), u(&track.snare_cut_group));
+    params.insert("snare_cut_by".to_string(), u(&track.snare_cut_by));
+    params.insert("snare_prob".to_string(), f(&track.snare_prob));
+    params.insert("clap_pitch".to_string(), f(&track.clap_pitch));
+    params.insert("clap_decay".to_string(), f(&track.clap_decay));
+    params.insert("clap_tone".to_string(), f(&track.clap_tone));
+    params.insert("clap_drive".to_string(), f(&track.clap_drive));
+    params.insert("clap_level".to_string(), f(&track.clap_level));
+    params.insert("clap_filter_type".to_string(), u(&track.clap_filter_type));
+    params.insert("clap_filter_cutoff".to_string(), f(&track.clap_filter_cutoff));
+    params.insert(
+        "clap_filter_resonance".to_string(),
+        f(&track.clap_filter_resonance),
+    );
+    params.insert(
+        "clap_filter_pre_drive".to_string(),
+        b(&track.clap_filter_pre_drive),
+    );
+    params.insert("clap_cut_group".to_string(), u(&track.clap_cut_group));
+    params.insert("clap_cut_by".to_string(), u(&track.clap_cut_by));
+    params.insert("clap_prob".to_string(), f(&track.clap_prob));
+    params.insert("hat_pitch".to_string(), f(&track.hat_pitch));
+    params.insert("hat_decay".to_string(), f(&track.hat_decay));
+    params.insert("hat_tone".to_string(), f(&track.hat_tone));
+    params.insert("hat_drive".to_string(), f(&track.hat_drive));
+    params.insert("hat_level".to_string(), f(&track.hat_level));
+    params.insert("hat_filter_type".to_string(), u(&track.hat_filter_type));
+    params.insert("hat_filter_cutoff".to_string(), f(&track.hat_filter_cutoff));
+    params.insert("hat_filter_resonance".to_string(), f(&track.hat_filter_resonance));
+    params.insert("hat_filter_pre_drive".to_string(), b(&track.hat_filter_pre_drive));
+    params.insert("hat_cut_group".to_string(), u(&track.hat_cut_group));
+    params.insert("hat_cut_by".to_string(), u(&track.hat_cut_by));
+    params.insert("hat_prob".to_string(), f(&track.hat_prob));
+    params.insert("perc1_pitch".to_string(), f(&track.perc1_pitch));
+    params.insert("perc1_decay".to_string(), f(&track.perc1_decay));
+    params.insert("perc1_tone".to_string(), f(&track.perc1_tone));
+    params.insert("perc1_drive".to_string(), f(&track.perc1_drive));
+    params.insert("perc1_level".to_string(), f(&track.perc1_level));
+    params.insert("perc1_filter_type".to_string(), u(&track.perc1_filter_type));
+    params.insert("perc1_filter_cutoff".to_string(), f(&track.perc1_filter_cutoff));
+    params.insert(
+        "perc1_filter_resonance".to_string(),
+        f(&track.perc1_filter_resonance),
+    );
+    params.insert(
+        "perc1_filter_pre_drive".to_string(),
+        b(&track.perc1_filter_pre_drive),
+    );
+    params.insert("perc1_cut_group".to_string(), u(&track.perc1_cut_group));
+    params.insert("perc1_cut_by".to_string(), u(&track.perc1_cut_by));
+    params.insert("perc1_prob".to_string(), f(&track.perc1_prob));
+    params.insert("perc2_pitch".to_string(), f(&track.perc2_pitch));
+    params.insert("perc2_decay".to_string(), f(&track.perc2_decay));
+    params.insert("perc2_tone".to_string(), f(&track.perc2_tone));
+    params.insert("perc2_drive".to_string(), f(&track.perc2_drive));
+    params.insert("perc2_level".to_string(), f(&track.perc2_level));
+    params.insert("perc2_filter_type".to_string(), u(&track.perc2_filter_type));
+    params.insert("perc2_filter_cutoff".to_string(), f(&track.perc2_filter_cutoff));
+    params.insert(
+        "perc2_filter_resonance".to_string(),
+        f(&track.perc2_filter_resonance),
+    );
+    params.insert(
+        "perc2_filter_pre_drive".to_string(),
+        b(&track.perc2_filter_pre_drive),
+    );
+    params.insert("perc2_cut_group".to_string(), u(&track.perc2_cut_group));
+    params.insert("perc2_cut_by".to_string(), u(&track.perc2_cut_by));
+    params.insert("perc2_prob".to_string(), f(&track.perc2_prob));
+    params.insert("crash_pitch".to_string(), f(&track.crash_pitch));
+    params.insert("crash_decay".to_string(), f(&track.crash_decay));
+    params.insert("crash_tone".to_string(), f(&track.crash_tone));
+    params.insert("crash_drive".to_string(), f(&track.crash_drive));
+    params.insert("crash_level".to_string(), f(&track.crash_level));
+    params.insert("crash_filter_type".to_string(), u(&track.crash_filter_type));
+    params.insert("crash_filter_cutoff".to_string(), f(&track.crash_filter_cutoff));
+    params.insert(
+        "crash_filter_resonance".to_string(),
+        f(&track.crash_filter_resonance),
+    );
+    params.insert(
+        "crash_filter_pre_drive".to_string(),
+        b(&track.crash_filter_pre_drive),
+    );
+    params.insert("crash_cut_group".to_string(), u(&track.crash_cut_group));
+    params.insert("crash_cut_by".to_string(), u(&track.crash_cut_by));
+    params.insert("crash_prob".to_string(), f(&track.crash_prob));
+    for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+        params.insert(
+            format!("samp_cut_group_{}", samp_idx),
+            u(&track.samp_cut_group[samp_idx]),
+        );
+        params.insert(
+            format!("samp_cut_by_{}", samp_idx),
+            u(&track.samp_cut_by[samp_idx]),
+        );
+        params.insert(
+            format!("samp_prob_{}", samp_idx),
+            f(&track.samp_prob[samp_idx]),
+        );
+    }
     params.insert("syndrm_page".to_string(), u(&track.syndrm_page));
     params.insert("syndrm_edit_lane".to_string(), u(&track.syndrm_edit_lane));
     params.insert("syndrm_edit_step".to_string(), u(&track.syndrm_edit_step));
     params.insert("syndrm_step_hold".to_string(), b(&track.syndrm_step_hold));
+    params.insert(
+        "syndrm_randomize_amount".to_string(),
+        f(&track.syndrm_randomize_amount),
+    );
     for i in 0..SYNDRM_STEPS {
         params.insert(
             format!("syndrm_kick_step_override_{}", i),
@@ -8410,6 +13700,14 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
         params.insert(
             format!("syndrm_kick_step_filter_resonance_{}", i),
             f(&track.kick_step_filter_resonance[i]),
+        );
+        params.insert(
+            format!("syndrm_kick_step_retrig_enabled_{}", i),
+            b(&track.kick_step_retrig_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_kick_step_retrig_division_{}", i),
+            u(&track.kick_step_retrig_division[i]),
         );
         params.insert(
             format!("syndrm_snare_step_override_{}", i),
@@ -8438,6 +13736,219 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
         params.insert(
             format!("syndrm_snare_step_filter_resonance_{}", i),
             f(&track.snare_step_filter_resonance[i]),
+        );
+        params.insert(
+            format!("syndrm_snare_step_retrig_enabled_{}", i),
+            b(&track.snare_step_retrig_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_snare_step_retrig_division_{}", i),
+            u(&track.snare_step_retrig_division[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_override_{}", i),
+            b(&track.clap_step_override_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_pitch_{}", i),
+            f(&track.clap_step_pitch[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_decay_{}", i),
+            f(&track.clap_step_decay[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_tone_{}", i),
+            f(&track.clap_step_tone[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_drive_{}", i),
+            f(&track.clap_step_drive[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_level_{}", i),
+            f(&track.clap_step_level[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_filter_type_{}", i),
+            u(&track.clap_step_filter_type[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_filter_cutoff_{}", i),
+            f(&track.clap_step_filter_cutoff[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_filter_resonance_{}", i),
+            f(&track.clap_step_filter_resonance[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_retrig_enabled_{}", i),
+            b(&track.clap_step_retrig_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_clap_step_retrig_division_{}", i),
+            u(&track.clap_step_retrig_division[i]),
+        );
+        params.insert(
+            format!("syndrm_hat_step_override_{}", i),
+            b(&track.hat_step_override_enabled[i]),
+        );
+        params.insert(format!("syndrm_hat_step_pitch_{}", i), f(&track.hat_step_pitch[i]));
+        params.insert(format!("syndrm_hat_step_decay_{}", i), f(&track.hat_step_decay[i]));
+        params.insert(format!("syndrm_hat_step_tone_{}", i), f(&track.hat_step_tone[i]));
+        params.insert(format!("syndrm_hat_step_drive_{}", i), f(&track.hat_step_drive[i]));
+        params.insert(format!("syndrm_hat_step_level_{}", i), f(&track.hat_step_level[i]));
+        params.insert(
+            format!("syndrm_hat_step_filter_type_{}", i),
+            u(&track.hat_step_filter_type[i]),
+        );
+        params.insert(
+            format!("syndrm_hat_step_filter_cutoff_{}", i),
+            f(&track.hat_step_filter_cutoff[i]),
+        );
+        params.insert(
+            format!("syndrm_hat_step_filter_resonance_{}", i),
+            f(&track.hat_step_filter_resonance[i]),
+        );
+        params.insert(
+            format!("syndrm_hat_step_retrig_enabled_{}", i),
+            b(&track.hat_step_retrig_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_hat_step_retrig_division_{}", i),
+            u(&track.hat_step_retrig_division[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_override_{}", i),
+            b(&track.perc1_step_override_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_pitch_{}", i),
+            f(&track.perc1_step_pitch[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_decay_{}", i),
+            f(&track.perc1_step_decay[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_tone_{}", i),
+            f(&track.perc1_step_tone[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_drive_{}", i),
+            f(&track.perc1_step_drive[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_level_{}", i),
+            f(&track.perc1_step_level[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_filter_type_{}", i),
+            u(&track.perc1_step_filter_type[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_filter_cutoff_{}", i),
+            f(&track.perc1_step_filter_cutoff[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_filter_resonance_{}", i),
+            f(&track.perc1_step_filter_resonance[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_retrig_enabled_{}", i),
+            b(&track.perc1_step_retrig_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_perc1_step_retrig_division_{}", i),
+            u(&track.perc1_step_retrig_division[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_override_{}", i),
+            b(&track.perc2_step_override_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_pitch_{}", i),
+            f(&track.perc2_step_pitch[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_decay_{}", i),
+            f(&track.perc2_step_decay[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_tone_{}", i),
+            f(&track.perc2_step_tone[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_drive_{}", i),
+            f(&track.perc2_step_drive[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_level_{}", i),
+            f(&track.perc2_step_level[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_filter_type_{}", i),
+            u(&track.perc2_step_filter_type[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_filter_cutoff_{}", i),
+            f(&track.perc2_step_filter_cutoff[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_filter_resonance_{}", i),
+            f(&track.perc2_step_filter_resonance[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_retrig_enabled_{}", i),
+            b(&track.perc2_step_retrig_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_perc2_step_retrig_division_{}", i),
+            u(&track.perc2_step_retrig_division[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_override_{}", i),
+            b(&track.crash_step_override_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_pitch_{}", i),
+            f(&track.crash_step_pitch[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_decay_{}", i),
+            f(&track.crash_step_decay[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_tone_{}", i),
+            f(&track.crash_step_tone[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_drive_{}", i),
+            f(&track.crash_step_drive[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_level_{}", i),
+            f(&track.crash_step_level[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_filter_type_{}", i),
+            u(&track.crash_step_filter_type[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_filter_cutoff_{}", i),
+            f(&track.crash_step_filter_cutoff[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_filter_resonance_{}", i),
+            f(&track.crash_step_filter_resonance[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_retrig_enabled_{}", i),
+            b(&track.crash_step_retrig_enabled[i]),
+        );
+        params.insert(
+            format!("syndrm_crash_step_retrig_division_{}", i),
+            u(&track.crash_step_retrig_division[i]),
         );
     }
 
@@ -8474,6 +13985,17 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
             a.store(v as u32, Ordering::Relaxed);
         }
     };
+    let su_clamp_0_14 = |a: &AtomicU32, name: &str| {
+        if let Some(&v) = params.get(name) {
+            let clamped = v.round().clamp(0.0, 14.0) as u32;
+            a.store(clamped, Ordering::Relaxed);
+        }
+    };
+    let sf_clamp_0_1 = |a: &AtomicU32, name: &str| {
+        if let Some(&v) = params.get(name) {
+            a.store(v.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    };
 
     sf(&track.level, "level");
     sb(&track.is_muted, "muted");
@@ -8508,6 +14030,9 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.mosaic_spray, "mosaic_spray");
     sf(&track.mosaic_pattern, "mosaic_pattern");
     sf(&track.mosaic_wet, "mosaic_wet");
+    track
+        .mosaic_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
     sf(&track.mosaic_post_gain, "mosaic_post_gain");
     sf(&track.mosaic_spatial, "mosaic_spatial");
     sf(&track.mosaic_detune, "mosaic_detune");
@@ -8605,6 +14130,9 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.texture_noise_decay, "texture_noise_decay");
     sf(&track.texture_noise_color, "texture_noise_color");
     sf(&track.texture_wet, "texture_wet");
+    track
+        .texture_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
     sf(&track.texture_post_gain, "texture_post_gain");
     sb(&track.reflect_enabled, "reflect_enabled");
     sb(&track.reflect_freeze, "reflect_freeze");
@@ -8617,6 +14145,9 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.reflect_spread, "reflect_spread");
     sf(&track.reflect_damp, "reflect_damp");
     sf(&track.reflect_decay, "reflect_decay");
+    track
+        .reflect_post_gain
+        .store(0.5f32.to_bits(), Ordering::Relaxed);
     sf(&track.reflect_post_gain, "reflect_post_gain");
     track
         .reflect_delay_smooth
@@ -8755,6 +14286,9 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.kick_filter_cutoff, "kick_filter_cutoff");
     sf(&track.kick_filter_resonance, "kick_filter_resonance");
     sb(&track.kick_filter_pre_drive, "kick_filter_pre_drive");
+    su_clamp_0_14(&track.kick_cut_group, "kick_cut_group");
+    su_clamp_0_14(&track.kick_cut_by, "kick_cut_by");
+    sf_clamp_0_1(&track.kick_prob, "kick_prob");
     sf(&track.snare_tone, "snare_tone");
     sf(&track.snare_decay, "snare_decay");
     sf(&track.snare_snappy, "snare_snappy");
@@ -8765,10 +14299,88 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.snare_filter_cutoff, "snare_filter_cutoff");
     sf(&track.snare_filter_resonance, "snare_filter_resonance");
     sb(&track.snare_filter_pre_drive, "snare_filter_pre_drive");
+    su_clamp_0_14(&track.snare_cut_group, "snare_cut_group");
+    su_clamp_0_14(&track.snare_cut_by, "snare_cut_by");
+    sf_clamp_0_1(&track.snare_prob, "snare_prob");
+    sf(&track.clap_pitch, "clap_pitch");
+    sf(&track.clap_decay, "clap_decay");
+    sf(&track.clap_tone, "clap_tone");
+    sf(&track.clap_drive, "clap_drive");
+    sf(&track.clap_level, "clap_level");
+    su(&track.clap_filter_type, "clap_filter_type");
+    sf(&track.clap_filter_cutoff, "clap_filter_cutoff");
+    sf(&track.clap_filter_resonance, "clap_filter_resonance");
+    sb(&track.clap_filter_pre_drive, "clap_filter_pre_drive");
+    su_clamp_0_14(&track.clap_cut_group, "clap_cut_group");
+    su_clamp_0_14(&track.clap_cut_by, "clap_cut_by");
+    sf_clamp_0_1(&track.clap_prob, "clap_prob");
+    sf(&track.hat_pitch, "hat_pitch");
+    sf(&track.hat_decay, "hat_decay");
+    sf(&track.hat_tone, "hat_tone");
+    sf(&track.hat_drive, "hat_drive");
+    sf(&track.hat_level, "hat_level");
+    su(&track.hat_filter_type, "hat_filter_type");
+    sf(&track.hat_filter_cutoff, "hat_filter_cutoff");
+    sf(&track.hat_filter_resonance, "hat_filter_resonance");
+    sb(&track.hat_filter_pre_drive, "hat_filter_pre_drive");
+    su_clamp_0_14(&track.hat_cut_group, "hat_cut_group");
+    su_clamp_0_14(&track.hat_cut_by, "hat_cut_by");
+    sf_clamp_0_1(&track.hat_prob, "hat_prob");
+    sf(&track.perc1_pitch, "perc1_pitch");
+    sf(&track.perc1_decay, "perc1_decay");
+    sf(&track.perc1_tone, "perc1_tone");
+    sf(&track.perc1_drive, "perc1_drive");
+    sf(&track.perc1_level, "perc1_level");
+    su(&track.perc1_filter_type, "perc1_filter_type");
+    sf(&track.perc1_filter_cutoff, "perc1_filter_cutoff");
+    sf(&track.perc1_filter_resonance, "perc1_filter_resonance");
+    sb(&track.perc1_filter_pre_drive, "perc1_filter_pre_drive");
+    su_clamp_0_14(&track.perc1_cut_group, "perc1_cut_group");
+    su_clamp_0_14(&track.perc1_cut_by, "perc1_cut_by");
+    sf_clamp_0_1(&track.perc1_prob, "perc1_prob");
+    sf(&track.perc2_pitch, "perc2_pitch");
+    sf(&track.perc2_decay, "perc2_decay");
+    sf(&track.perc2_tone, "perc2_tone");
+    sf(&track.perc2_drive, "perc2_drive");
+    sf(&track.perc2_level, "perc2_level");
+    su(&track.perc2_filter_type, "perc2_filter_type");
+    sf(&track.perc2_filter_cutoff, "perc2_filter_cutoff");
+    sf(&track.perc2_filter_resonance, "perc2_filter_resonance");
+    sb(&track.perc2_filter_pre_drive, "perc2_filter_pre_drive");
+    su_clamp_0_14(&track.perc2_cut_group, "perc2_cut_group");
+    su_clamp_0_14(&track.perc2_cut_by, "perc2_cut_by");
+    sf_clamp_0_1(&track.perc2_prob, "perc2_prob");
+    sf(&track.crash_pitch, "crash_pitch");
+    sf(&track.crash_decay, "crash_decay");
+    sf(&track.crash_tone, "crash_tone");
+    sf(&track.crash_drive, "crash_drive");
+    sf(&track.crash_level, "crash_level");
+    su(&track.crash_filter_type, "crash_filter_type");
+    sf(&track.crash_filter_cutoff, "crash_filter_cutoff");
+    sf(&track.crash_filter_resonance, "crash_filter_resonance");
+    sb(&track.crash_filter_pre_drive, "crash_filter_pre_drive");
+    su_clamp_0_14(&track.crash_cut_group, "crash_cut_group");
+    su_clamp_0_14(&track.crash_cut_by, "crash_cut_by");
+    sf_clamp_0_1(&track.crash_prob, "crash_prob");
+    for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+        su_clamp_0_14(
+            &track.samp_cut_group[samp_idx],
+            &format!("samp_cut_group_{}", samp_idx),
+        );
+        su_clamp_0_14(
+            &track.samp_cut_by[samp_idx],
+            &format!("samp_cut_by_{}", samp_idx),
+        );
+        sf_clamp_0_1(
+            &track.samp_prob[samp_idx],
+            &format!("samp_prob_{}", samp_idx),
+        );
+    }
     su(&track.syndrm_page, "syndrm_page");
     su(&track.syndrm_edit_lane, "syndrm_edit_lane");
     su(&track.syndrm_edit_step, "syndrm_edit_step");
     sb(&track.syndrm_step_hold, "syndrm_step_hold");
+    sf_clamp_0_1(&track.syndrm_randomize_amount, "syndrm_randomize_amount");
     for i in 0..SYNDRM_STEPS {
         sb(&track.kick_step_override_enabled[i], &format!("syndrm_kick_step_override_{}", i));
         sf(&track.kick_step_pitch[i], &format!("syndrm_kick_step_pitch_{}", i));
@@ -8784,6 +14396,14 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         sf(
             &track.kick_step_filter_resonance[i],
             &format!("syndrm_kick_step_filter_resonance_{}", i),
+        );
+        sb(
+            &track.kick_step_retrig_enabled[i],
+            &format!("syndrm_kick_step_retrig_enabled_{}", i),
+        );
+        su(
+            &track.kick_step_retrig_division[i],
+            &format!("syndrm_kick_step_retrig_division_{}", i),
         );
         sb(&track.snare_step_override_enabled[i], &format!("syndrm_snare_step_override_{}", i));
         sf(&track.snare_step_tone[i], &format!("syndrm_snare_step_tone_{}", i));
@@ -8806,6 +14426,198 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         sf(
             &track.snare_step_filter_resonance[i],
             &format!("syndrm_snare_step_filter_resonance_{}", i),
+        );
+        sb(
+            &track.snare_step_retrig_enabled[i],
+            &format!("syndrm_snare_step_retrig_enabled_{}", i),
+        );
+        su(
+            &track.snare_step_retrig_division[i],
+            &format!("syndrm_snare_step_retrig_division_{}", i),
+        );
+        sb(&track.clap_step_override_enabled[i], &format!("syndrm_clap_step_override_{}", i));
+        sf(&track.clap_step_pitch[i], &format!("syndrm_clap_step_pitch_{}", i));
+        sf(&track.clap_step_decay[i], &format!("syndrm_clap_step_decay_{}", i));
+        sf(&track.clap_step_tone[i], &format!("syndrm_clap_step_tone_{}", i));
+        sf(&track.clap_step_drive[i], &format!("syndrm_clap_step_drive_{}", i));
+        sf(&track.clap_step_level[i], &format!("syndrm_clap_step_level_{}", i));
+        su(
+            &track.clap_step_filter_type[i],
+            &format!("syndrm_clap_step_filter_type_{}", i),
+        );
+        sf(
+            &track.clap_step_filter_cutoff[i],
+            &format!("syndrm_clap_step_filter_cutoff_{}", i),
+        );
+        sf(
+            &track.clap_step_filter_resonance[i],
+            &format!("syndrm_clap_step_filter_resonance_{}", i),
+        );
+        sb(
+            &track.clap_step_retrig_enabled[i],
+            &format!("syndrm_clap_step_retrig_enabled_{}", i),
+        );
+        su(
+            &track.clap_step_retrig_division[i],
+            &format!("syndrm_clap_step_retrig_division_{}", i),
+        );
+        sb(&track.hat_step_override_enabled[i], &format!("syndrm_hat_step_override_{}", i));
+        sf(&track.hat_step_pitch[i], &format!("syndrm_hat_step_pitch_{}", i));
+        sf(&track.hat_step_decay[i], &format!("syndrm_hat_step_decay_{}", i));
+        sf(&track.hat_step_tone[i], &format!("syndrm_hat_step_tone_{}", i));
+        sf(&track.hat_step_drive[i], &format!("syndrm_hat_step_drive_{}", i));
+        sf(&track.hat_step_level[i], &format!("syndrm_hat_step_level_{}", i));
+        su(
+            &track.hat_step_filter_type[i],
+            &format!("syndrm_hat_step_filter_type_{}", i),
+        );
+        sf(
+            &track.hat_step_filter_cutoff[i],
+            &format!("syndrm_hat_step_filter_cutoff_{}", i),
+        );
+        sf(
+            &track.hat_step_filter_resonance[i],
+            &format!("syndrm_hat_step_filter_resonance_{}", i),
+        );
+        sb(
+            &track.hat_step_retrig_enabled[i],
+            &format!("syndrm_hat_step_retrig_enabled_{}", i),
+        );
+        su(
+            &track.hat_step_retrig_division[i],
+            &format!("syndrm_hat_step_retrig_division_{}", i),
+        );
+        sb(
+            &track.perc1_step_override_enabled[i],
+            &format!("syndrm_perc1_step_override_{}", i),
+        );
+        sf(
+            &track.perc1_step_pitch[i],
+            &format!("syndrm_perc1_step_pitch_{}", i),
+        );
+        sf(
+            &track.perc1_step_decay[i],
+            &format!("syndrm_perc1_step_decay_{}", i),
+        );
+        sf(
+            &track.perc1_step_tone[i],
+            &format!("syndrm_perc1_step_tone_{}", i),
+        );
+        sf(
+            &track.perc1_step_drive[i],
+            &format!("syndrm_perc1_step_drive_{}", i),
+        );
+        sf(
+            &track.perc1_step_level[i],
+            &format!("syndrm_perc1_step_level_{}", i),
+        );
+        su(
+            &track.perc1_step_filter_type[i],
+            &format!("syndrm_perc1_step_filter_type_{}", i),
+        );
+        sf(
+            &track.perc1_step_filter_cutoff[i],
+            &format!("syndrm_perc1_step_filter_cutoff_{}", i),
+        );
+        sf(
+            &track.perc1_step_filter_resonance[i],
+            &format!("syndrm_perc1_step_filter_resonance_{}", i),
+        );
+        sb(
+            &track.perc1_step_retrig_enabled[i],
+            &format!("syndrm_perc1_step_retrig_enabled_{}", i),
+        );
+        su(
+            &track.perc1_step_retrig_division[i],
+            &format!("syndrm_perc1_step_retrig_division_{}", i),
+        );
+        sb(
+            &track.perc2_step_override_enabled[i],
+            &format!("syndrm_perc2_step_override_{}", i),
+        );
+        sf(
+            &track.perc2_step_pitch[i],
+            &format!("syndrm_perc2_step_pitch_{}", i),
+        );
+        sf(
+            &track.perc2_step_decay[i],
+            &format!("syndrm_perc2_step_decay_{}", i),
+        );
+        sf(
+            &track.perc2_step_tone[i],
+            &format!("syndrm_perc2_step_tone_{}", i),
+        );
+        sf(
+            &track.perc2_step_drive[i],
+            &format!("syndrm_perc2_step_drive_{}", i),
+        );
+        sf(
+            &track.perc2_step_level[i],
+            &format!("syndrm_perc2_step_level_{}", i),
+        );
+        su(
+            &track.perc2_step_filter_type[i],
+            &format!("syndrm_perc2_step_filter_type_{}", i),
+        );
+        sf(
+            &track.perc2_step_filter_cutoff[i],
+            &format!("syndrm_perc2_step_filter_cutoff_{}", i),
+        );
+        sf(
+            &track.perc2_step_filter_resonance[i],
+            &format!("syndrm_perc2_step_filter_resonance_{}", i),
+        );
+        sb(
+            &track.perc2_step_retrig_enabled[i],
+            &format!("syndrm_perc2_step_retrig_enabled_{}", i),
+        );
+        su(
+            &track.perc2_step_retrig_division[i],
+            &format!("syndrm_perc2_step_retrig_division_{}", i),
+        );
+        sb(
+            &track.crash_step_override_enabled[i],
+            &format!("syndrm_crash_step_override_{}", i),
+        );
+        sf(
+            &track.crash_step_pitch[i],
+            &format!("syndrm_crash_step_pitch_{}", i),
+        );
+        sf(
+            &track.crash_step_decay[i],
+            &format!("syndrm_crash_step_decay_{}", i),
+        );
+        sf(
+            &track.crash_step_tone[i],
+            &format!("syndrm_crash_step_tone_{}", i),
+        );
+        sf(
+            &track.crash_step_drive[i],
+            &format!("syndrm_crash_step_drive_{}", i),
+        );
+        sf(
+            &track.crash_step_level[i],
+            &format!("syndrm_crash_step_level_{}", i),
+        );
+        su(
+            &track.crash_step_filter_type[i],
+            &format!("syndrm_crash_step_filter_type_{}", i),
+        );
+        sf(
+            &track.crash_step_filter_cutoff[i],
+            &format!("syndrm_crash_step_filter_cutoff_{}", i),
+        );
+        sf(
+            &track.crash_step_filter_resonance[i],
+            &format!("syndrm_crash_step_filter_resonance_{}", i),
+        );
+        sb(
+            &track.crash_step_retrig_enabled[i],
+            &format!("syndrm_crash_step_retrig_enabled_{}", i),
+        );
+        su(
+            &track.crash_step_retrig_division[i],
+            &format!("syndrm_crash_step_retrig_division_{}", i),
         );
     }
 
@@ -9953,26 +15765,30 @@ impl SlintWindow {
                 .push(self.tracks[track_idx].animate_sequencer_grid[i].load(Ordering::Relaxed));
         }
 
-        let kick_pitch =
+        let mut kick_pitch =
             f32::from_bits(self.tracks[track_idx].kick_pitch.load(Ordering::Relaxed));
-        let kick_decay =
+        let mut kick_decay =
             f32::from_bits(self.tracks[track_idx].kick_decay.load(Ordering::Relaxed));
-        let kick_attack =
+        let mut kick_attack =
             f32::from_bits(self.tracks[track_idx].kick_attack.load(Ordering::Relaxed));
         let kick_pitch_env_amount =
             f32::from_bits(self.tracks[track_idx].kick_pitch_env_amount.load(Ordering::Relaxed));
-        let kick_drive =
+        let mut kick_drive =
             f32::from_bits(self.tracks[track_idx].kick_drive.load(Ordering::Relaxed));
-        let kick_level =
+        let mut kick_level =
             f32::from_bits(self.tracks[track_idx].kick_level.load(Ordering::Relaxed));
-        let kick_filter_type =
+        let mut kick_filter_type =
             self.tracks[track_idx].kick_filter_type.load(Ordering::Relaxed);
-        let kick_filter_cutoff =
+        let mut kick_filter_cutoff =
             f32::from_bits(self.tracks[track_idx].kick_filter_cutoff.load(Ordering::Relaxed));
-        let kick_filter_resonance =
+        let mut kick_filter_resonance =
             f32::from_bits(self.tracks[track_idx].kick_filter_resonance.load(Ordering::Relaxed));
         let kick_filter_pre_drive =
             self.tracks[track_idx].kick_filter_pre_drive.load(Ordering::Relaxed);
+        let kick_cut_group = self.tracks[track_idx].kick_cut_group.load(Ordering::Relaxed) as f32;
+        let kick_cut_by = self.tracks[track_idx].kick_cut_by.load(Ordering::Relaxed) as f32;
+        let kick_prob = f32::from_bits(self.tracks[track_idx].kick_prob.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
         let kick_sequencer_current_step =
             self.tracks[track_idx].kick_sequencer_step.load(Ordering::Relaxed);
         let mut kick_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
@@ -10000,6 +15816,10 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].snare_filter_resonance.load(Ordering::Relaxed));
         let snare_filter_pre_drive =
             self.tracks[track_idx].snare_filter_pre_drive.load(Ordering::Relaxed);
+        let snare_cut_group = self.tracks[track_idx].snare_cut_group.load(Ordering::Relaxed) as f32;
+        let snare_cut_by = self.tracks[track_idx].snare_cut_by.load(Ordering::Relaxed) as f32;
+        let snare_prob = f32::from_bits(self.tracks[track_idx].snare_prob.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
         let snare_sequencer_current_step =
             self.tracks[track_idx].snare_sequencer_step.load(Ordering::Relaxed);
         let mut snare_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
@@ -10007,15 +15827,376 @@ impl SlintWindow {
             snare_sequencer_grid
                 .push(self.tracks[track_idx].snare_sequencer_grid[i].load(Ordering::Relaxed));
         }
+        let clap_pitch =
+            f32::from_bits(self.tracks[track_idx].clap_pitch.load(Ordering::Relaxed));
+        let clap_decay =
+            f32::from_bits(self.tracks[track_idx].clap_decay.load(Ordering::Relaxed));
+        let clap_tone =
+            f32::from_bits(self.tracks[track_idx].clap_tone.load(Ordering::Relaxed));
+        let clap_drive =
+            f32::from_bits(self.tracks[track_idx].clap_drive.load(Ordering::Relaxed));
+        let clap_level =
+            f32::from_bits(self.tracks[track_idx].clap_level.load(Ordering::Relaxed));
+        let clap_filter_type =
+            self.tracks[track_idx].clap_filter_type.load(Ordering::Relaxed);
+        let clap_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].clap_filter_cutoff.load(Ordering::Relaxed));
+        let clap_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].clap_filter_resonance.load(Ordering::Relaxed));
+        let clap_filter_pre_drive =
+            self.tracks[track_idx].clap_filter_pre_drive.load(Ordering::Relaxed);
+        let clap_cut_group = self.tracks[track_idx].clap_cut_group.load(Ordering::Relaxed) as f32;
+        let clap_cut_by = self.tracks[track_idx].clap_cut_by.load(Ordering::Relaxed) as f32;
+        let clap_prob = f32::from_bits(self.tracks[track_idx].clap_prob.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
+        let clap_sequencer_current_step =
+            self.tracks[track_idx].clap_sequencer_step.load(Ordering::Relaxed);
+        let mut clap_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
+        for i in 0..SYNDRM_STEPS {
+            clap_sequencer_grid
+                .push(self.tracks[track_idx].clap_sequencer_grid[i].load(Ordering::Relaxed));
+        }
+        let mut hat_pitch = f32::from_bits(self.tracks[track_idx].hat_pitch.load(Ordering::Relaxed));
+        let mut hat_decay = f32::from_bits(self.tracks[track_idx].hat_decay.load(Ordering::Relaxed));
+        let mut hat_tone = f32::from_bits(self.tracks[track_idx].hat_tone.load(Ordering::Relaxed));
+        let mut hat_drive = f32::from_bits(self.tracks[track_idx].hat_drive.load(Ordering::Relaxed));
+        let mut hat_level = f32::from_bits(self.tracks[track_idx].hat_level.load(Ordering::Relaxed));
+        let mut hat_filter_type = self.tracks[track_idx].hat_filter_type.load(Ordering::Relaxed);
+        let mut hat_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].hat_filter_cutoff.load(Ordering::Relaxed));
+        let mut hat_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].hat_filter_resonance.load(Ordering::Relaxed));
+        let hat_filter_pre_drive =
+            self.tracks[track_idx].hat_filter_pre_drive.load(Ordering::Relaxed);
+        let hat_cut_group = self.tracks[track_idx].hat_cut_group.load(Ordering::Relaxed) as f32;
+        let hat_cut_by = self.tracks[track_idx].hat_cut_by.load(Ordering::Relaxed) as f32;
+        let hat_prob = f32::from_bits(self.tracks[track_idx].hat_prob.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
+        let hat_sequencer_current_step =
+            self.tracks[track_idx].hat_sequencer_step.load(Ordering::Relaxed);
+        let mut hat_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
+        for i in 0..SYNDRM_STEPS {
+            hat_sequencer_grid
+                .push(self.tracks[track_idx].hat_sequencer_grid[i].load(Ordering::Relaxed));
+        }
+        let perc1_pitch = f32::from_bits(self.tracks[track_idx].perc1_pitch.load(Ordering::Relaxed));
+        let perc1_decay = f32::from_bits(self.tracks[track_idx].perc1_decay.load(Ordering::Relaxed));
+        let perc1_tone = f32::from_bits(self.tracks[track_idx].perc1_tone.load(Ordering::Relaxed));
+        let perc1_drive = f32::from_bits(self.tracks[track_idx].perc1_drive.load(Ordering::Relaxed));
+        let perc1_level = f32::from_bits(self.tracks[track_idx].perc1_level.load(Ordering::Relaxed));
+        let perc1_filter_type = self.tracks[track_idx].perc1_filter_type.load(Ordering::Relaxed);
+        let perc1_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].perc1_filter_cutoff.load(Ordering::Relaxed));
+        let perc1_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].perc1_filter_resonance.load(Ordering::Relaxed));
+        let perc1_filter_pre_drive =
+            self.tracks[track_idx].perc1_filter_pre_drive.load(Ordering::Relaxed);
+        let perc1_cut_group = self.tracks[track_idx].perc1_cut_group.load(Ordering::Relaxed) as f32;
+        let perc1_cut_by = self.tracks[track_idx].perc1_cut_by.load(Ordering::Relaxed) as f32;
+        let perc1_prob = f32::from_bits(self.tracks[track_idx].perc1_prob.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
+        let perc1_sequencer_current_step =
+            self.tracks[track_idx].perc1_sequencer_step.load(Ordering::Relaxed);
+        let mut perc1_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
+        for i in 0..SYNDRM_STEPS {
+            perc1_sequencer_grid
+                .push(self.tracks[track_idx].perc1_sequencer_grid[i].load(Ordering::Relaxed));
+        }
+        let perc2_pitch = f32::from_bits(self.tracks[track_idx].perc2_pitch.load(Ordering::Relaxed));
+        let perc2_decay = f32::from_bits(self.tracks[track_idx].perc2_decay.load(Ordering::Relaxed));
+        let perc2_tone = f32::from_bits(self.tracks[track_idx].perc2_tone.load(Ordering::Relaxed));
+        let perc2_drive = f32::from_bits(self.tracks[track_idx].perc2_drive.load(Ordering::Relaxed));
+        let perc2_level = f32::from_bits(self.tracks[track_idx].perc2_level.load(Ordering::Relaxed));
+        let perc2_filter_type = self.tracks[track_idx].perc2_filter_type.load(Ordering::Relaxed);
+        let perc2_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].perc2_filter_cutoff.load(Ordering::Relaxed));
+        let perc2_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].perc2_filter_resonance.load(Ordering::Relaxed));
+        let perc2_filter_pre_drive =
+            self.tracks[track_idx].perc2_filter_pre_drive.load(Ordering::Relaxed);
+        let perc2_cut_group = self.tracks[track_idx].perc2_cut_group.load(Ordering::Relaxed) as f32;
+        let perc2_cut_by = self.tracks[track_idx].perc2_cut_by.load(Ordering::Relaxed) as f32;
+        let perc2_prob = f32::from_bits(self.tracks[track_idx].perc2_prob.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
+        let perc2_sequencer_current_step =
+            self.tracks[track_idx].perc2_sequencer_step.load(Ordering::Relaxed);
+        let mut perc2_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
+        for i in 0..SYNDRM_STEPS {
+            perc2_sequencer_grid
+                .push(self.tracks[track_idx].perc2_sequencer_grid[i].load(Ordering::Relaxed));
+        }
+        let mut crash_pitch =
+            f32::from_bits(self.tracks[track_idx].crash_pitch.load(Ordering::Relaxed));
+        let mut crash_decay =
+            f32::from_bits(self.tracks[track_idx].crash_decay.load(Ordering::Relaxed));
+        let mut crash_tone =
+            f32::from_bits(self.tracks[track_idx].crash_tone.load(Ordering::Relaxed));
+        let mut crash_drive =
+            f32::from_bits(self.tracks[track_idx].crash_drive.load(Ordering::Relaxed));
+        let mut crash_level =
+            f32::from_bits(self.tracks[track_idx].crash_level.load(Ordering::Relaxed));
+        let mut crash_filter_type =
+            self.tracks[track_idx].crash_filter_type.load(Ordering::Relaxed);
+        let mut crash_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].crash_filter_cutoff.load(Ordering::Relaxed));
+        let mut crash_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].crash_filter_resonance.load(Ordering::Relaxed));
+        let crash_filter_pre_drive =
+            self.tracks[track_idx].crash_filter_pre_drive.load(Ordering::Relaxed);
+        let crash_cut_group = self.tracks[track_idx].crash_cut_group.load(Ordering::Relaxed) as f32;
+        let crash_cut_by = self.tracks[track_idx].crash_cut_by.load(Ordering::Relaxed) as f32;
+        let crash_prob = f32::from_bits(self.tracks[track_idx].crash_prob.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
+        let crash_sequencer_current_step =
+            self.tracks[track_idx].crash_sequencer_step.load(Ordering::Relaxed);
+        let mut crash_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
+        for i in 0..SYNDRM_STEPS {
+            crash_sequencer_grid
+                .push(self.tracks[track_idx].crash_sequencer_grid[i].load(Ordering::Relaxed));
+        }
+        let syndrm_step_hold = self.tracks[track_idx].syndrm_step_hold.load(Ordering::Relaxed);
+        if syndrm_step_hold && kick_sequencer_current_step >= 0 {
+            let step_idx = kick_sequencer_current_step as usize;
+            if step_idx < SYNDRM_STEPS {
+                if self.tracks[track_idx].kick_step_override_enabled[step_idx]
+                    .load(Ordering::Relaxed)
+                {
+                    kick_pitch = f32::from_bits(
+                        self.tracks[track_idx].kick_step_pitch[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    kick_decay = f32::from_bits(
+                        self.tracks[track_idx].kick_step_decay[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    kick_attack = f32::from_bits(
+                        self.tracks[track_idx].kick_step_attack[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    kick_drive = f32::from_bits(
+                        self.tracks[track_idx].kick_step_drive[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    kick_level = f32::from_bits(
+                        self.tracks[track_idx].kick_step_level[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    kick_filter_type =
+                        self.tracks[track_idx].kick_step_filter_type[step_idx].load(Ordering::Relaxed);
+                    kick_filter_cutoff = f32::from_bits(
+                        self.tracks[track_idx]
+                            .kick_step_filter_cutoff[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    kick_filter_resonance = f32::from_bits(
+                        self.tracks[track_idx]
+                            .kick_step_filter_resonance[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                }
+
+                if self.tracks[track_idx].hat_step_override_enabled[step_idx].load(Ordering::Relaxed)
+                {
+                    hat_pitch = f32::from_bits(
+                        self.tracks[track_idx].hat_step_pitch[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    hat_decay = f32::from_bits(
+                        self.tracks[track_idx].hat_step_decay[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    hat_tone = f32::from_bits(
+                        self.tracks[track_idx].hat_step_tone[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    hat_drive = f32::from_bits(
+                        self.tracks[track_idx].hat_step_drive[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    hat_level = f32::from_bits(
+                        self.tracks[track_idx].hat_step_level[step_idx].load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    hat_filter_type =
+                        self.tracks[track_idx].hat_step_filter_type[step_idx].load(Ordering::Relaxed);
+                    hat_filter_cutoff = f32::from_bits(
+                        self.tracks[track_idx]
+                            .hat_step_filter_cutoff[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    hat_filter_resonance = f32::from_bits(
+                        self.tracks[track_idx]
+                            .hat_step_filter_resonance[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                }
+
+                if self.tracks[track_idx].crash_step_override_enabled[step_idx]
+                    .load(Ordering::Relaxed)
+                {
+                    crash_pitch = f32::from_bits(
+                        self.tracks[track_idx]
+                            .crash_step_pitch[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    crash_decay = f32::from_bits(
+                        self.tracks[track_idx]
+                            .crash_step_decay[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    crash_tone = f32::from_bits(
+                        self.tracks[track_idx]
+                            .crash_step_tone[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    crash_drive = f32::from_bits(
+                        self.tracks[track_idx]
+                            .crash_step_drive[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    crash_level = f32::from_bits(
+                        self.tracks[track_idx]
+                            .crash_step_level[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    crash_filter_type = self.tracks[track_idx]
+                        .crash_step_filter_type[step_idx]
+                        .load(Ordering::Relaxed);
+                    crash_filter_cutoff = f32::from_bits(
+                        self.tracks[track_idx]
+                            .crash_step_filter_cutoff[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                    crash_filter_resonance = f32::from_bits(
+                        self.tracks[track_idx]
+                            .crash_step_filter_resonance[step_idx]
+                            .load(Ordering::Relaxed),
+                    )
+                    .clamp(0.0, 1.0);
+                }
+            }
+        }
+        let mut samp_labels = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_paths = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_pitch = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_attack = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_decay = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_drive = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_level = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_filter_type = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_filter_cutoff = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_filter_resonance = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_filter_pre_drive = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_cut_group = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_cut_by = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_prob = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_sequencer_current_step = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_sequencer_grid =
+            Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS * SYNDRM_STEPS);
+        for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
+            samp_labels.push(SharedString::from(format!("Samp {}", samp_idx + 1)));
+            let path_label = if let Some(guard) = self.tracks[track_idx].samp_sample_path[samp_idx].try_lock() {
+                if let Some(path) = guard.as_ref() {
+                    let label = Path::new(path)
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                        .unwrap_or_else(|| path.clone());
+                    SharedString::from(truncate_label(
+                        &label,
+                        SYNDRM_SAMPLE_LABEL_MAX_CHARS,
+                        SYNDRM_SAMPLE_LABEL_ELLIPSES,
+                    ))
+                } else {
+                    SharedString::from("")
+                }
+            } else {
+                SharedString::from("")
+            };
+            samp_paths.push(path_label);
+            samp_pitch.push(f32::from_bits(
+                self.tracks[track_idx].samp_pitch[samp_idx].load(Ordering::Relaxed),
+            ));
+            samp_attack.push(f32::from_bits(
+                self.tracks[track_idx].samp_attack[samp_idx].load(Ordering::Relaxed),
+            ));
+            samp_decay.push(f32::from_bits(
+                self.tracks[track_idx].samp_decay[samp_idx].load(Ordering::Relaxed),
+            ));
+            samp_drive.push(f32::from_bits(
+                self.tracks[track_idx].samp_drive[samp_idx].load(Ordering::Relaxed),
+            ));
+            samp_level.push(f32::from_bits(
+                self.tracks[track_idx].samp_level[samp_idx].load(Ordering::Relaxed),
+            ));
+            samp_filter_type.push(
+                self.tracks[track_idx].samp_filter_type[samp_idx].load(Ordering::Relaxed) as i32,
+            );
+            samp_filter_cutoff.push(f32::from_bits(
+                self.tracks[track_idx].samp_filter_cutoff[samp_idx].load(Ordering::Relaxed),
+            ));
+            samp_filter_resonance.push(f32::from_bits(
+                self.tracks[track_idx].samp_filter_resonance[samp_idx].load(Ordering::Relaxed),
+            ));
+            samp_filter_pre_drive.push(
+                self.tracks[track_idx].samp_filter_pre_drive[samp_idx].load(Ordering::Relaxed),
+            );
+            samp_cut_group.push(self.tracks[track_idx].samp_cut_group[samp_idx].load(Ordering::Relaxed) as f32);
+            samp_cut_by.push(self.tracks[track_idx].samp_cut_by[samp_idx].load(Ordering::Relaxed) as f32);
+            samp_prob.push(
+                f32::from_bits(self.tracks[track_idx].samp_prob[samp_idx].load(Ordering::Relaxed))
+                    .clamp(0.0, 1.0),
+            );
+            samp_sequencer_current_step.push(
+                self.tracks[track_idx].samp_sequencer_step[samp_idx].load(Ordering::Relaxed),
+            );
+            for step in 0..SYNDRM_STEPS {
+                samp_sequencer_grid.push(
+                    self.tracks[track_idx].samp_sequencer_grid[samp_idx][step]
+                        .load(Ordering::Relaxed),
+                );
+            }
+        }
         let syndrm_page = self.tracks[track_idx].syndrm_page.load(Ordering::Relaxed) as i32;
         let syndrm_edit_lane = self.tracks[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as i32;
         let syndrm_edit_step = self.tracks[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as i32;
-        let syndrm_step_hold = self.tracks[track_idx].syndrm_step_hold.load(Ordering::Relaxed);
+        let syndrm_randomize_amount =
+            f32::from_bits(self.tracks[track_idx].syndrm_randomize_amount.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
         let edit_step = syndrm_edit_step.clamp(0, (SYNDRM_STEPS - 1) as i32) as usize;
         let syndrm_step_override = if syndrm_edit_lane == 0 {
             self.tracks[track_idx].kick_step_override_enabled[edit_step].load(Ordering::Relaxed)
-        } else {
+        } else if syndrm_edit_lane == 1 {
             self.tracks[track_idx].snare_step_override_enabled[edit_step].load(Ordering::Relaxed)
+        } else if syndrm_edit_lane == 2 {
+            self.tracks[track_idx].clap_step_override_enabled[edit_step].load(Ordering::Relaxed)
+        } else if syndrm_edit_lane == 3 {
+            self.tracks[track_idx].hat_step_override_enabled[edit_step].load(Ordering::Relaxed)
+        } else if syndrm_edit_lane == 4 {
+            self.tracks[track_idx].perc1_step_override_enabled[edit_step].load(Ordering::Relaxed)
+        } else if syndrm_edit_lane == 5 {
+            self.tracks[track_idx].perc2_step_override_enabled[edit_step].load(Ordering::Relaxed)
+        } else if syndrm_edit_lane == 6 {
+            self.tracks[track_idx].crash_step_override_enabled[edit_step].load(Ordering::Relaxed)
+        } else if syndrm_edit_lane >= 7 {
+            let samp_idx = (syndrm_edit_lane - 7) as usize;
+            if samp_idx < SYNDRM_SAMPLE_CHANNELS {
+                self.tracks[track_idx].samp_step_override_enabled[samp_idx][edit_step]
+                    .load(Ordering::Relaxed)
+            } else {
+                false
+            }
+        } else {
+            false
         };
         let syndrm_step_kick_pitch =
             f32::from_bits(self.tracks[track_idx].kick_step_pitch[edit_step].load(Ordering::Relaxed));
@@ -10033,6 +16214,10 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].kick_step_filter_cutoff[edit_step].load(Ordering::Relaxed));
         let syndrm_step_kick_filter_resonance =
             f32::from_bits(self.tracks[track_idx].kick_step_filter_resonance[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_kick_retrig =
+            self.tracks[track_idx].kick_step_retrig_enabled[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_kick_retrig_division =
+            self.tracks[track_idx].kick_step_retrig_division[edit_step].load(Ordering::Relaxed);
         let syndrm_step_snare_tone =
             f32::from_bits(self.tracks[track_idx].snare_step_tone[edit_step].load(Ordering::Relaxed));
         let syndrm_step_snare_decay =
@@ -10051,6 +16236,178 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].snare_step_filter_cutoff[edit_step].load(Ordering::Relaxed));
         let syndrm_step_snare_filter_resonance =
             f32::from_bits(self.tracks[track_idx].snare_step_filter_resonance[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_snare_retrig =
+            self.tracks[track_idx].snare_step_retrig_enabled[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_snare_retrig_division =
+            self.tracks[track_idx].snare_step_retrig_division[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_clap_pitch =
+            f32::from_bits(self.tracks[track_idx].clap_step_pitch[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_clap_decay =
+            f32::from_bits(self.tracks[track_idx].clap_step_decay[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_clap_tone =
+            f32::from_bits(self.tracks[track_idx].clap_step_tone[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_clap_drive =
+            f32::from_bits(self.tracks[track_idx].clap_step_drive[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_clap_level =
+            f32::from_bits(self.tracks[track_idx].clap_step_level[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_clap_filter_type =
+            self.tracks[track_idx].clap_step_filter_type[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_clap_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].clap_step_filter_cutoff[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_clap_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].clap_step_filter_resonance[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_clap_retrig =
+            self.tracks[track_idx].clap_step_retrig_enabled[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_clap_retrig_division =
+            self.tracks[track_idx].clap_step_retrig_division[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_hat_pitch =
+            f32::from_bits(self.tracks[track_idx].hat_step_pitch[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_hat_decay =
+            f32::from_bits(self.tracks[track_idx].hat_step_decay[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_hat_tone =
+            f32::from_bits(self.tracks[track_idx].hat_step_tone[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_hat_drive =
+            f32::from_bits(self.tracks[track_idx].hat_step_drive[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_hat_level =
+            f32::from_bits(self.tracks[track_idx].hat_step_level[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_hat_filter_type =
+            self.tracks[track_idx].hat_step_filter_type[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_hat_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].hat_step_filter_cutoff[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_hat_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].hat_step_filter_resonance[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_hat_retrig =
+            self.tracks[track_idx].hat_step_retrig_enabled[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_hat_retrig_division =
+            self.tracks[track_idx].hat_step_retrig_division[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_perc1_pitch =
+            f32::from_bits(self.tracks[track_idx].perc1_step_pitch[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc1_decay =
+            f32::from_bits(self.tracks[track_idx].perc1_step_decay[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc1_tone =
+            f32::from_bits(self.tracks[track_idx].perc1_step_tone[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc1_drive =
+            f32::from_bits(self.tracks[track_idx].perc1_step_drive[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc1_level =
+            f32::from_bits(self.tracks[track_idx].perc1_step_level[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc1_filter_type =
+            self.tracks[track_idx].perc1_step_filter_type[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_perc1_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].perc1_step_filter_cutoff[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc1_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].perc1_step_filter_resonance[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc1_retrig =
+            self.tracks[track_idx].perc1_step_retrig_enabled[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_perc1_retrig_division =
+            self.tracks[track_idx].perc1_step_retrig_division[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_perc2_pitch =
+            f32::from_bits(self.tracks[track_idx].perc2_step_pitch[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc2_decay =
+            f32::from_bits(self.tracks[track_idx].perc2_step_decay[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc2_tone =
+            f32::from_bits(self.tracks[track_idx].perc2_step_tone[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc2_drive =
+            f32::from_bits(self.tracks[track_idx].perc2_step_drive[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc2_level =
+            f32::from_bits(self.tracks[track_idx].perc2_step_level[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc2_filter_type =
+            self.tracks[track_idx].perc2_step_filter_type[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_perc2_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].perc2_step_filter_cutoff[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc2_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].perc2_step_filter_resonance[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_perc2_retrig =
+            self.tracks[track_idx].perc2_step_retrig_enabled[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_perc2_retrig_division =
+            self.tracks[track_idx].perc2_step_retrig_division[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_crash_pitch =
+            f32::from_bits(self.tracks[track_idx].crash_step_pitch[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_crash_decay =
+            f32::from_bits(self.tracks[track_idx].crash_step_decay[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_crash_tone =
+            f32::from_bits(self.tracks[track_idx].crash_step_tone[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_crash_drive =
+            f32::from_bits(self.tracks[track_idx].crash_step_drive[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_crash_level =
+            f32::from_bits(self.tracks[track_idx].crash_step_level[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_crash_filter_type =
+            self.tracks[track_idx].crash_step_filter_type[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_crash_filter_cutoff =
+            f32::from_bits(self.tracks[track_idx].crash_step_filter_cutoff[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_crash_filter_resonance =
+            f32::from_bits(self.tracks[track_idx].crash_step_filter_resonance[edit_step].load(Ordering::Relaxed));
+        let syndrm_step_crash_retrig =
+            self.tracks[track_idx].crash_step_retrig_enabled[edit_step].load(Ordering::Relaxed);
+        let syndrm_step_crash_retrig_division =
+            self.tracks[track_idx].crash_step_retrig_division[edit_step].load(Ordering::Relaxed);
+        let mut syndrm_step_samp_pitch = 0.5;
+        let mut syndrm_step_samp_attack = 0.0;
+        let mut syndrm_step_samp_decay = 0.5;
+        let mut syndrm_step_samp_drive = 0.0;
+        let mut syndrm_step_samp_level = 0.8;
+        let mut syndrm_step_samp_filter_type = 0;
+        let mut syndrm_step_samp_filter_cutoff = 0.7;
+        let mut syndrm_step_samp_filter_resonance = 0.2;
+        let mut syndrm_step_samp_retrig = false;
+        let mut syndrm_step_samp_retrig_division = 2;
+        if syndrm_edit_lane >= 7 {
+            let samp_idx = (syndrm_edit_lane - 7) as usize;
+            if samp_idx < SYNDRM_SAMPLE_CHANNELS {
+                syndrm_step_samp_pitch = f32::from_bits(
+                    self.tracks[track_idx].samp_step_pitch[samp_idx][edit_step]
+                        .load(Ordering::Relaxed),
+                );
+                syndrm_step_samp_attack = f32::from_bits(
+                    self.tracks[track_idx].samp_step_attack[samp_idx][edit_step]
+                        .load(Ordering::Relaxed),
+                );
+                syndrm_step_samp_decay = f32::from_bits(
+                    self.tracks[track_idx].samp_step_decay[samp_idx][edit_step]
+                        .load(Ordering::Relaxed),
+                );
+                syndrm_step_samp_drive = f32::from_bits(
+                    self.tracks[track_idx].samp_step_drive[samp_idx][edit_step]
+                        .load(Ordering::Relaxed),
+                );
+                syndrm_step_samp_level = f32::from_bits(
+                    self.tracks[track_idx].samp_step_level[samp_idx][edit_step]
+                        .load(Ordering::Relaxed),
+                );
+                syndrm_step_samp_filter_type = self.tracks[track_idx].samp_step_filter_type[samp_idx]
+                    [edit_step]
+                    .load(Ordering::Relaxed) as i32;
+                syndrm_step_samp_filter_cutoff = f32::from_bits(
+                    self.tracks[track_idx].samp_step_filter_cutoff[samp_idx][edit_step]
+                        .load(Ordering::Relaxed),
+                );
+                syndrm_step_samp_filter_resonance = f32::from_bits(
+                    self.tracks[track_idx].samp_step_filter_resonance[samp_idx][edit_step]
+                        .load(Ordering::Relaxed),
+                );
+                syndrm_step_samp_retrig = self.tracks[track_idx].samp_step_retrig_enabled[samp_idx]
+                    [edit_step]
+                    .load(Ordering::Relaxed);
+                syndrm_step_samp_retrig_division = self.tracks[track_idx]
+                    .samp_step_retrig_division[samp_idx][edit_step]
+                    .load(Ordering::Relaxed);
+            }
+        }
+        let syndrm_step_kick_retrig_division_index =
+            if syndrm_step_kick_retrig_division <= 2 { 0 } else { 1 };
+        let syndrm_step_snare_retrig_division_index =
+            if syndrm_step_snare_retrig_division <= 2 { 0 } else { 1 };
+        let syndrm_step_clap_retrig_division_index =
+            if syndrm_step_clap_retrig_division <= 2 { 0 } else { 1 };
+        let syndrm_step_hat_retrig_division_index =
+            if syndrm_step_hat_retrig_division <= 2 { 0 } else { 1 };
+        let syndrm_step_perc1_retrig_division_index =
+            if syndrm_step_perc1_retrig_division <= 2 { 0 } else { 1 };
+        let syndrm_step_perc2_retrig_division_index =
+            if syndrm_step_perc2_retrig_division <= 2 { 0 } else { 1 };
+        let syndrm_step_crash_retrig_division_index =
+            if syndrm_step_crash_retrig_division <= 2 { 0 } else { 1 };
+        let syndrm_step_samp_retrig_division_index =
+            if syndrm_step_samp_retrig_division <= 2 { 0 } else { 1 };
 
         let void_base_freq = f32::from_bits(self.tracks[track_idx].void_base_freq.load(Ordering::Relaxed));
         let void_chaos_depth = f32::from_bits(self.tracks[track_idx].void_chaos_depth.load(Ordering::Relaxed));
@@ -10439,6 +16796,9 @@ impl SlintWindow {
         self.ui.set_kick_filter_cutoff(kick_filter_cutoff);
         self.ui.set_kick_filter_resonance(kick_filter_resonance);
         self.ui.set_kick_filter_pre_drive(kick_filter_pre_drive);
+        self.ui.set_kick_cut_group(kick_cut_group);
+        self.ui.set_kick_cut_by(kick_cut_by);
+        self.ui.set_kick_prob(kick_prob);
         self.ui
             .set_kick_sequencer_current_step(kick_sequencer_current_step);
         self.ui
@@ -10455,16 +16815,160 @@ impl SlintWindow {
         self.ui.set_snare_filter_cutoff(snare_filter_cutoff);
         self.ui.set_snare_filter_resonance(snare_filter_resonance);
         self.ui.set_snare_filter_pre_drive(snare_filter_pre_drive);
+        self.ui.set_snare_cut_group(snare_cut_group);
+        self.ui.set_snare_cut_by(snare_cut_by);
+        self.ui.set_snare_prob(snare_prob);
         self.ui
             .set_snare_sequencer_current_step(snare_sequencer_current_step);
         self.ui
             .set_snare_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
                 snare_sequencer_grid,
             ))));
+        self.ui.set_clap_pitch(clap_pitch);
+        self.ui.set_clap_decay(clap_decay);
+        self.ui.set_clap_tone(clap_tone);
+        self.ui.set_clap_drive(clap_drive);
+        self.ui.set_clap_level(clap_level);
+        self.ui.set_clap_filter_type(clap_filter_type as i32);
+        self.ui.set_clap_filter_cutoff(clap_filter_cutoff);
+        self.ui.set_clap_filter_resonance(clap_filter_resonance);
+        self.ui.set_clap_filter_pre_drive(clap_filter_pre_drive);
+        self.ui.set_clap_cut_group(clap_cut_group);
+        self.ui.set_clap_cut_by(clap_cut_by);
+        self.ui.set_clap_prob(clap_prob);
+        self.ui
+            .set_clap_sequencer_current_step(clap_sequencer_current_step);
+        self.ui
+            .set_clap_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                clap_sequencer_grid,
+            ))));
+        self.ui.set_hat_pitch(hat_pitch);
+        self.ui.set_hat_decay(hat_decay);
+        self.ui.set_hat_tone(hat_tone);
+        self.ui.set_hat_drive(hat_drive);
+        self.ui.set_hat_level(hat_level);
+        self.ui.set_hat_filter_type(hat_filter_type as i32);
+        self.ui.set_hat_filter_cutoff(hat_filter_cutoff);
+        self.ui.set_hat_filter_resonance(hat_filter_resonance);
+        self.ui.set_hat_filter_pre_drive(hat_filter_pre_drive);
+        self.ui.set_hat_cut_group(hat_cut_group);
+        self.ui.set_hat_cut_by(hat_cut_by);
+        self.ui.set_hat_prob(hat_prob);
+        self.ui
+            .set_hat_sequencer_current_step(hat_sequencer_current_step);
+        self.ui
+            .set_hat_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                hat_sequencer_grid,
+            ))));
+        self.ui.set_perc1_pitch(perc1_pitch);
+        self.ui.set_perc1_decay(perc1_decay);
+        self.ui.set_perc1_tone(perc1_tone);
+        self.ui.set_perc1_drive(perc1_drive);
+        self.ui.set_perc1_level(perc1_level);
+        self.ui.set_perc1_filter_type(perc1_filter_type as i32);
+        self.ui.set_perc1_filter_cutoff(perc1_filter_cutoff);
+        self.ui.set_perc1_filter_resonance(perc1_filter_resonance);
+        self.ui.set_perc1_filter_pre_drive(perc1_filter_pre_drive);
+        self.ui.set_perc1_cut_group(perc1_cut_group);
+        self.ui.set_perc1_cut_by(perc1_cut_by);
+        self.ui.set_perc1_prob(perc1_prob);
+        self.ui
+            .set_perc1_sequencer_current_step(perc1_sequencer_current_step);
+        self.ui
+            .set_perc1_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                perc1_sequencer_grid,
+            ))));
+        self.ui.set_perc2_pitch(perc2_pitch);
+        self.ui.set_perc2_decay(perc2_decay);
+        self.ui.set_perc2_tone(perc2_tone);
+        self.ui.set_perc2_drive(perc2_drive);
+        self.ui.set_perc2_level(perc2_level);
+        self.ui.set_perc2_filter_type(perc2_filter_type as i32);
+        self.ui.set_perc2_filter_cutoff(perc2_filter_cutoff);
+        self.ui.set_perc2_filter_resonance(perc2_filter_resonance);
+        self.ui.set_perc2_filter_pre_drive(perc2_filter_pre_drive);
+        self.ui.set_perc2_cut_group(perc2_cut_group);
+        self.ui.set_perc2_cut_by(perc2_cut_by);
+        self.ui.set_perc2_prob(perc2_prob);
+        self.ui
+            .set_perc2_sequencer_current_step(perc2_sequencer_current_step);
+        self.ui
+            .set_perc2_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                perc2_sequencer_grid,
+            ))));
+        self.ui.set_crash_pitch(crash_pitch);
+        self.ui.set_crash_decay(crash_decay);
+        self.ui.set_crash_tone(crash_tone);
+        self.ui.set_crash_drive(crash_drive);
+        self.ui.set_crash_level(crash_level);
+        self.ui.set_crash_filter_type(crash_filter_type as i32);
+        self.ui.set_crash_filter_cutoff(crash_filter_cutoff);
+        self.ui.set_crash_filter_resonance(crash_filter_resonance);
+        self.ui.set_crash_filter_pre_drive(crash_filter_pre_drive);
+        self.ui.set_crash_cut_group(crash_cut_group);
+        self.ui.set_crash_cut_by(crash_cut_by);
+        self.ui.set_crash_prob(crash_prob);
+        self.ui
+            .set_crash_sequencer_current_step(crash_sequencer_current_step);
+        self.ui
+            .set_crash_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                crash_sequencer_grid,
+            ))));
+        self.ui
+            .set_samp_labels(ModelRc::from(std::rc::Rc::new(VecModel::from(samp_labels))));
+        self.ui
+            .set_samp_paths(ModelRc::from(std::rc::Rc::new(VecModel::from(samp_paths))));
+        self.ui
+            .set_samp_pitch(ModelRc::from(std::rc::Rc::new(VecModel::from(samp_pitch))));
+        self.ui
+            .set_samp_attack(ModelRc::from(std::rc::Rc::new(VecModel::from(samp_attack))));
+        self.ui
+            .set_samp_decay(ModelRc::from(std::rc::Rc::new(VecModel::from(samp_decay))));
+        self.ui
+            .set_samp_drive(ModelRc::from(std::rc::Rc::new(VecModel::from(samp_drive))));
+        self.ui
+            .set_samp_level(ModelRc::from(std::rc::Rc::new(VecModel::from(samp_level))));
+        self.ui
+            .set_samp_filter_type(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_filter_type,
+            ))));
+        self.ui
+            .set_samp_filter_cutoff(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_filter_cutoff,
+            ))));
+        self.ui
+            .set_samp_filter_resonance(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_filter_resonance,
+            ))));
+        self.ui
+            .set_samp_filter_pre_drive(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_filter_pre_drive,
+            ))));
+        self.ui
+            .set_samp_cut_group(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_cut_group,
+            ))));
+        self.ui
+            .set_samp_cut_by(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_cut_by,
+            ))));
+        self.ui
+            .set_samp_prob(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_prob,
+            ))));
+        self.ui
+            .set_samp_sequencer_current_step(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_sequencer_current_step,
+            ))));
+        self.ui
+            .set_samp_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_sequencer_grid,
+            ))));
         self.ui.set_syndrm_page(syndrm_page);
         self.ui.set_syndrm_edit_lane(syndrm_edit_lane);
         self.ui.set_syndrm_edit_step(syndrm_edit_step);
         self.ui.set_syndrm_step_hold(syndrm_step_hold);
+        self.ui.set_syndrm_randomize_amount(syndrm_randomize_amount);
         self.ui.set_syndrm_step_override(syndrm_step_override);
         self.ui.set_syndrm_step_kick_pitch(syndrm_step_kick_pitch);
         self.ui.set_syndrm_step_kick_decay(syndrm_step_kick_decay);
@@ -10476,6 +16980,9 @@ impl SlintWindow {
             .set_syndrm_step_kick_filter_cutoff(syndrm_step_kick_filter_cutoff);
         self.ui
             .set_syndrm_step_kick_filter_resonance(syndrm_step_kick_filter_resonance);
+        self.ui.set_syndrm_step_kick_retrig(syndrm_step_kick_retrig);
+        self.ui
+            .set_syndrm_step_kick_retrig_division(syndrm_step_kick_retrig_division_index);
         self.ui.set_syndrm_step_snare_tone(syndrm_step_snare_tone);
         self.ui.set_syndrm_step_snare_decay(syndrm_step_snare_decay);
         self.ui.set_syndrm_step_snare_snappy(syndrm_step_snare_snappy);
@@ -10488,6 +16995,92 @@ impl SlintWindow {
             .set_syndrm_step_snare_filter_cutoff(syndrm_step_snare_filter_cutoff);
         self.ui
             .set_syndrm_step_snare_filter_resonance(syndrm_step_snare_filter_resonance);
+        self.ui.set_syndrm_step_snare_retrig(syndrm_step_snare_retrig);
+        self.ui
+            .set_syndrm_step_snare_retrig_division(syndrm_step_snare_retrig_division_index);
+        self.ui.set_syndrm_step_clap_pitch(syndrm_step_clap_pitch);
+        self.ui.set_syndrm_step_clap_decay(syndrm_step_clap_decay);
+        self.ui.set_syndrm_step_clap_tone(syndrm_step_clap_tone);
+        self.ui.set_syndrm_step_clap_drive(syndrm_step_clap_drive);
+        self.ui.set_syndrm_step_clap_level(syndrm_step_clap_level);
+        self.ui
+            .set_syndrm_step_clap_filter_type(syndrm_step_clap_filter_type as i32);
+        self.ui
+            .set_syndrm_step_clap_filter_cutoff(syndrm_step_clap_filter_cutoff);
+        self.ui
+            .set_syndrm_step_clap_filter_resonance(syndrm_step_clap_filter_resonance);
+        self.ui.set_syndrm_step_clap_retrig(syndrm_step_clap_retrig);
+        self.ui
+            .set_syndrm_step_clap_retrig_division(syndrm_step_clap_retrig_division_index);
+        self.ui.set_syndrm_step_hat_pitch(syndrm_step_hat_pitch);
+        self.ui.set_syndrm_step_hat_decay(syndrm_step_hat_decay);
+        self.ui.set_syndrm_step_hat_tone(syndrm_step_hat_tone);
+        self.ui.set_syndrm_step_hat_drive(syndrm_step_hat_drive);
+        self.ui.set_syndrm_step_hat_level(syndrm_step_hat_level);
+        self.ui
+            .set_syndrm_step_hat_filter_type(syndrm_step_hat_filter_type as i32);
+        self.ui
+            .set_syndrm_step_hat_filter_cutoff(syndrm_step_hat_filter_cutoff);
+        self.ui
+            .set_syndrm_step_hat_filter_resonance(syndrm_step_hat_filter_resonance);
+        self.ui.set_syndrm_step_hat_retrig(syndrm_step_hat_retrig);
+        self.ui
+            .set_syndrm_step_hat_retrig_division(syndrm_step_hat_retrig_division_index);
+        self.ui.set_syndrm_step_perc1_pitch(syndrm_step_perc1_pitch);
+        self.ui.set_syndrm_step_perc1_decay(syndrm_step_perc1_decay);
+        self.ui.set_syndrm_step_perc1_tone(syndrm_step_perc1_tone);
+        self.ui.set_syndrm_step_perc1_drive(syndrm_step_perc1_drive);
+        self.ui.set_syndrm_step_perc1_level(syndrm_step_perc1_level);
+        self.ui
+            .set_syndrm_step_perc1_filter_type(syndrm_step_perc1_filter_type as i32);
+        self.ui
+            .set_syndrm_step_perc1_filter_cutoff(syndrm_step_perc1_filter_cutoff);
+        self.ui
+            .set_syndrm_step_perc1_filter_resonance(syndrm_step_perc1_filter_resonance);
+        self.ui.set_syndrm_step_perc1_retrig(syndrm_step_perc1_retrig);
+        self.ui
+            .set_syndrm_step_perc1_retrig_division(syndrm_step_perc1_retrig_division_index);
+        self.ui.set_syndrm_step_perc2_pitch(syndrm_step_perc2_pitch);
+        self.ui.set_syndrm_step_perc2_decay(syndrm_step_perc2_decay);
+        self.ui.set_syndrm_step_perc2_tone(syndrm_step_perc2_tone);
+        self.ui.set_syndrm_step_perc2_drive(syndrm_step_perc2_drive);
+        self.ui.set_syndrm_step_perc2_level(syndrm_step_perc2_level);
+        self.ui
+            .set_syndrm_step_perc2_filter_type(syndrm_step_perc2_filter_type as i32);
+        self.ui
+            .set_syndrm_step_perc2_filter_cutoff(syndrm_step_perc2_filter_cutoff);
+        self.ui
+            .set_syndrm_step_perc2_filter_resonance(syndrm_step_perc2_filter_resonance);
+        self.ui.set_syndrm_step_perc2_retrig(syndrm_step_perc2_retrig);
+        self.ui
+            .set_syndrm_step_perc2_retrig_division(syndrm_step_perc2_retrig_division_index);
+        self.ui.set_syndrm_step_crash_pitch(syndrm_step_crash_pitch);
+        self.ui.set_syndrm_step_crash_decay(syndrm_step_crash_decay);
+        self.ui.set_syndrm_step_crash_tone(syndrm_step_crash_tone);
+        self.ui.set_syndrm_step_crash_drive(syndrm_step_crash_drive);
+        self.ui.set_syndrm_step_crash_level(syndrm_step_crash_level);
+        self.ui
+            .set_syndrm_step_crash_filter_type(syndrm_step_crash_filter_type as i32);
+        self.ui
+            .set_syndrm_step_crash_filter_cutoff(syndrm_step_crash_filter_cutoff);
+        self.ui
+            .set_syndrm_step_crash_filter_resonance(syndrm_step_crash_filter_resonance);
+        self.ui.set_syndrm_step_crash_retrig(syndrm_step_crash_retrig);
+        self.ui
+            .set_syndrm_step_crash_retrig_division(syndrm_step_crash_retrig_division_index);
+        self.ui.set_syndrm_step_samp_pitch(syndrm_step_samp_pitch);
+        self.ui.set_syndrm_step_samp_attack(syndrm_step_samp_attack);
+        self.ui.set_syndrm_step_samp_decay(syndrm_step_samp_decay);
+        self.ui.set_syndrm_step_samp_drive(syndrm_step_samp_drive);
+        self.ui.set_syndrm_step_samp_level(syndrm_step_samp_level);
+        self.ui.set_syndrm_step_samp_filter_type(syndrm_step_samp_filter_type as i32);
+        self.ui
+            .set_syndrm_step_samp_filter_cutoff(syndrm_step_samp_filter_cutoff);
+        self.ui
+            .set_syndrm_step_samp_filter_resonance(syndrm_step_samp_filter_resonance);
+        self.ui.set_syndrm_step_samp_retrig(syndrm_step_samp_retrig);
+        self.ui
+            .set_syndrm_step_samp_retrig_division(syndrm_step_samp_retrig_division_index);
 
         self.ui.set_void_base_freq(void_base_freq);
         self.ui.set_void_chaos_depth(void_chaos_depth);
@@ -10625,6 +17218,23 @@ impl BaseWindowHandler for SlintWindow {
                         }
                     }
                 }
+                SampleDialogAction::LoadSyndrmSample {
+                    track_idx,
+                    channel_idx,
+                    path,
+                } => {
+                    if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+                        if let Some(path) = path {
+                            self.async_executor.execute_background(
+                                TLBX1Task::LoadSyndrmSample {
+                                    track_idx,
+                                    channel_idx,
+                                    path,
+                                },
+                            );
+                        }
+                    }
+                }
             }
         }
         while let Ok(action) = self.project_dialog_rx.try_recv() {
@@ -10668,9 +17278,10 @@ impl BaseWindowHandler for SlintWindow {
             }
         }
         platform::update_timers_and_animations();
-        self.update_ui_state();
         self.slint_window.request_redraw();
         self.render();
+        self.update_ui_state();
+        self.slint_window.request_redraw();
     }
 
     fn on_event(&mut self, _window: &mut BaseWindow, event: BaseEvent) -> BaseEventStatus {
@@ -11590,6 +18201,34 @@ fn initialize_ui(
                 .add_filter("All Files", &["*"])
                 .pick_file();
             let _ = sample_dialog_tx.send(SampleDialogAction::Load { track_idx, path });
+        });
+    });
+
+    let params_samp_load = Arc::clone(params);
+    let sample_dialog_tx_syndrm = sample_dialog_tx.clone();
+    ui.on_samp_load(move |index| {
+        let track_idx = params_samp_load.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index.max(0) as usize;
+        if track_idx >= NUM_TRACKS || channel_idx >= SYNDRM_SAMPLE_CHANNELS {
+            return;
+        }
+        let sample_dialog_tx = sample_dialog_tx_syndrm.clone();
+        spawn_with_stack(move || {
+            let path = rfd::FileDialog::new()
+                .add_filter(
+                    "Media",
+                    &[
+                        "wav", "flac", "mp3", "ogg", "aif", "aiff", "m4a", "mp4", "mov", "mkv",
+                        "avi", "webm", "m4v",
+                    ],
+                )
+                .add_filter("All Files", &["*"])
+                .pick_file();
+            let _ = sample_dialog_tx.send(SampleDialogAction::LoadSyndrmSample {
+                track_idx,
+                channel_idx,
+                path,
+            });
         });
     });
 
@@ -13587,6 +20226,41 @@ fn initialize_ui(
 
     let tracks_kick = Arc::clone(tracks);
     let params_kick = Arc::clone(params);
+    ui.on_kick_cut_group_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_kick[track_idx]
+                .kick_cut_group
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_cut_by_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_kick[track_idx]
+                .kick_cut_by
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_prob_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_prob
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
     ui.on_kick_sequencer_grid_toggled(move |step| {
         let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -13710,6 +20384,41 @@ fn initialize_ui(
 
     let tracks_snare = Arc::clone(tracks);
     let params_snare = Arc::clone(params);
+    ui.on_snare_cut_group_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_snare[track_idx]
+                .snare_cut_group
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_cut_by_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_snare[track_idx]
+                .snare_cut_by
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
+    ui.on_snare_prob_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_prob
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
     ui.on_snare_sequencer_grid_toggled(move |step| {
         let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -13717,6 +20426,900 @@ fn initialize_ui(
             if index < SYNDRM_STEPS {
                 let current = tracks_snare[track_idx].snare_sequencer_grid[index].load(Ordering::Relaxed);
                 tracks_snare[track_idx].snare_sequencer_grid[index].store(!current, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_pitch_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_pitch
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_decay_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_decay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_tone_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_tone
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_drive_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_drive
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_level_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_level
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_filter_type_changed(move |index| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_filter_type
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_filter_cutoff_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_filter_cutoff
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_filter_resonance_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_filter_resonance
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_filter_pre_drive_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_filter_pre_drive
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_cut_group_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_clap[track_idx]
+                .clap_cut_group
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_cut_by_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_clap[track_idx]
+                .clap_cut_by
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_prob_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_prob
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_sequencer_grid_toggled(move |step| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let index = step as usize;
+            if index < SYNDRM_STEPS {
+                let current = tracks_clap[track_idx].clap_sequencer_grid[index].load(Ordering::Relaxed);
+                tracks_clap[track_idx].clap_sequencer_grid[index].store(!current, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_pitch_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_pitch
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_decay_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_decay
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_tone_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_tone
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_drive_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_drive
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_level_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_level
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_filter_type_changed(move |index| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_filter_type
+                .store(index as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_filter_cutoff_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_filter_cutoff
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_filter_resonance_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_filter_resonance
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_filter_pre_drive_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_filter_pre_drive
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_cut_group_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_hat[track_idx]
+                .hat_cut_group
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_cut_by_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_hat[track_idx]
+                .hat_cut_by
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_prob_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_prob
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
+    ui.on_hat_sequencer_grid_toggled(move |step| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let index = step as usize;
+            if index < SYNDRM_STEPS {
+                let current = tracks_hat[track_idx].hat_sequencer_grid[index].load(Ordering::Relaxed);
+                tracks_hat[track_idx].hat_sequencer_grid[index].store(!current, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_pitch_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_pitch
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_decay_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_decay
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_tone_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_tone
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_drive_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_drive
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_level_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_level
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_filter_type_changed(move |index| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_filter_type
+                .store(index.clamp(0, 3) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_filter_cutoff_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_filter_cutoff
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_filter_resonance_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_filter_resonance
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_filter_pre_drive_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_filter_pre_drive
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_cut_group_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_perc1[track_idx]
+                .perc1_cut_group
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_cut_by_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_perc1[track_idx]
+                .perc1_cut_by
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_prob_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_prob
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_sequencer_grid_toggled(move |step| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let index = step as usize;
+            if index < SYNDRM_STEPS {
+                let current =
+                    tracks_perc1[track_idx].perc1_sequencer_grid[index].load(Ordering::Relaxed);
+                tracks_perc1[track_idx]
+                    .perc1_sequencer_grid[index]
+                    .store(!current, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_pitch_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_pitch
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_decay_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_decay
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_tone_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_tone
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_drive_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_drive
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_level_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_level
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_filter_type_changed(move |index| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_filter_type
+                .store(index.clamp(0, 3) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_filter_cutoff_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_filter_cutoff
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_filter_resonance_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_filter_resonance
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_filter_pre_drive_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_filter_pre_drive
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_cut_group_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_perc2[track_idx]
+                .perc2_cut_group
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_cut_by_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_perc2[track_idx]
+                .perc2_cut_by
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_prob_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_prob
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
+    ui.on_perc2_sequencer_grid_toggled(move |step| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let index = step as usize;
+            if index < SYNDRM_STEPS {
+                let current =
+                    tracks_perc2[track_idx].perc2_sequencer_grid[index].load(Ordering::Relaxed);
+                tracks_perc2[track_idx]
+                    .perc2_sequencer_grid[index]
+                    .store(!current, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_pitch_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_pitch
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_decay_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_decay
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_tone_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_tone
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_drive_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_drive
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_level_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_level
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_filter_type_changed(move |index| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_filter_type
+                .store(index.clamp(0, 3) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_filter_cutoff_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_filter_cutoff
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_filter_resonance_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_filter_resonance
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_filter_pre_drive_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_filter_pre_drive
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_cut_group_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_crash[track_idx]
+                .crash_cut_group
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_cut_by_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_crash[track_idx]
+                .crash_cut_by
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_prob_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_prob
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
+    ui.on_crash_sequencer_grid_toggled(move |step| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let index = step as usize;
+            if index < SYNDRM_STEPS {
+                let current =
+                    tracks_crash[track_idx].crash_sequencer_grid[index].load(Ordering::Relaxed);
+                tracks_crash[track_idx]
+                    .crash_sequencer_grid[index]
+                    .store(!current, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_pitch_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_pitch[channel_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_attack_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_attack[channel_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_decay_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_decay[channel_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_drive_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_drive[channel_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_level_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_level[channel_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_filter_type_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_filter_type[channel_idx]
+                .store(value.clamp(0, 3) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_filter_cutoff_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_filter_cutoff[channel_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_filter_resonance_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_filter_resonance[channel_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_filter_pre_drive_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_filter_pre_drive[channel_idx]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_cut_group_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_samp[track_idx].samp_cut_group[channel_idx]
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_cut_by_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            let clamped = value.round().clamp(0.0, 14.0) as u32;
+            tracks_samp[track_idx].samp_cut_by[channel_idx]
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_prob_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_prob[channel_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_sequencer_grid_toggled(move |index, step| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            let step_idx = step as usize;
+            if step_idx < SYNDRM_STEPS {
+                let current = tracks_samp[track_idx].samp_sequencer_grid[channel_idx][step_idx]
+                    .load(Ordering::Relaxed);
+                tracks_samp[track_idx].samp_sequencer_grid[channel_idx][step_idx]
+                    .store(!current, Ordering::Relaxed);
             }
         }
     });
@@ -13770,6 +21373,17 @@ fn initialize_ui(
 
     let tracks_syndrm = Arc::clone(tracks);
     let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_randomize_amount_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_syndrm[track_idx]
+                .syndrm_randomize_amount
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
     ui.on_syndrm_step_override_changed(move |value| {
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -13784,6 +21398,27 @@ fn initialize_ui(
                 } else if edit_lane == 1 {
                     tracks_syndrm[track_idx].snare_step_override_enabled[edit_step]
                         .store(value, Ordering::Relaxed);
+                } else if edit_lane == 2 {
+                    tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                        .store(value, Ordering::Relaxed);
+                } else if edit_lane == 3 {
+                    tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                        .store(value, Ordering::Relaxed);
+                } else if edit_lane == 4 {
+                    tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                        .store(value, Ordering::Relaxed);
+                } else if edit_lane == 5 {
+                    tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                        .store(value, Ordering::Relaxed);
+                } else if edit_lane == 6 {
+                    tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                        .store(value, Ordering::Relaxed);
+                } else {
+                    let channel_idx = edit_lane.saturating_sub(7) as usize;
+                    if channel_idx < SYNDRM_SAMPLE_CHANNELS {
+                        tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                            .store(value, Ordering::Relaxed);
+                    }
                 }
             }
         }
@@ -13911,6 +21546,39 @@ fn initialize_ui(
             if edit_step < SYNDRM_STEPS {
                 tracks_syndrm[track_idx].kick_step_filter_resonance[edit_step]
                     .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].kick_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_retrig_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].kick_step_retrig_enabled[edit_step]
+                    .store(value, Ordering::Relaxed);
+                tracks_syndrm[track_idx].kick_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_kick_retrig_division_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let division = if index <= 0 { 2 } else { 4 };
+                tracks_syndrm[track_idx].kick_step_retrig_division[edit_step]
+                    .store(division as u32, Ordering::Relaxed);
                 tracks_syndrm[track_idx].kick_step_override_enabled[edit_step]
                     .store(true, Ordering::Relaxed);
             }
@@ -14063,14 +21731,1066 @@ fn initialize_ui(
 
     let tracks_syndrm = Arc::clone(tracks);
     let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_retrig_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].snare_step_retrig_enabled[edit_step]
+                    .store(value, Ordering::Relaxed);
+                tracks_syndrm[track_idx].snare_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_snare_retrig_division_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let division = if index <= 0 { 2 } else { 4 };
+                tracks_syndrm[track_idx].snare_step_retrig_division[edit_step]
+                    .store(division as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].snare_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_pitch_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].clap_step_pitch[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_decay_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].clap_step_decay[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_tone_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].clap_step_tone[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_drive_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].clap_step_drive[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_level_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].clap_step_level[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_filter_type_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].clap_step_filter_type[edit_step]
+                    .store(index as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_filter_cutoff_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].clap_step_filter_cutoff[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_filter_resonance_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].clap_step_filter_resonance[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_retrig_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].clap_step_retrig_enabled[edit_step]
+                    .store(value, Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_clap_retrig_division_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let division = if index <= 0 { 2 } else { 4 };
+                tracks_syndrm[track_idx].clap_step_retrig_division[edit_step]
+                    .store(division as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].clap_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_pitch_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].hat_step_pitch[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_decay_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].hat_step_decay[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_tone_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].hat_step_tone[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_drive_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].hat_step_drive[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_level_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].hat_step_level[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_filter_type_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].hat_step_filter_type[edit_step]
+                    .store(index as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_filter_cutoff_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].hat_step_filter_cutoff[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_filter_resonance_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].hat_step_filter_resonance[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_retrig_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].hat_step_retrig_enabled[edit_step]
+                    .store(value, Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_hat_retrig_division_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let division = if index <= 0 { 2 } else { 4 };
+                tracks_syndrm[track_idx].hat_step_retrig_division[edit_step]
+                    .store(division as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].hat_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_pitch_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc1_step_pitch[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_decay_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc1_step_decay[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_tone_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc1_step_tone[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_drive_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc1_step_drive[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_level_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc1_step_level[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_filter_type_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc1_step_filter_type[edit_step]
+                    .store(index.clamp(0, 3) as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_filter_cutoff_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc1_step_filter_cutoff[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_filter_resonance_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc1_step_filter_resonance[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_retrig_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc1_step_retrig_enabled[edit_step]
+                    .store(value, Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc1_retrig_division_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let division = if index <= 0 { 2 } else { 4 };
+                tracks_syndrm[track_idx].perc1_step_retrig_division[edit_step]
+                    .store(division as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc1_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_pitch_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc2_step_pitch[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_decay_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc2_step_decay[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_tone_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc2_step_tone[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_drive_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc2_step_drive[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_level_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc2_step_level[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_filter_type_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc2_step_filter_type[edit_step]
+                    .store(index.clamp(0, 3) as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_filter_cutoff_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc2_step_filter_cutoff[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_filter_resonance_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc2_step_filter_resonance[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_retrig_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].perc2_step_retrig_enabled[edit_step]
+                    .store(value, Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_perc2_retrig_division_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let division = if index <= 0 { 2 } else { 4 };
+                tracks_syndrm[track_idx].perc2_step_retrig_division[edit_step]
+                    .store(division as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].perc2_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_pitch_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].crash_step_pitch[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_decay_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].crash_step_decay[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_tone_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].crash_step_tone[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_drive_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].crash_step_drive[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_level_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].crash_step_level[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_filter_type_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].crash_step_filter_type[edit_step]
+                    .store(index.clamp(0, 3) as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_filter_cutoff_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].crash_step_filter_cutoff[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_filter_resonance_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].crash_step_filter_resonance[edit_step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_retrig_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                tracks_syndrm[track_idx].crash_step_retrig_enabled[edit_step]
+                    .store(value, Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_crash_retrig_division_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let division = if index <= 0 { 2 } else { 4 };
+                tracks_syndrm[track_idx].crash_step_retrig_division[edit_step]
+                    .store(division as u32, Ordering::Relaxed);
+                tracks_syndrm[track_idx].crash_step_override_enabled[edit_step]
+                    .store(true, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_pitch_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    tracks_syndrm[track_idx].samp_step_pitch[channel_idx][edit_step]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_attack_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    tracks_syndrm[track_idx].samp_step_attack[channel_idx][edit_step]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_decay_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    tracks_syndrm[track_idx].samp_step_decay[channel_idx][edit_step]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_drive_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    tracks_syndrm[track_idx].samp_step_drive[channel_idx][edit_step]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_level_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    tracks_syndrm[track_idx].samp_step_level[channel_idx][edit_step]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_filter_type_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    tracks_syndrm[track_idx].samp_step_filter_type[channel_idx][edit_step]
+                        .store(index.clamp(0, 3) as u32, Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_filter_cutoff_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    tracks_syndrm[track_idx].samp_step_filter_cutoff[channel_idx][edit_step]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_filter_resonance_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    tracks_syndrm[track_idx].samp_step_filter_resonance[channel_idx][edit_step]
+                        .store(value.to_bits(), Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_retrig_changed(move |value| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    tracks_syndrm[track_idx].samp_step_retrig_enabled[channel_idx][edit_step]
+                        .store(value, Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_step_samp_retrig_division_changed(move |index| {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let edit_step =
+                tracks_syndrm[track_idx].syndrm_edit_step.load(Ordering::Relaxed) as usize;
+            if edit_step < SYNDRM_STEPS {
+                let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed) as usize;
+                if lane >= 7 && lane < SYNDRM_LANES {
+                    let channel_idx = lane - 7;
+                    let division = if index <= 0 { 2 } else { 4 };
+                    tracks_syndrm[track_idx].samp_step_retrig_division[channel_idx][edit_step]
+                        .store(division as u32, Ordering::Relaxed);
+                    tracks_syndrm[track_idx].samp_step_override_enabled[channel_idx][edit_step]
+                        .store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
     ui.on_syndrm_randomize_steps_lane_page(move || {
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let lanes = syndrm_lane_mask(lane);
             let start = page * SYNDRM_PAGE_SIZE;
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, false);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                lanes,
+                start,
+                SYNDRM_PAGE_SIZE,
+                true,
+                false,
+                amount,
+            );
         }
     });
 
@@ -14080,8 +22800,21 @@ fn initialize_ui(
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, false);
+            let lanes = syndrm_lane_mask(lane);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                lanes,
+                0,
+                SYNDRM_STEPS,
+                true,
+                false,
+                amount,
+            );
         }
     });
 
@@ -14092,7 +22825,20 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let start = page * SYNDRM_PAGE_SIZE;
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, true, false);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                start,
+                SYNDRM_PAGE_SIZE,
+                true,
+                false,
+                amount,
+            );
         }
     });
 
@@ -14101,7 +22847,20 @@ fn initialize_ui(
     ui.on_syndrm_randomize_steps_all_all(move || {
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, true, false);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                0,
+                SYNDRM_STEPS,
+                true,
+                false,
+                amount,
+            );
         }
     });
 
@@ -14112,9 +22871,22 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let lanes = syndrm_lane_mask(lane);
             let start = page * SYNDRM_PAGE_SIZE;
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, false, true);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                lanes,
+                start,
+                SYNDRM_PAGE_SIZE,
+                false,
+                true,
+                amount,
+            );
         }
     });
 
@@ -14124,8 +22896,21 @@ fn initialize_ui(
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, false, true);
+            let lanes = syndrm_lane_mask(lane);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                lanes,
+                0,
+                SYNDRM_STEPS,
+                false,
+                true,
+                amount,
+            );
         }
     });
 
@@ -14136,7 +22921,20 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let start = page * SYNDRM_PAGE_SIZE;
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, false, true);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                start,
+                SYNDRM_PAGE_SIZE,
+                false,
+                true,
+                amount,
+            );
         }
     });
 
@@ -14145,7 +22943,20 @@ fn initialize_ui(
     ui.on_syndrm_randomize_params_all_all(move || {
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, false, true);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                0,
+                SYNDRM_STEPS,
+                false,
+                true,
+                amount,
+            );
         }
     });
 
@@ -14156,9 +22967,22 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let lanes = syndrm_lane_mask(lane);
             let start = page * SYNDRM_PAGE_SIZE;
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, true);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                lanes,
+                start,
+                SYNDRM_PAGE_SIZE,
+                true,
+                true,
+                amount,
+            );
         }
     });
 
@@ -14168,8 +22992,21 @@ fn initialize_ui(
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, true);
+            let lanes = syndrm_lane_mask(lane);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                lanes,
+                0,
+                SYNDRM_STEPS,
+                true,
+                true,
+                amount,
+            );
         }
     });
 
@@ -14180,7 +23017,20 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let start = page * SYNDRM_PAGE_SIZE;
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, true, true);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                start,
+                SYNDRM_PAGE_SIZE,
+                true,
+                true,
+                amount,
+            );
         }
     });
 
@@ -14189,7 +23039,20 @@ fn initialize_ui(
     ui.on_syndrm_randomize_both_all_all(move || {
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
-            syndrm_randomize_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, true, true);
+            let amount = f32::from_bits(
+                tracks_syndrm[track_idx]
+                    .syndrm_randomize_amount
+                    .load(Ordering::Relaxed),
+            );
+            syndrm_randomize_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                0,
+                SYNDRM_STEPS,
+                true,
+                true,
+                amount,
+            );
         }
     });
 
@@ -14200,7 +23063,7 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let lanes = syndrm_lane_mask(lane);
             let start = page * SYNDRM_PAGE_SIZE;
             syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, false);
         }
@@ -14212,7 +23075,7 @@ fn initialize_ui(
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let lanes = syndrm_lane_mask(lane);
             syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, false);
         }
     });
@@ -14224,7 +23087,14 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let start = page * SYNDRM_PAGE_SIZE;
-            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, true, false);
+            syndrm_clear_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                start,
+                SYNDRM_PAGE_SIZE,
+                true,
+                false,
+            );
         }
     });
 
@@ -14233,7 +23103,14 @@ fn initialize_ui(
     ui.on_syndrm_clear_steps_all_all(move || {
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
-            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, true, false);
+            syndrm_clear_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                0,
+                SYNDRM_STEPS,
+                true,
+                false,
+            );
         }
     });
 
@@ -14244,7 +23121,7 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let lanes = syndrm_lane_mask(lane);
             let start = page * SYNDRM_PAGE_SIZE;
             syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, false, true);
         }
@@ -14256,7 +23133,7 @@ fn initialize_ui(
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let lanes = syndrm_lane_mask(lane);
             syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, false, true);
         }
     });
@@ -14268,7 +23145,14 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let start = page * SYNDRM_PAGE_SIZE;
-            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, false, true);
+            syndrm_clear_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                start,
+                SYNDRM_PAGE_SIZE,
+                false,
+                true,
+            );
         }
     });
 
@@ -14277,7 +23161,14 @@ fn initialize_ui(
     ui.on_syndrm_clear_params_all_all(move || {
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
-            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, false, true);
+            syndrm_clear_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                0,
+                SYNDRM_STEPS,
+                false,
+                true,
+            );
         }
     });
 
@@ -14288,7 +23179,7 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let lanes = syndrm_lane_mask(lane);
             let start = page * SYNDRM_PAGE_SIZE;
             syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, true);
         }
@@ -14300,7 +23191,7 @@ fn initialize_ui(
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
-            let lanes = if lane == 0 { 0b01 } else { 0b10 };
+            let lanes = syndrm_lane_mask(lane);
             syndrm_clear_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, true);
         }
     });
@@ -14312,7 +23203,14 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
             let start = page * SYNDRM_PAGE_SIZE;
-            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, start, SYNDRM_PAGE_SIZE, true, true);
+            syndrm_clear_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                start,
+                SYNDRM_PAGE_SIZE,
+                true,
+                true,
+            );
         }
     });
 
@@ -14321,7 +23219,205 @@ fn initialize_ui(
     ui.on_syndrm_clear_both_all_all(move || {
         let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
-            syndrm_clear_apply(&tracks_syndrm[track_idx], 0b11, 0, SYNDRM_STEPS, true, true);
+            syndrm_clear_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                0,
+                SYNDRM_STEPS,
+                true,
+                true,
+            );
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_steps_lane_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = syndrm_lane_mask(lane);
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_copy_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, false, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_steps_lane_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = syndrm_lane_mask(lane);
+            syndrm_copy_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, false, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_steps_all_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_copy_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                start,
+                SYNDRM_PAGE_SIZE,
+                true,
+                false,
+                true,
+            );
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_steps_all_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            syndrm_copy_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                0,
+                SYNDRM_STEPS,
+                true,
+                false,
+                false,
+            );
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_params_lane_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = syndrm_lane_mask(lane);
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_copy_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, false, true, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_params_lane_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = syndrm_lane_mask(lane);
+            syndrm_copy_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, false, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_params_all_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_copy_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                start,
+                SYNDRM_PAGE_SIZE,
+                false,
+                true,
+                true,
+            );
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_params_all_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            syndrm_copy_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                0,
+                SYNDRM_STEPS,
+                false,
+                true,
+                false,
+            );
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_both_lane_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = syndrm_lane_mask(lane);
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_copy_apply(&tracks_syndrm[track_idx], lanes, start, SYNDRM_PAGE_SIZE, true, true, true);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_both_lane_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            let lanes = syndrm_lane_mask(lane);
+            syndrm_copy_apply(&tracks_syndrm[track_idx], lanes, 0, SYNDRM_STEPS, true, true, false);
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_both_all_page(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let start = page * SYNDRM_PAGE_SIZE;
+            syndrm_copy_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                start,
+                SYNDRM_PAGE_SIZE,
+                true,
+                true,
+                true,
+            );
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_copy_both_all_all(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            syndrm_copy_apply(
+                &tracks_syndrm[track_idx],
+                syndrm_all_lanes_mask(),
+                0,
+                SYNDRM_STEPS,
+                true,
+                true,
+                false,
+            );
+        }
+    });
+
+    let tracks_syndrm = Arc::clone(tracks);
+    let params_syndrm = Arc::clone(params);
+    ui.on_syndrm_paste(move || {
+        let track_idx = params_syndrm.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_syndrm[track_idx].syndrm_page.load(Ordering::Relaxed) as usize;
+            let lane = tracks_syndrm[track_idx].syndrm_edit_lane.load(Ordering::Relaxed);
+            syndrm_paste_apply(&tracks_syndrm[track_idx], lane, page);
         }
     });
 
@@ -14512,6 +23608,11 @@ enum ProjectDialogAction {
 enum SampleDialogAction {
     Load { track_idx: usize, path: Option<PathBuf> },
     Save { track_idx: usize, path: PathBuf },
+    LoadSyndrmSample {
+        track_idx: usize,
+        channel_idx: usize,
+        path: Option<PathBuf>,
+    },
 }
 
 struct SlintPlatform {

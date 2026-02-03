@@ -1,0 +1,27 @@
+{
+  "id": "user/void-seed-engine",
+  "title": "Void Seed Engine",
+  "description": "Void Seed is a generative drone synthesizer designed for creating evolving textures, dark atmospheres, and chaotic soundscapes.",
+  "source": "@site/docs/user/void-seed-engine.md",
+  "sourceDirName": "user",
+  "slug": "/user/void-seed-engine",
+  "permalink": "/docs/user/void-seed-engine",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 13,
+  "frontMatter": {
+    "title": "Void Seed Engine",
+    "sidebar_position": 13
+  },
+  "sidebar": "userSidebar",
+  "previous": {
+    "title": "Tape-Deck Engine",
+    "permalink": "/docs/user/tape-deck-engine"
+  },
+  "next": {
+    "title": "G8 Device",
+    "permalink": "/docs/user/g8-device"
+  }
+}

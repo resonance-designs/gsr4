@@ -1,8 +1,12 @@
 {
   "name": "tlbx-1",
-  "version": "0.1.21",
+  "version": "0.1.22",
+  "license": "Proprietary",
   "private": true,
   "description": "Project tooling for docs and scripting",
+  "dependencies": {
+    "tone": "^14.8.49"
+  },
   "scripts": {
     "tlbx:dev": "cargo run",
     "tlbx:dev-opengl": "cargo run --features renderer-opengl",
@@ -19,8 +23,6 @@
     "docs:install": "npm --prefix docs-site install",
     "docs:dev": "npm --prefix docs-site run start",
     "docs:build": "npm --prefix docs-site run build",
-    "docs:serve": "npm --prefix docs-site run serve",
-    "storybook": "npm --prefix docs-site run storybook",
-    "storybook:build": "npm --prefix docs-site run storybook:build"
+    "docs:serve": "npm --prefix docs-site run serve"
   }
 }

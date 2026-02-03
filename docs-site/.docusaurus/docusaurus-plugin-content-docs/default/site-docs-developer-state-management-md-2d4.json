@@ -1,0 +1,23 @@
+{
+  "id": "developer/state-management",
+  "title": "State & Synchronization",
+  "description": "Managing state between a high-priority audio thread and a low-priority UI thread is one of the most critical aspects of TLBX-1.",
+  "source": "@site/docs/developer/state-management.md",
+  "sourceDirName": "developer",
+  "slug": "/developer/state-management",
+  "permalink": "/docs/developer/state-management",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 5,
+  "frontMatter": {
+    "title": "State & Synchronization",
+    "sidebar_position": 5
+  },
+  "sidebar": "devSidebar",
+  "previous": {
+    "title": "UI System",
+    "permalink": "/docs/developer/ui-system"
+  }
+}

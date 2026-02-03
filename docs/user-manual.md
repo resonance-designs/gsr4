@@ -5,7 +5,7 @@ sidebar_position: 3
 
 # User Manual
 
-This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
+This manual covers the current TLBX-1 workflow.
 
 ## Transport
 
@@ -20,67 +20,26 @@ This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
 ## Tracks
 
 - Use the Track 1–4 buttons to select the active track.
-- Each track can load a sample and run the Tape engine + downstream devices (Mosaic, Ring, G8, Texture, Reflect), or load Animate/SynDRM/Void Seed.
+- Each track can load a primary **Engine** and run a chain of **Downstream Devices**.
 
-## Tape Engine
+## Engines
 
-- Load the Tape engine per track via the Engine selector + Load Engine.
-- Use the **Audition** button for momentary playback of the selected track.
-- Use Tape controls for speed/tempo/loop/start/length/x‑fade/rotate and tape actions (reverse, freeze, keylock, monitor, overdub).
-- Experimental: Tape engine can load video files and display playback in place of the waveform (audio still drives playback).
+TLBX-1 features several specialized engines that serve as the primary sound sources:
 
-## Animate Engine
+- **[Tape-Deck Engine](./tape-deck-engine.md)**: A sample-based tape-deck simulator with looping and recording.
+- **[Animate Engine](./animate-engine.md)**: A 4-slot vector synthesizer with wavetables and samples.
+- **[SynDRM Engine](./syndrm-engine.md)**: A multi-channel drum synth and sequencer.
+- **[Void Seed Engine](./void-seed-engine.md)**: A generative drone and texture synthesizer.
 
-- Load the Animate engine per track via the Engine selector + Load Engine.
-- Animate displays its own slot controls, X‑Y pad, and chromatic keybed when loaded.
+## Downstream Devices
 
-## SynDRM Engine
+Each track features a chain of downstream devices for further processing:
 
-- Load the SynDRM engine per track via the Engine selector + Load Engine.
-- SynDRM includes kick + snare synth lanes with Pitch/Tone, Decay, Attack, Drive, and Level controls.
-- Use the sequencer lanes to toggle steps on/off per track.
-
-## Void Seed Engine
-
-- Load the Void Seed engine per track via the Engine selector + Load Engine.
-- **Chaos / Entropy Map**: An X-Y pad that controls **Chaos Depth** (X-axis) and **Entropy** (Y-axis) for the generative swarm.
-- **Pan / Width Map**: An X-Y pad that controls stereo panning (X-axis) and width (Y-axis).
-- **Gain**: A vertical slider to control the final output level of the drone.
-- **Open/Close Void**: A large toggle button to activate or deactivate the engine output. **Close Decay** controls how long the signal fades out after closing.
-- **Base Freq**: Sets the fundamental frequency of the oscillator swarm.
-- **Mod Rate**: Adjusts the rate of the internal chaotic LFOs.
-- **Feedback & Diffusion**: Controls the feedback and wetness of the integrated delay and diffusion network.
-- **Moog Filter + Drive**: Cutoff/Resonance plus Drive, with a PRE/POST toggle to place the filter before or after the drive.
-- Void Seed can also feed the downstream devices (Mosaic, Ring, G8, Texture, Reflect) per track.
-
-## Mosaic Device (Granulator)
-
-- Mosaic runs after Tape and draws from a 4‑second buffer.
-- Mosaic ON/BYPASS toggles granular processing per track.
-- Pitch is bipolar (±36 semitones); contour is bipolar; other params are unipolar.
-- Rate is BPM‑synced in the first half (1, 1/2, 1/4, 1/8, 1/16) and free‑rate past the midpoint.
-- All Mosaic parameters are smoothed to avoid zipper noise.
-
-## Ring Device (Silk)
-
-- Ring runs after Tape and Mosaic in the per‑track device chain.
-- Ring provides filter/modulation processing per track with a wet/dry mix.
-
-## G8 Device (Trance Gate)
-
-- G8 runs after Ring at the end of the per‑track device chain.
-- 32 steps per track, with a selectable rate division (1, 1/2, 1/4, 1/8, 1/16).
-- Each step sets a level from 0%–100% and gates the signal to that level.
-
-## Texture Device (Deform)
-
-- Texture runs after the earlier downstream devices and adds drive/compress/crush/tilt/noise with a gate and wet/dry mix.
-- Use Gate to clamp noise and Wet to blend the processed signal back into the track.
-
-## Reflect Device (Vast)
-
-- Reflect runs after Texture and adds delay + reverb.
-- Time can be free or BPM‑synced via division lists; Clear resets the buffers and Freeze holds the tail.
+- **[Granulator](./granulator.md)**: Rhythmic and atmospheric granular processing.
+- **[Silk](./silk-device.md)**: Resonator, filter bank, and harmonic shaper.
+- **[G8 (Trance Gate)](./g8-device.md)**: 32-step rhythmic volume gating.
+- **[Texture](./texture-device.md)**: Saturation, compression, and lo-fi degradation.
+- **[Reflect](./reflect-device.md)**: High-quality delay and algorithmic reverb.
 
 ## Audio Settings (Standalone)
 
@@ -89,7 +48,7 @@ This manual covers the current TLBX-1 workflow as of the latest Mosaic update.
 
 ## Project Management
 
-- Save Project / Load Project stores per‑track sample paths and loop/mix state.
+- Save Project / Load Project stores per-track sample paths and loop/mix state.
 - Use the Browser panel to browse project files and sample libraries.
 - Add Library Folder registers a folder in the browser list.
 

@@ -1,0 +1,23 @@
+{
+  "id": "developer/onboarding",
+  "title": "Developer Onboarding",
+  "description": "Welcome! This guide covers the minimum steps to build and run TLBX-1 locally.",
+  "source": "@site/docs/developer/onboarding.md",
+  "sourceDirName": "developer",
+  "slug": "/developer/onboarding",
+  "permalink": "/docs/developer/onboarding",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 1,
+  "frontMatter": {
+    "title": "Developer Onboarding",
+    "sidebar_position": 1
+  },
+  "sidebar": "devSidebar",
+  "next": {
+    "title": "Architecture Overview",
+    "permalink": "/docs/developer/architecture"
+  }
+}

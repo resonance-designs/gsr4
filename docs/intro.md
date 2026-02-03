@@ -7,9 +7,26 @@ sidebar_position: 1
 
 This section is the home for Markdown-based developer docs. Add new files under `docs/` and they will appear in the Docusaurus site automatically.
 
-Recent UI changes include extracted engine components (`src/ui/engines/tape_engine.slint`, `src/ui/engines/animate_engine.slint`, `src/ui/engines/syndrm_engine.slint`, `src/ui/engines/void_seed_engine.slint`), lo-fi knob rendering modes for performance-sensitive layouts, a custom `RDSComboBox` in `src/ui/components/selectors.slint`, a project/library browser panel, new shared inputs (XY pad, numeric keypad, keybed), and visualizer components grouped in `src/ui/components/viz.slint`.
+TLBX-1 is built using Rust and the Slint UI framework.
 
-The UI uses the [Resonance Designs Slint UI Component Kit](https://github.com/resonance-designs/rds-slint-ui-kit) for shared controls and theming.
+## UI Architecture
+
+The project-specific UI is divided into several specialized engine and device components:
+
+- **Engines**: Located in `src/ui/engines/` (`tape_engine.slint`, `animate_engine.slint`, `syndrm_engine.slint`, `void_seed_engine.slint`).
+- **Devices**: Located in `src/ui/devices/` (`granulator_device.slint`, `silk_device.slint`, `g8_device.slint`, `texture_device.slint`, `reflect_device.slint`).
+
+## RDS UI Component Kit
+
+TLBX-1 utilizes the **[Resonance Designs Slint UI Component Kit](https://github.com/resonance-designs/rds-slint-ui-kit)** for its reusable UI building blocks. Everything located in `src/ui/components/` is part of this toolkit, including:
+
+- **Shared Controls**: Knobs, buttons, selectors, and sliders.
+- **Visualizers**: Core visualization and metering components (`src/ui/components/viz.slint`).
+- **Theming**: Shared color palettes and layout constants.
+
+For documentation regarding these reusable components, please refer to the official RDS documentation.
+
+The user documentation has been expanded to include detailed guides for each engine and device. See the **[User Manual](./user-manual.md)** for an overview and links to specific component documentation.
 
 ## Build the Docs Site
 

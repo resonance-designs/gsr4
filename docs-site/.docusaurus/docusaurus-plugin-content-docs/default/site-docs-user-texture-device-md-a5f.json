@@ -1,0 +1,23 @@
+{
+  "id": "user/texture-device",
+  "title": "Texture Device",
+  "description": "The Texture device provides a suite of saturation, compression, and lo-fi degradation tools to add character and \"grit\" to your sound.",
+  "source": "@site/docs/user/texture-device.md",
+  "sourceDirName": "user",
+  "slug": "/user/texture-device",
+  "permalink": "/docs/user/texture-device",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 24,
+  "frontMatter": {
+    "title": "Texture Device",
+    "sidebar_position": 24
+  },
+  "sidebar": "userSidebar",
+  "previous": {
+    "title": "Silk Device",
+    "permalink": "/docs/user/silk-device"
+  }
+}

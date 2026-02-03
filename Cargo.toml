@@ -1,7 +1,9 @@
 [package]
 name = "tlbx-1"
-version = "0.1.21"
+version = "0.2.0"
 edition = "2024"
+license = "Proprietary"
+publish = false
 
 [lib]
 name = "tlbx1_core"

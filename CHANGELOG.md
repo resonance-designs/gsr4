@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.1.22] - 2026-02-01
+
 ## [0.1.21] - 2026-02-01
 
 - SynDRM: tweaked step editor layout so Page/Step/Lane sit on one row, and Clear actions are always visible.

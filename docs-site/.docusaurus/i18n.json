@@ -13,8 +13,8 @@
       "calendar": "gregory",
       "path": "en",
       "translate": false,
-      "url": "https://grainrust.local",
-      "baseUrl": "/./"
+      "url": "https://tlbx-1.local",
+      "baseUrl": "/"
     }
   }
 }

@@ -1,0 +1,27 @@
+{
+  "id": "user/granulator",
+  "title": "Granulator Device",
+  "description": "The Granulator device is a post-engine granular processor fed by a 4-second buffer. It breaks the audio into small \"grains\" and recombines them to create textures, rhythmic patterns, and atmospheric effects.",
+  "source": "@site/docs/user/granulator.md",
+  "sourceDirName": "user",
+  "slug": "/user/granulator",
+  "permalink": "/docs/user/granulator",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 21,
+  "frontMatter": {
+    "title": "Granulator Device",
+    "sidebar_position": 21
+  },
+  "sidebar": "userSidebar",
+  "previous": {
+    "title": "G8 Device",
+    "permalink": "/docs/user/g8-device"
+  },
+  "next": {
+    "title": "Reflect Device",
+    "permalink": "/docs/user/reflect-device"
+  }
+}
