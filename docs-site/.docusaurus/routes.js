@@ -153,7 +153,11 @@ export default [
   },
   {
     path: '/',
+<<<<<<< HEAD
     component: ComponentCreator('/', 'fd5'),
+=======
+    component: ComponentCreator('/', '2e1'),
+>>>>>>> feature/syndrm-engine
     exact: true
   },
   {

@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.21
+ * Version: 0.1.22
  * Component: UI Definitions
  */
 
@@ -287,6 +287,9 @@ export component TLBX1UI inherits Window {
     in-out property <float> kick-filter-cutoff: 0.6;
     in-out property <float> kick-filter-resonance: 0.2;
     in-out property <bool> kick-filter-pre-drive: true;
+    in-out property <float> kick-cut-group: 0;
+    in-out property <float> kick-cut-by: 0;
+    in-out property <float> kick-prob: 1.0;
     in-out property <[bool]> kick-sequencer-grid;
     in property <int> kick-sequencer-current-step: -1;
     in-out property <float> snare-tone: 0.5;
@@ -299,13 +302,103 @@ export component TLBX1UI inherits Window {
     in-out property <float> snare-filter-cutoff: 0.6;
     in-out property <float> snare-filter-resonance: 0.2;
     in-out property <bool> snare-filter-pre-drive: true;
+    in-out property <float> snare-cut-group: 0;
+    in-out property <float> snare-cut-by: 0;
+    in-out property <float> snare-prob: 1.0;
     in-out property <[bool]> snare-sequencer-grid;
     in property <int> snare-sequencer-current-step: -1;
+    in-out property <float> clap-pitch: 0.5;
+    in-out property <float> clap-decay: 0.25;
+    in-out property <float> clap-tone: 0.5;
+    in-out property <float> clap-drive: 0.0;
+    in-out property <float> clap-level: 0.8;
+    in-out property <int> clap-filter-type: 0;
+    in-out property <float> clap-filter-cutoff: 0.6;
+    in-out property <float> clap-filter-resonance: 0.2;
+    in-out property <bool> clap-filter-pre-drive: true;
+    in-out property <float> clap-cut-group: 0;
+    in-out property <float> clap-cut-by: 0;
+    in-out property <float> clap-prob: 1.0;
+    in-out property <[bool]> clap-sequencer-grid;
+    in property <int> clap-sequencer-current-step: -1;
+    in-out property <float> hat-pitch: 0.5;
+    in-out property <float> hat-decay: 0.12;
+    in-out property <float> hat-tone: 0.5;
+    in-out property <float> hat-drive: 0.0;
+    in-out property <float> hat-level: 0.8;
+    in-out property <int> hat-filter-type: 0;
+    in-out property <float> hat-filter-cutoff: 0.7;
+    in-out property <float> hat-filter-resonance: 0.2;
+    in-out property <bool> hat-filter-pre-drive: true;
+    in-out property <float> hat-cut-group: 0;
+    in-out property <float> hat-cut-by: 0;
+    in-out property <float> hat-prob: 1.0;
+    in-out property <[bool]> hat-sequencer-grid;
+    in property <int> hat-sequencer-current-step: -1;
+    in-out property <float> perc1-pitch: 0.5;
+    in-out property <float> perc1-decay: 0.5;
+    in-out property <float> perc1-tone: 0.5;
+    in-out property <float> perc1-drive: 0.0;
+    in-out property <float> perc1-level: 0.8;
+    in-out property <int> perc1-filter-type: 0;
+    in-out property <float> perc1-filter-cutoff: 0.7;
+    in-out property <float> perc1-filter-resonance: 0.2;
+    in-out property <bool> perc1-filter-pre-drive: true;
+    in-out property <float> perc1-cut-group: 0;
+    in-out property <float> perc1-cut-by: 0;
+    in-out property <float> perc1-prob: 1.0;
+    in-out property <[bool]> perc1-sequencer-grid;
+    in property <int> perc1-sequencer-current-step: -1;
+    in-out property <float> perc2-pitch: 0.5;
+    in-out property <float> perc2-decay: 0.25;
+    in-out property <float> perc2-tone: 0.65;
+    in-out property <float> perc2-drive: 0.0;
+    in-out property <float> perc2-level: 0.8;
+    in-out property <int> perc2-filter-type: 0;
+    in-out property <float> perc2-filter-cutoff: 0.6;
+    in-out property <float> perc2-filter-resonance: 0.2;
+    in-out property <bool> perc2-filter-pre-drive: true;
+    in-out property <float> perc2-cut-group: 0;
+    in-out property <float> perc2-cut-by: 0;
+    in-out property <float> perc2-prob: 1.0;
+    in-out property <[bool]> perc2-sequencer-grid;
+    in property <int> perc2-sequencer-current-step: -1;
+    in-out property <float> crash-pitch: 0.7;
+    in-out property <float> crash-decay: 0.7;
+    in-out property <float> crash-tone: 0.5;
+    in-out property <float> crash-drive: 0.0;
+    in-out property <float> crash-level: 0.8;
+    in-out property <int> crash-filter-type: 1;
+    in-out property <float> crash-filter-cutoff: 1.0;
+    in-out property <float> crash-filter-resonance: 0.5;
+    in-out property <bool> crash-filter-pre-drive: true;
+    in-out property <float> crash-cut-group: 0;
+    in-out property <float> crash-cut-by: 0;
+    in-out property <float> crash-prob: 1.0;
+    in-out property <[bool]> crash-sequencer-grid;
+    in property <int> crash-sequencer-current-step: -1;
+    in property <[string]> samp-labels;
+    in property <[string]> samp-paths;
+    in-out property <[float]> samp-pitch;
+    in-out property <[float]> samp-attack;
+    in-out property <[float]> samp-decay;
+    in-out property <[float]> samp-drive;
+    in-out property <[float]> samp-level;
+    in-out property <[int]> samp-filter-type;
+    in-out property <[float]> samp-filter-cutoff;
+    in-out property <[float]> samp-filter-resonance;
+    in-out property <[bool]> samp-filter-pre-drive;
+    in-out property <[float]> samp-cut-group;
+    in-out property <[float]> samp-cut-by;
+    in-out property <[float]> samp-prob;
+    in-out property <[bool]> samp-sequencer-grid;
+    in property <[int]> samp-sequencer-current-step;
     in-out property <int> syndrm-page: 0;
     in-out property <int> syndrm-edit-lane: 0;
     in-out property <int> syndrm-edit-step: 0;
     in-out property <bool> syndrm-step-hold: false;
     in-out property <bool> syndrm-step-override: false;
+    in-out property <float> syndrm-randomize-amount: 1.0;
     in-out property <float> syndrm-step-kick-pitch: 0.5;
     in-out property <float> syndrm-step-kick-decay: 0.5;
     in-out property <float> syndrm-step-kick-attack: 0.0;
@@ -314,6 +407,8 @@ export component TLBX1UI inherits Window {
     in-out property <int> syndrm-step-kick-filter-type: 0;
     in-out property <float> syndrm-step-kick-filter-cutoff: 0.6;
     in-out property <float> syndrm-step-kick-filter-resonance: 0.2;
+    in-out property <bool> syndrm-step-kick-retrig: false;
+    in-out property <int> syndrm-step-kick-retrig-division: 0;
     in-out property <float> syndrm-step-snare-tone: 0.5;
     in-out property <float> syndrm-step-snare-decay: 0.4;
     in-out property <float> syndrm-step-snare-snappy: 0.6;
@@ -323,6 +418,68 @@ export component TLBX1UI inherits Window {
     in-out property <int> syndrm-step-snare-filter-type: 0;
     in-out property <float> syndrm-step-snare-filter-cutoff: 0.6;
     in-out property <float> syndrm-step-snare-filter-resonance: 0.2;
+    in-out property <bool> syndrm-step-snare-retrig: false;
+    in-out property <int> syndrm-step-snare-retrig-division: 0;
+    in-out property <float> syndrm-step-clap-pitch: 0.5;
+    in-out property <float> syndrm-step-clap-decay: 0.25;
+    in-out property <float> syndrm-step-clap-tone: 0.5;
+    in-out property <float> syndrm-step-clap-drive: 0.0;
+    in-out property <float> syndrm-step-clap-level: 0.8;
+    in-out property <int> syndrm-step-clap-filter-type: 0;
+    in-out property <float> syndrm-step-clap-filter-cutoff: 0.6;
+    in-out property <float> syndrm-step-clap-filter-resonance: 0.2;
+    in-out property <bool> syndrm-step-clap-retrig: false;
+    in-out property <int> syndrm-step-clap-retrig-division: 0;
+    in-out property <float> syndrm-step-hat-pitch: 0.5;
+    in-out property <float> syndrm-step-hat-decay: 0.12;
+    in-out property <float> syndrm-step-hat-tone: 0.5;
+    in-out property <float> syndrm-step-hat-drive: 0.0;
+    in-out property <float> syndrm-step-hat-level: 0.8;
+    in-out property <int> syndrm-step-hat-filter-type: 0;
+    in-out property <float> syndrm-step-hat-filter-cutoff: 0.7;
+    in-out property <float> syndrm-step-hat-filter-resonance: 0.2;
+    in-out property <bool> syndrm-step-hat-retrig: false;
+    in-out property <int> syndrm-step-hat-retrig-division: 0;
+    in-out property <float> syndrm-step-perc1-pitch: 0.5;
+    in-out property <float> syndrm-step-perc1-decay: 0.5;
+    in-out property <float> syndrm-step-perc1-tone: 0.5;
+    in-out property <float> syndrm-step-perc1-drive: 0.0;
+    in-out property <float> syndrm-step-perc1-level: 0.8;
+    in-out property <int> syndrm-step-perc1-filter-type: 0;
+    in-out property <float> syndrm-step-perc1-filter-cutoff: 0.7;
+    in-out property <float> syndrm-step-perc1-filter-resonance: 0.2;
+    in-out property <bool> syndrm-step-perc1-retrig: false;
+    in-out property <int> syndrm-step-perc1-retrig-division: 0;
+    in-out property <float> syndrm-step-perc2-pitch: 0.5;
+    in-out property <float> syndrm-step-perc2-decay: 0.25;
+    in-out property <float> syndrm-step-perc2-tone: 0.65;
+    in-out property <float> syndrm-step-perc2-drive: 0.0;
+    in-out property <float> syndrm-step-perc2-level: 0.8;
+    in-out property <int> syndrm-step-perc2-filter-type: 0;
+    in-out property <float> syndrm-step-perc2-filter-cutoff: 0.6;
+    in-out property <float> syndrm-step-perc2-filter-resonance: 0.2;
+    in-out property <bool> syndrm-step-perc2-retrig: false;
+    in-out property <int> syndrm-step-perc2-retrig-division: 0;
+    in-out property <float> syndrm-step-crash-pitch: 0.7;
+    in-out property <float> syndrm-step-crash-decay: 0.7;
+    in-out property <float> syndrm-step-crash-tone: 0.5;
+    in-out property <float> syndrm-step-crash-drive: 0.0;
+    in-out property <float> syndrm-step-crash-level: 0.8;
+    in-out property <int> syndrm-step-crash-filter-type: 1;
+    in-out property <float> syndrm-step-crash-filter-cutoff: 1.0;
+    in-out property <float> syndrm-step-crash-filter-resonance: 0.5;
+    in-out property <bool> syndrm-step-crash-retrig: false;
+    in-out property <int> syndrm-step-crash-retrig-division: 0;
+    in-out property <float> syndrm-step-samp-pitch: 0.5;
+    in-out property <float> syndrm-step-samp-attack: 0.0;
+    in-out property <float> syndrm-step-samp-decay: 0.5;
+    in-out property <float> syndrm-step-samp-drive: 0.0;
+    in-out property <float> syndrm-step-samp-level: 0.8;
+    in-out property <int> syndrm-step-samp-filter-type: 0;
+    in-out property <float> syndrm-step-samp-filter-cutoff: 0.7;
+    in-out property <float> syndrm-step-samp-filter-resonance: 0.2;
+    in-out property <bool> syndrm-step-samp-retrig: false;
+    in-out property <int> syndrm-step-samp-retrig-division: 0;
 
     // Void Seed Engine Properties
     in-out property <float> void-base-freq: 40.0;
@@ -571,6 +728,9 @@ export component TLBX1UI inherits Window {
     callback kick-filter-cutoff-changed(value: float);
     callback kick-filter-resonance-changed(value: float);
     callback kick-filter-pre-drive-changed(value: bool);
+    callback kick-cut-group-changed(value: float);
+    callback kick-cut-by-changed(value: float);
+    callback kick-prob-changed(value: float);
     callback kick-sequencer-grid-toggled(step: int);
     callback snare-tone-changed(value: float);
     callback snare-decay-changed(value: float);
@@ -582,12 +742,81 @@ export component TLBX1UI inherits Window {
     callback snare-filter-cutoff-changed(value: float);
     callback snare-filter-resonance-changed(value: float);
     callback snare-filter-pre-drive-changed(value: bool);
+    callback snare-cut-group-changed(value: float);
+    callback snare-cut-by-changed(value: float);
+    callback snare-prob-changed(value: float);
     callback snare-sequencer-grid-toggled(step: int);
+    callback clap-pitch-changed(value: float);
+    callback clap-decay-changed(value: float);
+    callback clap-tone-changed(value: float);
+    callback clap-drive-changed(value: float);
+    callback clap-level-changed(value: float);
+    callback clap-filter-type-changed(index: int);
+    callback clap-filter-cutoff-changed(value: float);
+    callback clap-filter-resonance-changed(value: float);
+    callback clap-filter-pre-drive-changed(value: bool);
+    callback clap-cut-group-changed(value: float);
+    callback clap-cut-by-changed(value: float);
+    callback clap-prob-changed(value: float);
+    callback clap-sequencer-grid-toggled(step: int);
+    callback hat-pitch-changed(value: float);
+    callback hat-decay-changed(value: float);
+    callback hat-tone-changed(value: float);
+    callback hat-drive-changed(value: float);
+    callback hat-level-changed(value: float);
+    callback hat-filter-type-changed(index: int);
+    callback hat-filter-cutoff-changed(value: float);
+    callback hat-filter-resonance-changed(value: float);
+    callback hat-filter-pre-drive-changed(value: bool);
+    callback hat-cut-group-changed(value: float);
+    callback hat-cut-by-changed(value: float);
+    callback hat-prob-changed(value: float);
+    callback hat-sequencer-grid-toggled(step: int);
+    callback perc1-pitch-changed(value: float);
+    callback perc1-decay-changed(value: float);
+    callback perc1-tone-changed(value: float);
+    callback perc1-drive-changed(value: float);
+    callback perc1-level-changed(value: float);
+    callback perc1-filter-type-changed(index: int);
+    callback perc1-filter-cutoff-changed(value: float);
+    callback perc1-filter-resonance-changed(value: float);
+    callback perc1-filter-pre-drive-changed(value: bool);
+    callback perc1-cut-group-changed(value: float);
+    callback perc1-cut-by-changed(value: float);
+    callback perc1-prob-changed(value: float);
+    callback perc1-sequencer-grid-toggled(step: int);
+    callback perc2-pitch-changed(value: float);
+    callback perc2-decay-changed(value: float);
+    callback perc2-tone-changed(value: float);
+    callback perc2-drive-changed(value: float);
+    callback perc2-level-changed(value: float);
+    callback perc2-filter-type-changed(index: int);
+    callback perc2-filter-cutoff-changed(value: float);
+    callback perc2-filter-resonance-changed(value: float);
+    callback perc2-filter-pre-drive-changed(value: bool);
+    callback perc2-cut-group-changed(value: float);
+    callback perc2-cut-by-changed(value: float);
+    callback perc2-prob-changed(value: float);
+    callback perc2-sequencer-grid-toggled(step: int);
+    callback crash-pitch-changed(value: float);
+    callback crash-decay-changed(value: float);
+    callback crash-tone-changed(value: float);
+    callback crash-drive-changed(value: float);
+    callback crash-level-changed(value: float);
+    callback crash-filter-type-changed(index: int);
+    callback crash-filter-cutoff-changed(value: float);
+    callback crash-filter-resonance-changed(value: float);
+    callback crash-filter-pre-drive-changed(value: bool);
+    callback crash-cut-group-changed(value: float);
+    callback crash-cut-by-changed(value: float);
+    callback crash-prob-changed(value: float);
+    callback crash-sequencer-grid-toggled(step: int);
     callback syndrm-page-changed(page: int);
     callback syndrm-edit-lane-changed(lane: int);
     callback syndrm-edit-step-changed(step: int);
     callback syndrm-step-hold-changed(value: bool);
     callback syndrm-step-override-changed(value: bool);
+    callback syndrm-randomize-amount-changed(value: float);
     callback syndrm-step-kick-pitch-changed(value: float);
     callback syndrm-step-kick-decay-changed(value: float);
     callback syndrm-step-kick-attack-changed(value: float);
@@ -596,6 +825,8 @@ export component TLBX1UI inherits Window {
     callback syndrm-step-kick-filter-type-changed(index: int);
     callback syndrm-step-kick-filter-cutoff-changed(value: float);
     callback syndrm-step-kick-filter-resonance-changed(value: float);
+    callback syndrm-step-kick-retrig-changed(value: bool);
+    callback syndrm-step-kick-retrig-division-changed(index: int);
     callback syndrm-step-snare-tone-changed(value: float);
     callback syndrm-step-snare-decay-changed(value: float);
     callback syndrm-step-snare-snappy-changed(value: float);
@@ -605,6 +836,82 @@ export component TLBX1UI inherits Window {
     callback syndrm-step-snare-filter-type-changed(index: int);
     callback syndrm-step-snare-filter-cutoff-changed(value: float);
     callback syndrm-step-snare-filter-resonance-changed(value: float);
+    callback syndrm-step-snare-retrig-changed(value: bool);
+    callback syndrm-step-snare-retrig-division-changed(index: int);
+    callback syndrm-step-clap-pitch-changed(value: float);
+    callback syndrm-step-clap-decay-changed(value: float);
+    callback syndrm-step-clap-tone-changed(value: float);
+    callback syndrm-step-clap-drive-changed(value: float);
+    callback syndrm-step-clap-level-changed(value: float);
+    callback syndrm-step-clap-filter-type-changed(index: int);
+    callback syndrm-step-clap-filter-cutoff-changed(value: float);
+    callback syndrm-step-clap-filter-resonance-changed(value: float);
+    callback syndrm-step-clap-retrig-changed(value: bool);
+    callback syndrm-step-clap-retrig-division-changed(index: int);
+    callback syndrm-step-hat-pitch-changed(value: float);
+    callback syndrm-step-hat-decay-changed(value: float);
+    callback syndrm-step-hat-tone-changed(value: float);
+    callback syndrm-step-hat-drive-changed(value: float);
+    callback syndrm-step-hat-level-changed(value: float);
+    callback syndrm-step-hat-filter-type-changed(index: int);
+    callback syndrm-step-hat-filter-cutoff-changed(value: float);
+    callback syndrm-step-hat-filter-resonance-changed(value: float);
+    callback syndrm-step-hat-retrig-changed(value: bool);
+    callback syndrm-step-hat-retrig-division-changed(index: int);
+    callback syndrm-step-perc1-pitch-changed(value: float);
+    callback syndrm-step-perc1-decay-changed(value: float);
+    callback syndrm-step-perc1-tone-changed(value: float);
+    callback syndrm-step-perc1-drive-changed(value: float);
+    callback syndrm-step-perc1-level-changed(value: float);
+    callback syndrm-step-perc1-filter-type-changed(index: int);
+    callback syndrm-step-perc1-filter-cutoff-changed(value: float);
+    callback syndrm-step-perc1-filter-resonance-changed(value: float);
+    callback syndrm-step-perc1-retrig-changed(value: bool);
+    callback syndrm-step-perc1-retrig-division-changed(index: int);
+    callback syndrm-step-perc2-pitch-changed(value: float);
+    callback syndrm-step-perc2-decay-changed(value: float);
+    callback syndrm-step-perc2-tone-changed(value: float);
+    callback syndrm-step-perc2-drive-changed(value: float);
+    callback syndrm-step-perc2-level-changed(value: float);
+    callback syndrm-step-perc2-filter-type-changed(index: int);
+    callback syndrm-step-perc2-filter-cutoff-changed(value: float);
+    callback syndrm-step-perc2-filter-resonance-changed(value: float);
+    callback syndrm-step-perc2-retrig-changed(value: bool);
+    callback syndrm-step-perc2-retrig-division-changed(index: int);
+    callback syndrm-step-crash-pitch-changed(value: float);
+    callback syndrm-step-crash-decay-changed(value: float);
+    callback syndrm-step-crash-tone-changed(value: float);
+    callback syndrm-step-crash-drive-changed(value: float);
+    callback syndrm-step-crash-level-changed(value: float);
+    callback syndrm-step-crash-filter-type-changed(index: int);
+    callback syndrm-step-crash-filter-cutoff-changed(value: float);
+    callback syndrm-step-crash-filter-resonance-changed(value: float);
+    callback syndrm-step-crash-retrig-changed(value: bool);
+    callback syndrm-step-crash-retrig-division-changed(index: int);
+    callback samp-load(index: int);
+    callback samp-pitch-changed(index: int, value: float);
+    callback samp-attack-changed(index: int, value: float);
+    callback samp-decay-changed(index: int, value: float);
+    callback samp-drive-changed(index: int, value: float);
+    callback samp-level-changed(index: int, value: float);
+    callback samp-filter-type-changed(index: int, value: int);
+    callback samp-filter-cutoff-changed(index: int, value: float);
+    callback samp-filter-resonance-changed(index: int, value: float);
+    callback samp-filter-pre-drive-changed(index: int, value: bool);
+    callback samp-cut-group-changed(index: int, value: float);
+    callback samp-cut-by-changed(index: int, value: float);
+    callback samp-prob-changed(index: int, value: float);
+    callback samp-sequencer-grid-toggled(index: int, step: int);
+    callback syndrm-step-samp-pitch-changed(value: float);
+    callback syndrm-step-samp-attack-changed(value: float);
+    callback syndrm-step-samp-decay-changed(value: float);
+    callback syndrm-step-samp-drive-changed(value: float);
+    callback syndrm-step-samp-level-changed(value: float);
+    callback syndrm-step-samp-filter-type-changed(index: int);
+    callback syndrm-step-samp-filter-cutoff-changed(value: float);
+    callback syndrm-step-samp-filter-resonance-changed(value: float);
+    callback syndrm-step-samp-retrig-changed(value: bool);
+    callback syndrm-step-samp-retrig-division-changed(index: int);
     callback syndrm-randomize-steps-lane-page();
     callback syndrm-randomize-steps-lane-all();
     callback syndrm-randomize-steps-all-page();
@@ -629,6 +936,19 @@ export component TLBX1UI inherits Window {
     callback syndrm-clear-both-lane-all();
     callback syndrm-clear-both-all-page();
     callback syndrm-clear-both-all-all();
+    callback syndrm-copy-steps-lane-page();
+    callback syndrm-copy-steps-lane-all();
+    callback syndrm-copy-steps-all-page();
+    callback syndrm-copy-steps-all-all();
+    callback syndrm-copy-params-lane-page();
+    callback syndrm-copy-params-lane-all();
+    callback syndrm-copy-params-all-page();
+    callback syndrm-copy-params-all-all();
+    callback syndrm-copy-both-lane-page();
+    callback syndrm-copy-both-lane-all();
+    callback syndrm-copy-both-all-page();
+    callback syndrm-copy-both-all-all();
+    callback syndrm-paste();
 
     // Void Seed Engine Callbacks
     callback void-base-freq-changed(value: float);
@@ -648,7 +968,7 @@ export component TLBX1UI inherits Window {
     callback toggle-void();
 
     Rectangle {
-        width: 1200px;
+        width: 1280px;
         background: #0f0f12;
 
         // Left Border
@@ -700,7 +1020,7 @@ export component TLBX1UI inherits Window {
                 height: parent.height;
 
                 VerticalLayout {
-                    width: Math.min(parent.width, 1200px);
+                    width: Math.min(parent.width, 1280px);
                     x: (parent.width - self.width) / 2;
                     padding: 12px;
                     spacing: 8px;
@@ -774,7 +1094,7 @@ export component TLBX1UI inherits Window {
                                 }
                                 // Engine Title
                                 Rectangle {
-                                    width: 824px;
+                                    width: 904px;
                                     height: 30px;
                                     background: #E06E26;
                                     border-top-left-radius: 6px;
@@ -1560,6 +1880,9 @@ export component TLBX1UI inherits Window {
                                             kick-filter-cutoff <=> root.kick-filter-cutoff;
                                             kick-filter-resonance <=> root.kick-filter-resonance;
                                             kick-filter-pre-drive <=> root.kick-filter-pre-drive;
+                                            kick-cut-group <=> root.kick-cut-group;
+                                            kick-cut-by <=> root.kick-cut-by;
+                                            kick-prob <=> root.kick-prob;
                                             kick-sequencer-grid <=> root.kick-sequencer-grid;
                                             kick-sequencer-current-step: root.kick-sequencer-current-step;
                                             snare-tone <=> root.snare-tone;
@@ -1572,13 +1895,103 @@ export component TLBX1UI inherits Window {
                                             snare-filter-cutoff <=> root.snare-filter-cutoff;
                                             snare-filter-resonance <=> root.snare-filter-resonance;
                                             snare-filter-pre-drive <=> root.snare-filter-pre-drive;
+                                            snare-cut-group <=> root.snare-cut-group;
+                                            snare-cut-by <=> root.snare-cut-by;
+                                            snare-prob <=> root.snare-prob;
                                             snare-sequencer-grid <=> root.snare-sequencer-grid;
                                             snare-sequencer-current-step: root.snare-sequencer-current-step;
+                                            clap-pitch <=> root.clap-pitch;
+                                            clap-decay <=> root.clap-decay;
+                                            clap-tone <=> root.clap-tone;
+                                            clap-drive <=> root.clap-drive;
+                                            clap-level <=> root.clap-level;
+                                            clap-filter-type <=> root.clap-filter-type;
+                                            clap-filter-cutoff <=> root.clap-filter-cutoff;
+                                            clap-filter-resonance <=> root.clap-filter-resonance;
+                                            clap-filter-pre-drive <=> root.clap-filter-pre-drive;
+                                            clap-cut-group <=> root.clap-cut-group;
+                                            clap-cut-by <=> root.clap-cut-by;
+                                            clap-prob <=> root.clap-prob;
+                                            clap-sequencer-grid <=> root.clap-sequencer-grid;
+                                            clap-sequencer-current-step: root.clap-sequencer-current-step;
+                                            hat-pitch <=> root.hat-pitch;
+                                            hat-decay <=> root.hat-decay;
+                                            hat-tone <=> root.hat-tone;
+                                            hat-drive <=> root.hat-drive;
+                                            hat-level <=> root.hat-level;
+                                            hat-filter-type <=> root.hat-filter-type;
+                                            hat-filter-cutoff <=> root.hat-filter-cutoff;
+                                            hat-filter-resonance <=> root.hat-filter-resonance;
+                                            hat-filter-pre-drive <=> root.hat-filter-pre-drive;
+                                            hat-cut-group <=> root.hat-cut-group;
+                                            hat-cut-by <=> root.hat-cut-by;
+                                            hat-prob <=> root.hat-prob;
+                                            hat-sequencer-grid <=> root.hat-sequencer-grid;
+                                            hat-sequencer-current-step: root.hat-sequencer-current-step;
+                                            perc1-pitch <=> root.perc1-pitch;
+                                            perc1-decay <=> root.perc1-decay;
+                                            perc1-tone <=> root.perc1-tone;
+                                            perc1-drive <=> root.perc1-drive;
+                                            perc1-level <=> root.perc1-level;
+                                            perc1-filter-type <=> root.perc1-filter-type;
+                                            perc1-filter-cutoff <=> root.perc1-filter-cutoff;
+                                            perc1-filter-resonance <=> root.perc1-filter-resonance;
+                                            perc1-filter-pre-drive <=> root.perc1-filter-pre-drive;
+                                            perc1-cut-group <=> root.perc1-cut-group;
+                                            perc1-cut-by <=> root.perc1-cut-by;
+                                            perc1-prob <=> root.perc1-prob;
+                                            perc1-sequencer-grid <=> root.perc1-sequencer-grid;
+                                            perc1-sequencer-current-step: root.perc1-sequencer-current-step;
+                                            perc2-pitch <=> root.perc2-pitch;
+                                            perc2-decay <=> root.perc2-decay;
+                                            perc2-tone <=> root.perc2-tone;
+                                            perc2-drive <=> root.perc2-drive;
+                                            perc2-level <=> root.perc2-level;
+                                            perc2-filter-type <=> root.perc2-filter-type;
+                                            perc2-filter-cutoff <=> root.perc2-filter-cutoff;
+                                            perc2-filter-resonance <=> root.perc2-filter-resonance;
+                                            perc2-filter-pre-drive <=> root.perc2-filter-pre-drive;
+                                            perc2-cut-group <=> root.perc2-cut-group;
+                                            perc2-cut-by <=> root.perc2-cut-by;
+                                            perc2-prob <=> root.perc2-prob;
+                                            perc2-sequencer-grid <=> root.perc2-sequencer-grid;
+                                            perc2-sequencer-current-step: root.perc2-sequencer-current-step;
+                                            crash-pitch <=> root.crash-pitch;
+                                            crash-decay <=> root.crash-decay;
+                                            crash-tone <=> root.crash-tone;
+                                            crash-drive <=> root.crash-drive;
+                                            crash-level <=> root.crash-level;
+                                            crash-filter-type <=> root.crash-filter-type;
+                                            crash-filter-cutoff <=> root.crash-filter-cutoff;
+                                            crash-filter-resonance <=> root.crash-filter-resonance;
+                                            crash-filter-pre-drive <=> root.crash-filter-pre-drive;
+                                            crash-cut-group <=> root.crash-cut-group;
+                                            crash-cut-by <=> root.crash-cut-by;
+                                            crash-prob <=> root.crash-prob;
+                                            crash-sequencer-grid <=> root.crash-sequencer-grid;
+                                            crash-sequencer-current-step: root.crash-sequencer-current-step;
+                                            samp-labels: root.samp-labels;
+                                            samp-paths: root.samp-paths;
+                                            samp-pitch <=> root.samp-pitch;
+                                            samp-attack <=> root.samp-attack;
+                                            samp-decay <=> root.samp-decay;
+                                            samp-drive <=> root.samp-drive;
+                                            samp-level <=> root.samp-level;
+                                            samp-filter-type <=> root.samp-filter-type;
+                                            samp-filter-cutoff <=> root.samp-filter-cutoff;
+                                            samp-filter-resonance <=> root.samp-filter-resonance;
+                                            samp-filter-pre-drive <=> root.samp-filter-pre-drive;
+                                            samp-cut-group <=> root.samp-cut-group;
+                                            samp-cut-by <=> root.samp-cut-by;
+                                            samp-prob <=> root.samp-prob;
+                                            samp-sequencer-grid <=> root.samp-sequencer-grid;
+                                            samp-sequencer-current-step: root.samp-sequencer-current-step;
                                             syndrm-page <=> root.syndrm-page;
                                             syndrm-edit-lane <=> root.syndrm-edit-lane;
                                             syndrm-edit-step <=> root.syndrm-edit-step;
                                             syndrm-step-hold <=> root.syndrm-step-hold;
                                             syndrm-step-override <=> root.syndrm-step-override;
+                                            syndrm-randomize-amount <=> root.syndrm-randomize-amount;
                                             syndrm-step-kick-pitch <=> root.syndrm-step-kick-pitch;
                                             syndrm-step-kick-decay <=> root.syndrm-step-kick-decay;
                                             syndrm-step-kick-attack <=> root.syndrm-step-kick-attack;
@@ -1587,6 +2000,8 @@ export component TLBX1UI inherits Window {
                                             syndrm-step-kick-filter-type <=> root.syndrm-step-kick-filter-type;
                                             syndrm-step-kick-filter-cutoff <=> root.syndrm-step-kick-filter-cutoff;
                                             syndrm-step-kick-filter-resonance <=> root.syndrm-step-kick-filter-resonance;
+                                            syndrm-step-kick-retrig <=> root.syndrm-step-kick-retrig;
+                                            syndrm-step-kick-retrig-division <=> root.syndrm-step-kick-retrig-division;
                                             syndrm-step-snare-tone <=> root.syndrm-step-snare-tone;
                                             syndrm-step-snare-decay <=> root.syndrm-step-snare-decay;
                                             syndrm-step-snare-snappy <=> root.syndrm-step-snare-snappy;
@@ -1596,6 +2011,68 @@ export component TLBX1UI inherits Window {
                                             syndrm-step-snare-filter-type <=> root.syndrm-step-snare-filter-type;
                                             syndrm-step-snare-filter-cutoff <=> root.syndrm-step-snare-filter-cutoff;
                                             syndrm-step-snare-filter-resonance <=> root.syndrm-step-snare-filter-resonance;
+                                            syndrm-step-snare-retrig <=> root.syndrm-step-snare-retrig;
+                                            syndrm-step-snare-retrig-division <=> root.syndrm-step-snare-retrig-division;
+                                            syndrm-step-clap-pitch <=> root.syndrm-step-clap-pitch;
+                                            syndrm-step-clap-decay <=> root.syndrm-step-clap-decay;
+                                            syndrm-step-clap-tone <=> root.syndrm-step-clap-tone;
+                                            syndrm-step-clap-drive <=> root.syndrm-step-clap-drive;
+                                            syndrm-step-clap-level <=> root.syndrm-step-clap-level;
+                                            syndrm-step-clap-filter-type <=> root.syndrm-step-clap-filter-type;
+                                            syndrm-step-clap-filter-cutoff <=> root.syndrm-step-clap-filter-cutoff;
+                                            syndrm-step-clap-filter-resonance <=> root.syndrm-step-clap-filter-resonance;
+                                            syndrm-step-clap-retrig <=> root.syndrm-step-clap-retrig;
+                                            syndrm-step-clap-retrig-division <=> root.syndrm-step-clap-retrig-division;
+                                            syndrm-step-hat-pitch <=> root.syndrm-step-hat-pitch;
+                                            syndrm-step-hat-decay <=> root.syndrm-step-hat-decay;
+                                            syndrm-step-hat-tone <=> root.syndrm-step-hat-tone;
+                                            syndrm-step-hat-drive <=> root.syndrm-step-hat-drive;
+                                            syndrm-step-hat-level <=> root.syndrm-step-hat-level;
+                                            syndrm-step-hat-filter-type <=> root.syndrm-step-hat-filter-type;
+                                            syndrm-step-hat-filter-cutoff <=> root.syndrm-step-hat-filter-cutoff;
+                                            syndrm-step-hat-filter-resonance <=> root.syndrm-step-hat-filter-resonance;
+                                            syndrm-step-hat-retrig <=> root.syndrm-step-hat-retrig;
+                                            syndrm-step-hat-retrig-division <=> root.syndrm-step-hat-retrig-division;
+                                            syndrm-step-perc1-pitch <=> root.syndrm-step-perc1-pitch;
+                                            syndrm-step-perc1-decay <=> root.syndrm-step-perc1-decay;
+                                            syndrm-step-perc1-tone <=> root.syndrm-step-perc1-tone;
+                                            syndrm-step-perc1-drive <=> root.syndrm-step-perc1-drive;
+                                            syndrm-step-perc1-level <=> root.syndrm-step-perc1-level;
+                                            syndrm-step-perc1-filter-type <=> root.syndrm-step-perc1-filter-type;
+                                            syndrm-step-perc1-filter-cutoff <=> root.syndrm-step-perc1-filter-cutoff;
+                                            syndrm-step-perc1-filter-resonance <=> root.syndrm-step-perc1-filter-resonance;
+                                            syndrm-step-perc1-retrig <=> root.syndrm-step-perc1-retrig;
+                                            syndrm-step-perc1-retrig-division <=> root.syndrm-step-perc1-retrig-division;
+                                            syndrm-step-perc2-pitch <=> root.syndrm-step-perc2-pitch;
+                                            syndrm-step-perc2-decay <=> root.syndrm-step-perc2-decay;
+                                            syndrm-step-perc2-tone <=> root.syndrm-step-perc2-tone;
+                                            syndrm-step-perc2-drive <=> root.syndrm-step-perc2-drive;
+                                            syndrm-step-perc2-level <=> root.syndrm-step-perc2-level;
+                                            syndrm-step-perc2-filter-type <=> root.syndrm-step-perc2-filter-type;
+                                            syndrm-step-perc2-filter-cutoff <=> root.syndrm-step-perc2-filter-cutoff;
+                                            syndrm-step-perc2-filter-resonance <=> root.syndrm-step-perc2-filter-resonance;
+                                            syndrm-step-perc2-retrig <=> root.syndrm-step-perc2-retrig;
+                                            syndrm-step-perc2-retrig-division <=> root.syndrm-step-perc2-retrig-division;
+                                            syndrm-step-crash-pitch <=> root.syndrm-step-crash-pitch;
+                                            syndrm-step-crash-decay <=> root.syndrm-step-crash-decay;
+                                            syndrm-step-crash-tone <=> root.syndrm-step-crash-tone;
+                                            syndrm-step-crash-drive <=> root.syndrm-step-crash-drive;
+                                            syndrm-step-crash-level <=> root.syndrm-step-crash-level;
+                                            syndrm-step-crash-filter-type <=> root.syndrm-step-crash-filter-type;
+                                            syndrm-step-crash-filter-cutoff <=> root.syndrm-step-crash-filter-cutoff;
+                                            syndrm-step-crash-filter-resonance <=> root.syndrm-step-crash-filter-resonance;
+                                            syndrm-step-crash-retrig <=> root.syndrm-step-crash-retrig;
+                                            syndrm-step-crash-retrig-division <=> root.syndrm-step-crash-retrig-division;
+                                            syndrm-step-samp-pitch <=> root.syndrm-step-samp-pitch;
+                                            syndrm-step-samp-attack <=> root.syndrm-step-samp-attack;
+                                            syndrm-step-samp-decay <=> root.syndrm-step-samp-decay;
+                                            syndrm-step-samp-drive <=> root.syndrm-step-samp-drive;
+                                            syndrm-step-samp-level <=> root.syndrm-step-samp-level;
+                                            syndrm-step-samp-filter-type <=> root.syndrm-step-samp-filter-type;
+                                            syndrm-step-samp-filter-cutoff <=> root.syndrm-step-samp-filter-cutoff;
+                                            syndrm-step-samp-filter-resonance <=> root.syndrm-step-samp-filter-resonance;
+                                            syndrm-step-samp-retrig <=> root.syndrm-step-samp-retrig;
+                                            syndrm-step-samp-retrig-division <=> root.syndrm-step-samp-retrig-division;
                                             mosaic-enabled <=> root.mosaic-enabled;
                                             mosaic-loop-lock <=> root.mosaic-loop-lock;
                                             mosaic-pitch <=> root.mosaic-pitch;
@@ -1662,6 +2139,9 @@ export component TLBX1UI inherits Window {
                                             kick-filter-cutoff-changed(value) => { root.kick-filter-cutoff-changed(value); }
                                             kick-filter-resonance-changed(value) => { root.kick-filter-resonance-changed(value); }
                                             kick-filter-pre-drive-changed(value) => { root.kick-filter-pre-drive-changed(value); }
+                                            kick-cut-group-changed(value) => { root.kick-cut-group-changed(value); }
+                                            kick-cut-by-changed(value) => { root.kick-cut-by-changed(value); }
+                                            kick-prob-changed(value) => { root.kick-prob-changed(value); }
                                             kick-sequencer-grid-toggled(step) => { root.kick-sequencer-grid-toggled(step); }
                                             snare-tone-changed(value) => { root.snare-tone-changed(value); }
                                             snare-decay-changed(value) => { root.snare-decay-changed(value); }
@@ -1673,12 +2153,95 @@ export component TLBX1UI inherits Window {
                                             snare-filter-cutoff-changed(value) => { root.snare-filter-cutoff-changed(value); }
                                             snare-filter-resonance-changed(value) => { root.snare-filter-resonance-changed(value); }
                                             snare-filter-pre-drive-changed(value) => { root.snare-filter-pre-drive-changed(value); }
+                                            snare-cut-group-changed(value) => { root.snare-cut-group-changed(value); }
+                                            snare-cut-by-changed(value) => { root.snare-cut-by-changed(value); }
+                                            snare-prob-changed(value) => { root.snare-prob-changed(value); }
                                             snare-sequencer-grid-toggled(step) => { root.snare-sequencer-grid-toggled(step); }
+                                            clap-pitch-changed(value) => { root.clap-pitch-changed(value); }
+                                            clap-decay-changed(value) => { root.clap-decay-changed(value); }
+                                            clap-tone-changed(value) => { root.clap-tone-changed(value); }
+                                            clap-drive-changed(value) => { root.clap-drive-changed(value); }
+                                            clap-level-changed(value) => { root.clap-level-changed(value); }
+                                            clap-filter-type-changed(index) => { root.clap-filter-type-changed(index); }
+                                            clap-filter-cutoff-changed(value) => { root.clap-filter-cutoff-changed(value); }
+                                            clap-filter-resonance-changed(value) => { root.clap-filter-resonance-changed(value); }
+                                            clap-filter-pre-drive-changed(value) => { root.clap-filter-pre-drive-changed(value); }
+                                            clap-cut-group-changed(value) => { root.clap-cut-group-changed(value); }
+                                            clap-cut-by-changed(value) => { root.clap-cut-by-changed(value); }
+                                            clap-prob-changed(value) => { root.clap-prob-changed(value); }
+                                            clap-sequencer-grid-toggled(step) => { root.clap-sequencer-grid-toggled(step); }
+                                            hat-pitch-changed(value) => { root.hat-pitch-changed(value); }
+                                            hat-decay-changed(value) => { root.hat-decay-changed(value); }
+                                            hat-tone-changed(value) => { root.hat-tone-changed(value); }
+                                            hat-drive-changed(value) => { root.hat-drive-changed(value); }
+                                            hat-level-changed(value) => { root.hat-level-changed(value); }
+                                            hat-filter-type-changed(index) => { root.hat-filter-type-changed(index); }
+                                            hat-filter-cutoff-changed(value) => { root.hat-filter-cutoff-changed(value); }
+                                            hat-filter-resonance-changed(value) => { root.hat-filter-resonance-changed(value); }
+                                            hat-filter-pre-drive-changed(value) => { root.hat-filter-pre-drive-changed(value); }
+                                            hat-cut-group-changed(value) => { root.hat-cut-group-changed(value); }
+                                            hat-cut-by-changed(value) => { root.hat-cut-by-changed(value); }
+                                            hat-prob-changed(value) => { root.hat-prob-changed(value); }
+                                            hat-sequencer-grid-toggled(step) => { root.hat-sequencer-grid-toggled(step); }
+                                            perc1-pitch-changed(value) => { root.perc1-pitch-changed(value); }
+                                            perc1-decay-changed(value) => { root.perc1-decay-changed(value); }
+                                            perc1-tone-changed(value) => { root.perc1-tone-changed(value); }
+                                            perc1-drive-changed(value) => { root.perc1-drive-changed(value); }
+                                            perc1-level-changed(value) => { root.perc1-level-changed(value); }
+                                            perc1-filter-type-changed(index) => { root.perc1-filter-type-changed(index); }
+                                            perc1-filter-cutoff-changed(value) => { root.perc1-filter-cutoff-changed(value); }
+                                            perc1-filter-resonance-changed(value) => { root.perc1-filter-resonance-changed(value); }
+                                            perc1-filter-pre-drive-changed(value) => { root.perc1-filter-pre-drive-changed(value); }
+                                            perc1-cut-group-changed(value) => { root.perc1-cut-group-changed(value); }
+                                            perc1-cut-by-changed(value) => { root.perc1-cut-by-changed(value); }
+                                            perc1-prob-changed(value) => { root.perc1-prob-changed(value); }
+                                            perc1-sequencer-grid-toggled(step) => { root.perc1-sequencer-grid-toggled(step); }
+                                            perc2-pitch-changed(value) => { root.perc2-pitch-changed(value); }
+                                            perc2-decay-changed(value) => { root.perc2-decay-changed(value); }
+                                            perc2-tone-changed(value) => { root.perc2-tone-changed(value); }
+                                            perc2-drive-changed(value) => { root.perc2-drive-changed(value); }
+                                            perc2-level-changed(value) => { root.perc2-level-changed(value); }
+                                            perc2-filter-type-changed(index) => { root.perc2-filter-type-changed(index); }
+                                            perc2-filter-cutoff-changed(value) => { root.perc2-filter-cutoff-changed(value); }
+                                            perc2-filter-resonance-changed(value) => { root.perc2-filter-resonance-changed(value); }
+                                            perc2-filter-pre-drive-changed(value) => { root.perc2-filter-pre-drive-changed(value); }
+                                            perc2-cut-group-changed(value) => { root.perc2-cut-group-changed(value); }
+                                            perc2-cut-by-changed(value) => { root.perc2-cut-by-changed(value); }
+                                            perc2-prob-changed(value) => { root.perc2-prob-changed(value); }
+                                            perc2-sequencer-grid-toggled(step) => { root.perc2-sequencer-grid-toggled(step); }
+                                            crash-pitch-changed(value) => { root.crash-pitch-changed(value); }
+                                            crash-decay-changed(value) => { root.crash-decay-changed(value); }
+                                            crash-tone-changed(value) => { root.crash-tone-changed(value); }
+                                            crash-drive-changed(value) => { root.crash-drive-changed(value); }
+                                            crash-level-changed(value) => { root.crash-level-changed(value); }
+                                            crash-filter-type-changed(index) => { root.crash-filter-type-changed(index); }
+                                            crash-filter-cutoff-changed(value) => { root.crash-filter-cutoff-changed(value); }
+                                            crash-filter-resonance-changed(value) => { root.crash-filter-resonance-changed(value); }
+                                            crash-cut-group-changed(value) => { root.crash-cut-group-changed(value); }
+                                            crash-cut-by-changed(value) => { root.crash-cut-by-changed(value); }
+                                            crash-prob-changed(value) => { root.crash-prob-changed(value); }
+                                            samp-load(index) => { root.samp-load(index); }
+                                            samp-pitch-changed(index, value) => { root.samp-pitch-changed(index, value); }
+                                            samp-attack-changed(index, value) => { root.samp-attack-changed(index, value); }
+                                            samp-decay-changed(index, value) => { root.samp-decay-changed(index, value); }
+                                            samp-drive-changed(index, value) => { root.samp-drive-changed(index, value); }
+                                            samp-level-changed(index, value) => { root.samp-level-changed(index, value); }
+                                            samp-filter-type-changed(index, value) => { root.samp-filter-type-changed(index, value); }
+                                            samp-filter-cutoff-changed(index, value) => { root.samp-filter-cutoff-changed(index, value); }
+                                            samp-filter-resonance-changed(index, value) => { root.samp-filter-resonance-changed(index, value); }
+                                            samp-filter-pre-drive-changed(index, value) => { root.samp-filter-pre-drive-changed(index, value); }
+                                            samp-cut-group-changed(index, value) => { root.samp-cut-group-changed(index, value); }
+                                            samp-cut-by-changed(index, value) => { root.samp-cut-by-changed(index, value); }
+                                            samp-prob-changed(index, value) => { root.samp-prob-changed(index, value); }
+                                            samp-sequencer-grid-toggled(index, step) => { root.samp-sequencer-grid-toggled(index, step); }
+                                            crash-filter-pre-drive-changed(value) => { root.crash-filter-pre-drive-changed(value); }
+                                            crash-sequencer-grid-toggled(step) => { root.crash-sequencer-grid-toggled(step); }
                                             syndrm-page-changed(page) => { root.syndrm-page-changed(page); }
                                             syndrm-edit-lane-changed(lane) => { root.syndrm-edit-lane-changed(lane); }
                                             syndrm-edit-step-changed(step) => { root.syndrm-edit-step-changed(step); }
                                             syndrm-step-hold-changed(value) => { root.syndrm-step-hold-changed(value); }
                                             syndrm-step-override-changed(value) => { root.syndrm-step-override-changed(value); }
+                                            syndrm-randomize-amount-changed(value) => { root.syndrm-randomize-amount-changed(value); }
                                             syndrm-step-kick-pitch-changed(value) => { root.syndrm-step-kick-pitch-changed(value); }
                                             syndrm-step-kick-decay-changed(value) => { root.syndrm-step-kick-decay-changed(value); }
                                             syndrm-step-kick-attack-changed(value) => { root.syndrm-step-kick-attack-changed(value); }
@@ -1687,6 +2250,8 @@ export component TLBX1UI inherits Window {
                                             syndrm-step-kick-filter-type-changed(index) => { root.syndrm-step-kick-filter-type-changed(index); }
                                             syndrm-step-kick-filter-cutoff-changed(value) => { root.syndrm-step-kick-filter-cutoff-changed(value); }
                                             syndrm-step-kick-filter-resonance-changed(value) => { root.syndrm-step-kick-filter-resonance-changed(value); }
+                                            syndrm-step-kick-retrig-changed(value) => { root.syndrm-step-kick-retrig-changed(value); }
+                                            syndrm-step-kick-retrig-division-changed(index) => { root.syndrm-step-kick-retrig-division-changed(index); }
                                             syndrm-step-snare-tone-changed(value) => { root.syndrm-step-snare-tone-changed(value); }
                                             syndrm-step-snare-decay-changed(value) => { root.syndrm-step-snare-decay-changed(value); }
                                             syndrm-step-snare-snappy-changed(value) => { root.syndrm-step-snare-snappy-changed(value); }
@@ -1696,6 +2261,68 @@ export component TLBX1UI inherits Window {
                                             syndrm-step-snare-filter-type-changed(index) => { root.syndrm-step-snare-filter-type-changed(index); }
                                             syndrm-step-snare-filter-cutoff-changed(value) => { root.syndrm-step-snare-filter-cutoff-changed(value); }
                                             syndrm-step-snare-filter-resonance-changed(value) => { root.syndrm-step-snare-filter-resonance-changed(value); }
+                                            syndrm-step-snare-retrig-changed(value) => { root.syndrm-step-snare-retrig-changed(value); }
+                                            syndrm-step-snare-retrig-division-changed(index) => { root.syndrm-step-snare-retrig-division-changed(index); }
+                                            syndrm-step-clap-pitch-changed(value) => { root.syndrm-step-clap-pitch-changed(value); }
+                                            syndrm-step-clap-decay-changed(value) => { root.syndrm-step-clap-decay-changed(value); }
+                                            syndrm-step-clap-tone-changed(value) => { root.syndrm-step-clap-tone-changed(value); }
+                                            syndrm-step-clap-drive-changed(value) => { root.syndrm-step-clap-drive-changed(value); }
+                                            syndrm-step-clap-level-changed(value) => { root.syndrm-step-clap-level-changed(value); }
+                                            syndrm-step-clap-filter-type-changed(index) => { root.syndrm-step-clap-filter-type-changed(index); }
+                                            syndrm-step-clap-filter-cutoff-changed(value) => { root.syndrm-step-clap-filter-cutoff-changed(value); }
+                                            syndrm-step-clap-filter-resonance-changed(value) => { root.syndrm-step-clap-filter-resonance-changed(value); }
+                                            syndrm-step-clap-retrig-changed(value) => { root.syndrm-step-clap-retrig-changed(value); }
+                                            syndrm-step-clap-retrig-division-changed(index) => { root.syndrm-step-clap-retrig-division-changed(index); }
+                                            syndrm-step-hat-pitch-changed(value) => { root.syndrm-step-hat-pitch-changed(value); }
+                                            syndrm-step-hat-decay-changed(value) => { root.syndrm-step-hat-decay-changed(value); }
+                                            syndrm-step-hat-tone-changed(value) => { root.syndrm-step-hat-tone-changed(value); }
+                                            syndrm-step-hat-drive-changed(value) => { root.syndrm-step-hat-drive-changed(value); }
+                                            syndrm-step-hat-level-changed(value) => { root.syndrm-step-hat-level-changed(value); }
+                                            syndrm-step-hat-filter-type-changed(index) => { root.syndrm-step-hat-filter-type-changed(index); }
+                                            syndrm-step-hat-filter-cutoff-changed(value) => { root.syndrm-step-hat-filter-cutoff-changed(value); }
+                                            syndrm-step-hat-filter-resonance-changed(value) => { root.syndrm-step-hat-filter-resonance-changed(value); }
+                                            syndrm-step-hat-retrig-changed(value) => { root.syndrm-step-hat-retrig-changed(value); }
+                                            syndrm-step-hat-retrig-division-changed(index) => { root.syndrm-step-hat-retrig-division-changed(index); }
+                                            syndrm-step-perc1-pitch-changed(value) => { root.syndrm-step-perc1-pitch-changed(value); }
+                                            syndrm-step-perc1-decay-changed(value) => { root.syndrm-step-perc1-decay-changed(value); }
+                                            syndrm-step-perc1-tone-changed(value) => { root.syndrm-step-perc1-tone-changed(value); }
+                                            syndrm-step-perc1-drive-changed(value) => { root.syndrm-step-perc1-drive-changed(value); }
+                                            syndrm-step-perc1-level-changed(value) => { root.syndrm-step-perc1-level-changed(value); }
+                                            syndrm-step-perc1-filter-type-changed(index) => { root.syndrm-step-perc1-filter-type-changed(index); }
+                                            syndrm-step-perc1-filter-cutoff-changed(value) => { root.syndrm-step-perc1-filter-cutoff-changed(value); }
+                                            syndrm-step-perc1-filter-resonance-changed(value) => { root.syndrm-step-perc1-filter-resonance-changed(value); }
+                                            syndrm-step-perc1-retrig-changed(value) => { root.syndrm-step-perc1-retrig-changed(value); }
+                                            syndrm-step-perc1-retrig-division-changed(index) => { root.syndrm-step-perc1-retrig-division-changed(index); }
+                                            syndrm-step-perc2-pitch-changed(value) => { root.syndrm-step-perc2-pitch-changed(value); }
+                                            syndrm-step-perc2-decay-changed(value) => { root.syndrm-step-perc2-decay-changed(value); }
+                                            syndrm-step-perc2-tone-changed(value) => { root.syndrm-step-perc2-tone-changed(value); }
+                                            syndrm-step-perc2-drive-changed(value) => { root.syndrm-step-perc2-drive-changed(value); }
+                                            syndrm-step-perc2-level-changed(value) => { root.syndrm-step-perc2-level-changed(value); }
+                                            syndrm-step-perc2-filter-type-changed(index) => { root.syndrm-step-perc2-filter-type-changed(index); }
+                                            syndrm-step-perc2-filter-cutoff-changed(value) => { root.syndrm-step-perc2-filter-cutoff-changed(value); }
+                                            syndrm-step-perc2-filter-resonance-changed(value) => { root.syndrm-step-perc2-filter-resonance-changed(value); }
+                                            syndrm-step-perc2-retrig-changed(value) => { root.syndrm-step-perc2-retrig-changed(value); }
+                                            syndrm-step-perc2-retrig-division-changed(index) => { root.syndrm-step-perc2-retrig-division-changed(index); }
+                                            syndrm-step-crash-pitch-changed(value) => { root.syndrm-step-crash-pitch-changed(value); }
+                                            syndrm-step-crash-decay-changed(value) => { root.syndrm-step-crash-decay-changed(value); }
+                                            syndrm-step-crash-tone-changed(value) => { root.syndrm-step-crash-tone-changed(value); }
+                                            syndrm-step-crash-drive-changed(value) => { root.syndrm-step-crash-drive-changed(value); }
+                                            syndrm-step-crash-level-changed(value) => { root.syndrm-step-crash-level-changed(value); }
+                                            syndrm-step-crash-filter-type-changed(index) => { root.syndrm-step-crash-filter-type-changed(index); }
+                                            syndrm-step-crash-filter-cutoff-changed(value) => { root.syndrm-step-crash-filter-cutoff-changed(value); }
+                                            syndrm-step-crash-filter-resonance-changed(value) => { root.syndrm-step-crash-filter-resonance-changed(value); }
+                                            syndrm-step-crash-retrig-changed(value) => { root.syndrm-step-crash-retrig-changed(value); }
+                                            syndrm-step-crash-retrig-division-changed(index) => { root.syndrm-step-crash-retrig-division-changed(index); }
+                                            syndrm-step-samp-pitch-changed(value) => { root.syndrm-step-samp-pitch-changed(value); }
+                                            syndrm-step-samp-attack-changed(value) => { root.syndrm-step-samp-attack-changed(value); }
+                                            syndrm-step-samp-decay-changed(value) => { root.syndrm-step-samp-decay-changed(value); }
+                                            syndrm-step-samp-drive-changed(value) => { root.syndrm-step-samp-drive-changed(value); }
+                                            syndrm-step-samp-level-changed(value) => { root.syndrm-step-samp-level-changed(value); }
+                                            syndrm-step-samp-filter-type-changed(index) => { root.syndrm-step-samp-filter-type-changed(index); }
+                                            syndrm-step-samp-filter-cutoff-changed(value) => { root.syndrm-step-samp-filter-cutoff-changed(value); }
+                                            syndrm-step-samp-filter-resonance-changed(value) => { root.syndrm-step-samp-filter-resonance-changed(value); }
+                                            syndrm-step-samp-retrig-changed(value) => { root.syndrm-step-samp-retrig-changed(value); }
+                                            syndrm-step-samp-retrig-division-changed(index) => { root.syndrm-step-samp-retrig-division-changed(index); }
                                             toggle-mosaic-enabled => root.toggle-mosaic-enabled();
                                             toggle-mosaic-loop-lock => root.toggle-mosaic-loop-lock();
                                             mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
@@ -1776,6 +2403,19 @@ export component TLBX1UI inherits Window {
                                             syndrm-clear-both-lane-all() => { root.syndrm-clear-both-lane-all(); }
                                             syndrm-clear-both-all-page() => { root.syndrm-clear-both-all-page(); }
                                             syndrm-clear-both-all-all() => { root.syndrm-clear-both-all-all(); }
+                                            syndrm-copy-steps-lane-page() => { root.syndrm-copy-steps-lane-page(); }
+                                            syndrm-copy-steps-lane-all() => { root.syndrm-copy-steps-lane-all(); }
+                                            syndrm-copy-steps-all-page() => { root.syndrm-copy-steps-all-page(); }
+                                            syndrm-copy-steps-all-all() => { root.syndrm-copy-steps-all-all(); }
+                                            syndrm-copy-params-lane-page() => { root.syndrm-copy-params-lane-page(); }
+                                            syndrm-copy-params-lane-all() => { root.syndrm-copy-params-lane-all(); }
+                                            syndrm-copy-params-all-page() => { root.syndrm-copy-params-all-page(); }
+                                            syndrm-copy-params-all-all() => { root.syndrm-copy-params-all-all(); }
+                                            syndrm-copy-both-lane-page() => { root.syndrm-copy-both-lane-page(); }
+                                            syndrm-copy-both-lane-all() => { root.syndrm-copy-both-lane-all(); }
+                                            syndrm-copy-both-all-page() => { root.syndrm-copy-both-all-page(); }
+                                            syndrm-copy-both-all-all() => { root.syndrm-copy-both-all-all(); }
+                                            syndrm-paste() => { root.syndrm-paste(); }
                                             toggle-track-mute => root.toggle-track-mute();
                                         }
                                     }

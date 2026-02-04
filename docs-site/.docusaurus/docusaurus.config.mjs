@@ -4,62 +4,81 @@
  * Modify the docusaurus.config.js file at your site's root instead.
  */
 export default {
-  "title": "GrainRust Docs",
-  "tagline": "Documentation for the GrainRust sampler",
-  "url": "https://grainrust.local",
-  "baseUrl": "/./",
+  "title": "TLBX-1 Docs",
+  "tagline": "Documentation for the TLBX-1 Audio Toolbox",
+  "url": "https://tlbx-1.local",
+  "baseUrl": "/",
   "onBrokenLinks": "warn",
-  "markdown": {
-    "hooks": {
-      "onBrokenMarkdownLinks": "warn",
-      "onBrokenMarkdownImages": "throw"
-    },
-    "format": "mdx",
-    "mermaid": false,
-    "emoji": true,
-    "mdx1Compat": {
-      "comments": true,
-      "admonitions": true,
-      "headingIds": true
-    },
-    "anchors": {
-      "maintainCase": false
-    }
-  },
-  "organizationName": "grainrust",
-  "projectName": "grainrust",
+  "organizationName": "resonancedesigns",
+  "projectName": "tlbx-1",
   "presets": [
     [
       "classic",
       {
         "docs": {
-          "path": "../docs",
+          "path": "docs",
           "routeBasePath": "docs",
-          "sidebarPath": "C:\\Dev\\Projects\\grainrust\\docs-site\\sidebars.js"
+          "sidebarPath": "c:\\Dev\\Projects\\grainrust\\docs-site\\sidebars.js"
         },
         "blog": false,
         "theme": {
-          "customCss": "C:\\Dev\\Projects\\grainrust\\docs-site\\src\\css\\custom.css"
+          "customCss": "c:\\Dev\\Projects\\grainrust\\docs-site\\src\\css\\custom.css"
         }
       }
     ]
   ],
   "themeConfig": {
     "navbar": {
-      "title": "GrainRust",
+      "title": "TLBX-1",
+      "logo": {
+        "alt": "TLBX-1 Logo",
+        "src": "img/logo.svg"
+      },
       "items": [
         {
-          "to": "/docs/intro",
-          "label": "Developer Docs",
-          "position": "left"
+          "to": "/",
+          "label": "Home",
+          "position": "left",
+          "exact": true
         },
         {
-          "to": "/",
-          "label": "Docs Home",
-          "position": "left"
+          "type": "docSidebar",
+          "sidebarId": "userSidebar",
+          "position": "left",
+          "label": "User Docs"
+        },
+        {
+          "type": "docSidebar",
+          "sidebarId": "devSidebar",
+          "position": "left",
+          "label": "Developer Docs"
+        },
+        {
+          "href": "https://github.com/resonance-designs/grainrust",
+          "label": "GitHub",
+          "position": "right"
         }
       ],
       "hideOnScroll": false
+    },
+    "footer": {
+      "style": "dark",
+      "links": [
+        {
+          "title": "Community",
+          "items": [
+            {
+              "label": "Twitter",
+              "href": "https://twitter.com/resonancedesigns"
+            },
+            {
+              "label": "GitHub",
+              "href": "https://github.com/resonance-designs/grainrust"
+            }
+          ]
+        }
+      ],
+      "copyright": "Copyright © 2026 Resonance Designs. Built with Docusaurus."
     },
     "prism": {
       "theme": {
@@ -269,5 +288,22 @@ export default {
   "stylesheets": [],
   "clientModules": [],
   "titleDelimiter": "|",
-  "noIndex": false
+  "noIndex": false,
+  "markdown": {
+    "format": "mdx",
+    "mermaid": false,
+    "emoji": true,
+    "mdx1Compat": {
+      "comments": true,
+      "admonitions": true,
+      "headingIds": true
+    },
+    "anchors": {
+      "maintainCase": false
+    },
+    "hooks": {
+      "onBrokenMarkdownLinks": "warn",
+      "onBrokenMarkdownImages": "throw"
+    }
+  }
 };

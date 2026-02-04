@@ -1,0 +1,27 @@
+{
+  "id": "developer/ui-system",
+  "title": "UI System",
+  "description": "The TLBX-1 UI is built using Slint, a modern declarative UI framework. It is designed to be responsive, hardware-accelerated, and deeply integrated with the Rust DSP engine.",
+  "source": "@site/docs/developer/ui-system.md",
+  "sourceDirName": "developer",
+  "slug": "/developer/ui-system",
+  "permalink": "/docs/developer/ui-system",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 4,
+  "frontMatter": {
+    "title": "UI System",
+    "sidebar_position": 4
+  },
+  "sidebar": "devSidebar",
+  "previous": {
+    "title": "Audio Engine",
+    "permalink": "/docs/developer/audio-engine"
+  },
+  "next": {
+    "title": "State & Synchronization",
+    "permalink": "/docs/developer/state-management"
+  }
+}

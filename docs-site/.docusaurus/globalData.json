@@ -1,42 +1,108 @@
 {
   "docusaurus-plugin-content-docs": {
     "default": {
-      "path": "/./docs",
+      "path": "/docs",
       "versions": [
         {
           "name": "current",
           "label": "Next",
           "isLast": true,
-          "path": "/./docs",
-          "mainDocId": "intro",
+          "path": "/docs",
+          "mainDocId": "user/index",
           "docs": [
             {
-              "id": "DEVELOPER_ONBOARDING",
-              "path": "/./docs/DEVELOPER_ONBOARDING",
-              "sidebar": "tutorialSidebar"
+              "id": "developer/architecture",
+              "path": "/docs/developer/architecture",
+              "sidebar": "devSidebar"
             },
             {
-              "id": "intro",
-              "path": "/./docs/intro",
-              "sidebar": "tutorialSidebar"
+              "id": "developer/audio-engine",
+              "path": "/docs/developer/audio-engine",
+              "sidebar": "devSidebar"
             },
             {
-              "id": "TODO",
-              "path": "/./docs/TODO",
-              "sidebar": "tutorialSidebar"
+              "id": "developer/onboarding",
+              "path": "/docs/developer/onboarding",
+              "sidebar": "devSidebar"
             },
             {
-              "id": "user-manual",
-              "path": "/./docs/user-manual",
-              "sidebar": "tutorialSidebar"
+              "id": "developer/state-management",
+              "path": "/docs/developer/state-management",
+              "sidebar": "devSidebar"
+            },
+            {
+              "id": "developer/ui-system",
+              "path": "/docs/developer/ui-system",
+              "sidebar": "devSidebar"
+            },
+            {
+              "id": "user/animate-engine",
+              "path": "/docs/user/animate-engine",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/g8-device",
+              "path": "/docs/user/g8-device",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/granulator",
+              "path": "/docs/user/granulator",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/index",
+              "path": "/docs/",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/reflect-device",
+              "path": "/docs/user/reflect-device",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/silk-device",
+              "path": "/docs/user/silk-device",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/syndrm-engine",
+              "path": "/docs/user/syndrm-engine",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/tape-deck-engine",
+              "path": "/docs/user/tape-deck-engine",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/texture-device",
+              "path": "/docs/user/texture-device",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/user-manual",
+              "path": "/docs/user/user-manual",
+              "sidebar": "userSidebar"
+            },
+            {
+              "id": "user/void-seed-engine",
+              "path": "/docs/user/void-seed-engine",
+              "sidebar": "userSidebar"
             }
           ],
           "draftIds": [],
           "sidebars": {
-            "tutorialSidebar": {
+            "userSidebar": {
               "link": {
-                "path": "/./docs/intro",
-                "label": "intro"
+                "path": "/docs/",
+                "label": "user/index"
+              }
+            },
+            "devSidebar": {
+              "link": {
+                "path": "/docs/developer/onboarding",
+                "label": "developer/onboarding"
               }
             }
           }

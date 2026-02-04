@@ -119,11 +119,20 @@
     "__comp": "__comp---theme-doc-item-178-a40",
     "content": "content---docs-user-void-seed-engine-4-fa-6ac"
   },
+<<<<<<< HEAD
   "/-fd5": {
     "__comp": "__comp---theme-mdx-page-1-f-3-b90",
     "__context": {
       "plugin": "plugin---a-74-9d6"
     },
     "content": "content---e-7-c-0a5"
+=======
+  "/-2e1": {
+    "__comp": "__comp---site-src-pages-index-jsc-4-f-f99",
+    "__context": {
+      "plugin": "plugin---a-74-9d6"
+    },
+    "config": "config---5-e-9-4f3"
+>>>>>>> feature/syndrm-engine
   }
 }

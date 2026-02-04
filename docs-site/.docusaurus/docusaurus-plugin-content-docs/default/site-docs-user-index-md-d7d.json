@@ -1,0 +1,24 @@
+{
+  "id": "user/index",
+  "title": "TLBX-1 Documentation",
+  "description": "Welcome to the TLBX-1 documentation hub.",
+  "source": "@site/docs/user/index.md",
+  "sourceDirName": "user",
+  "slug": "/",
+  "permalink": "/docs/",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 1,
+  "frontMatter": {
+    "title": "TLBX-1 Documentation",
+    "slug": "/",
+    "sidebar_position": 1
+  },
+  "sidebar": "userSidebar",
+  "next": {
+    "title": "User Manual",
+    "permalink": "/docs/user/user-manual"
+  }
+}

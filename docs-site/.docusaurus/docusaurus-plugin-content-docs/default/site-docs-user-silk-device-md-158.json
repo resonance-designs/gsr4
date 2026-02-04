@@ -1,0 +1,27 @@
+{
+  "id": "user/silk-device",
+  "title": "Silk Device",
+  "description": "The Silk device is a resonator and filter bank used for shaping the harmonic content and adding movement to your tracks.",
+  "source": "@site/docs/user/silk-device.md",
+  "sourceDirName": "user",
+  "slug": "/user/silk-device",
+  "permalink": "/docs/user/silk-device",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 23,
+  "frontMatter": {
+    "title": "Silk Device",
+    "sidebar_position": 23
+  },
+  "sidebar": "userSidebar",
+  "previous": {
+    "title": "Reflect Device",
+    "permalink": "/docs/user/reflect-device"
+  },
+  "next": {
+    "title": "Texture Device",
+    "permalink": "/docs/user/texture-device"
+  }
+}

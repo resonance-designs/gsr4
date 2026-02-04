@@ -1,7 +1,8 @@
 {
   "name": "tlbx-docs",
   "private": true,
-  "version": "0.1.21",
+  "version": "0.1.22",
+  "license": "Proprietary",
   "scripts": {
     "start": "docusaurus start",
     "build": "docusaurus build",
