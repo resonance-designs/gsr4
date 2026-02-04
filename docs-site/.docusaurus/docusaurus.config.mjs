@@ -18,11 +18,11 @@ export default {
         "docs": {
           "path": "docs",
           "routeBasePath": "docs",
-          "sidebarPath": "c:\\Dev\\Projects\\grainrust\\docs-site\\sidebars.js"
+          "sidebarPath": "C:\\Dev\\Projects\\grainrust\\docs-site\\sidebars.js"
         },
         "blog": false,
         "theme": {
-          "customCss": "c:\\Dev\\Projects\\grainrust\\docs-site\\src\\css\\custom.css"
+          "customCss": "C:\\Dev\\Projects\\grainrust\\docs-site\\src\\css\\custom.css"
         }
       }
     ]
@@ -54,7 +54,7 @@ export default {
           "label": "Developer Docs"
         },
         {
-          "href": "https://github.com/resonance-designs/grainrust",
+          "href": "https://github.com/resonance-designs/tlbx-1",
           "label": "GitHub",
           "position": "right"
         }
@@ -73,7 +73,7 @@ export default {
             },
             {
               "label": "GitHub",
-              "href": "https://github.com/resonance-designs/grainrust"
+              "href": "https://github.com/resonance-designs/tlbx-1"
             }
           ]
         }
