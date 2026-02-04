@@ -1,86 +1,129 @@
 {
-  "/docs-6ce": {
-    "__comp": "5e95c892",
+  "/__docusaurus/debug-5ff": {
+    "__comp": "__comp---theme-debug-config-23-a-2ff",
     "__context": {
-      "plugin": "aba21aa0"
+      "plugin": "plugin---docusaurus-debugb-38-ad3"
+    }
+  },
+  "/__docusaurus/debug/config-5ba": {
+    "__comp": "__comp---theme-debug-config-23-a-2ff",
+    "__context": {
+      "plugin": "plugin---docusaurus-debugb-38-ad3"
+    }
+  },
+  "/__docusaurus/debug/content-a2b": {
+    "__comp": "__comp---theme-debug-contentba-8-ce7",
+    "__context": {
+      "plugin": "plugin---docusaurus-debugb-38-ad3"
+    },
+    "__props": "__props---docusaurus-debug-content-3-c-0-be2"
+  },
+  "/__docusaurus/debug/globalData-c3c": {
+    "__comp": "__comp---theme-debug-global-dataede-0fa",
+    "__context": {
+      "plugin": "plugin---docusaurus-debugb-38-ad3"
+    }
+  },
+  "/__docusaurus/debug/metadata-156": {
+    "__comp": "__comp---theme-debug-site-metadata-68-e-3d4",
+    "__context": {
+      "plugin": "plugin---docusaurus-debugb-38-ad3"
+    }
+  },
+  "/__docusaurus/debug/registry-88c": {
+    "__comp": "__comp---theme-debug-registry-679-501",
+    "__context": {
+      "plugin": "plugin---docusaurus-debugb-38-ad3"
+    }
+  },
+  "/__docusaurus/debug/routes-000": {
+    "__comp": "__comp---theme-debug-routes-946-699",
+    "__context": {
+      "plugin": "plugin---docusaurus-debugb-38-ad3"
+    }
+  },
+  "/docs-6ce": {
+    "__comp": "__comp---theme-docs-root-5-e-9-0b6",
+    "__context": {
+      "plugin": "plugin---docsaba-d7c"
     }
   },
   "/docs-9fc": {
-    "__comp": "a7bd4aaa",
-    "__props": "0058b4c6"
+    "__comp": "__comp---theme-doc-version-roota-7-b-5de",
+    "__props": "__props---docs-005-788"
   },
   "/docs-cde": {
-    "__comp": "a94703ab"
+    "__comp": "__comp---theme-doc-roota-94-67a"
   },
   "/docs/-d33": {
-    "__comp": "17896441",
-    "content": "d7d2acb1"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-d-7-d-666"
   },
   "/docs/developer/architecture-05a": {
-    "__comp": "17896441",
-    "content": "31941a82"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-developer-architecture-319-a02"
   },
   "/docs/developer/audio-engine-81e": {
-    "__comp": "17896441",
-    "content": "78eb1682"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-developer-audio-engine-78-e-9c6"
   },
   "/docs/developer/onboarding-172": {
-    "__comp": "17896441",
-    "content": "d0c827b9"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-developer-onboardingd-0-c-fcb"
   },
   "/docs/developer/state-management-29d": {
-    "__comp": "17896441",
-    "content": "2d4d7309"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-developer-state-management-2-d-4-9b5"
   },
   "/docs/developer/ui-system-d31": {
-    "__comp": "17896441",
-    "content": "8afa543f"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-developer-ui-system-8-af-7d6"
   },
   "/docs/user/animate-engine-d4d": {
-    "__comp": "17896441",
-    "content": "c024b900"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-animate-enginec-02-f8d"
   },
   "/docs/user/g8-device-c94": {
-    "__comp": "17896441",
-    "content": "b1c12c3a"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-g-8-deviceb-1-c-e35"
   },
   "/docs/user/granulator-4c2": {
-    "__comp": "17896441",
-    "content": "8a0f172c"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-granulator-8-a-0-907"
   },
   "/docs/user/reflect-device-242": {
-    "__comp": "17896441",
-    "content": "ddb80bb3"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-reflect-deviceddb-720"
   },
   "/docs/user/silk-device-8e1": {
-    "__comp": "17896441",
-    "content": "158b27f6"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-silk-device-158-d58"
   },
   "/docs/user/syndrm-engine-4cd": {
-    "__comp": "17896441",
-    "content": "483e2744"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-syndrm-engine-483-36f"
   },
   "/docs/user/tape-deck-engine-988": {
-    "__comp": "17896441",
-    "content": "06f8d9c4"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-tape-deck-engine-06-f-fb3"
   },
   "/docs/user/texture-device-050": {
-    "__comp": "17896441",
-    "content": "a5f9688d"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-texture-devicea-5-f-afb"
   },
   "/docs/user/user-manual-12c": {
-    "__comp": "17896441",
-    "content": "077590b5"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-user-manual-077-b31"
   },
   "/docs/user/void-seed-engine-2e6": {
-    "__comp": "17896441",
-    "content": "4fa407c0"
+    "__comp": "__comp---theme-doc-item-178-a40",
+    "content": "content---docs-user-void-seed-engine-4-fa-6ac"
   },
   "/-2e1": {
-    "__comp": "c4f5d8e4",
+    "__comp": "__comp---site-src-pages-index-jsc-4-f-f99",
     "__context": {
-      "plugin": "a7456010"
+      "plugin": "plugin---a-74-9d6"
     },
-    "config": "5e9f5e1a"
+    "config": "config---5-e-9-4f3"
   }
 }
