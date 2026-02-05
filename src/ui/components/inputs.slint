@@ -44,6 +44,8 @@ component KeybedKey inherits Rectangle {
     width: root.key-width;
     height: root.key-height;
     border-radius: root.is-black ? 2px : 3px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
     border-color: Theme.active.border_strong;
     border-width: 1px;
     background: root.is-black ? Theme.active.background_raised : Theme.active.background_main;

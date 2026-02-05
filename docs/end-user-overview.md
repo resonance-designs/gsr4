@@ -15,8 +15,9 @@ This space is reserved for end-user walkthroughs of the UI. Add more docs here t
 
 ## Latest Changes
 
-- Granulator DSP mapping is active with parameter smoothing and BPM‑synced rate divisions in the first half of the control.
+- Granulator DSP mapping is active with parameter smoothing and BPM‑synced rate divisions on the Rate control from 0–50%.
 - G8 trance gate device added to the downstream chain (after Silk).
 - Tape-Deck engine supports experimental video loading (audio still drives playback).
 - Void Seed adds Moog filter + drive with pre/post toggle, Close Decay, and stereo width control.
-- Void Seed can feed the downstream device chain (Granulator, Silk, G8).
+- FMMI engine added with global FM controls, step locks, randomize/clear/copy-paste utilities, and per-parameter randomization masks.
+- Void Seed and FMMI can feed the full downstream device chain (Granulator, Silk, G8, Texture, Reflect).

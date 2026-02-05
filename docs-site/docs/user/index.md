@@ -15,6 +15,7 @@ Welcome to the TLBX-1 documentation hub.
 ### Engines
 - **[Tape-Deck Engine](/docs/user/tape-deck-engine)**: Sample playback, looping, and recording.
 - **[Animate Engine](/docs/user/animate-engine)**: Vector synthesis and sequencing.
+- **[FMMI Engine](/docs/user/fmmi-engine)**: Two-operator FM synthesis with per-step parameter locks.
 - **[SynDRM Engine](/docs/user/syndrm-engine)**: Multi-channel drum synthesis and step sequencing.
 - **[Void Seed Engine](/docs/user/void-seed-engine)**: Generative drone and texture synthesizer.
 

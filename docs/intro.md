@@ -13,7 +13,7 @@ TLBX-1 is built using Rust and the Slint UI framework.
 
 The project-specific UI is divided into several specialized engine and device components:
 
-- **Engines**: Located in `src/ui/engines/` (`tape_engine.slint`, `animate_engine.slint`, `syndrm_engine.slint`, `void_seed_engine.slint`).
+- **Engines**: Located in `src/ui/engines/` (`tape_engine.slint`, `animate_engine.slint`, `syndrm_engine.slint`, `void_seed_engine.slint`, `fmmi_engine.slint`).
 - **Devices**: Located in `src/ui/devices/` (`granulator_device.slint`, `silk_device.slint`, `g8_device.slint`, `texture_device.slint`, `reflect_device.slint`).
 
 ## RDS UI Component Kit

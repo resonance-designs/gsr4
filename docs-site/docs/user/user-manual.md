@@ -28,6 +28,7 @@ TLBX-1 features several specialized engines that serve as the primary sound sour
 
 - **[Tape-Deck Engine](./tape-deck-engine)**: A sample-based tape-deck simulator with looping and recording.
 - **[Animate Engine](./animate-engine)**: A 4-slot vector synthesizer with wavetables and samples.
+- **[FMMI Engine](./fmmi-engine)**: A two-operator FM synth with sequencer and per-step parameter locks.
 - **[SynDRM Engine](./syndrm-engine)**: A multi-channel drum synth and sequencer.
 - **[Void Seed Engine](./void-seed-engine)**: A generative drone and texture synthesizer.
 
@@ -49,6 +50,7 @@ Each track features a chain of downstream devices for further processing:
 ## Project Management
 
 - Save Project / Load Project stores per-track sample paths and loop/mix state.
+- Project files use the `.tlbx` extension (JSON-based).
 - Use the Browser panel to browse project files and sample libraries.
 - Add Library Folder registers a folder in the browser list.
 

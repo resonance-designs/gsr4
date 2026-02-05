@@ -1,7 +1,14 @@
 # Changelog
 
-## [0.1.22] - 2026-02-01
+## [0.1.23] - 2026-02-05
 
+- Added new **FMMI** engine (two-operator FM synth) as a standalone engine option.
+- Project I/O: ensured `.tlbx` (JSON-based) project files are accepted in load workflows.
+- Docs: added dedicated FMMI docs and updated user/developer documentation to include FMMI and current engine/device architecture.
+
+## [0.1.22] - 2026-02-03
+
+- SynDRM: expanded to 14 drum channels (kick, snare, hat, clap, perc 1/2, crash, and sample channels 1–7).
 - SynDRM: added per-step retrig (toggle + 1/2, 1/4 rate) across all lanes with DSP support.
 - SynDRM: added per-lane probability knobs and randomization amount control.
 - SynDRM: added Cut Group / Cut By controls for channel choking.

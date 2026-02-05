@@ -23,17 +23,19 @@ The `process` function in `src/lib.rs` is the heartbeat of the application. It e
 
 ### Engines (The Sound Sources)
 Engines are responsible for generating or manipulating raw audio data.
-- **Tape-Deck**: A high-fidelity playback engine with support for variable speed, reverse, and looping.
-- **Granulator**: A multi-voice granular engine that shreds audio into tiny grains.
-- **SynDRM**: A percussion-focused synthesizer engine.
-- **Void Seed**: An experimental noise/drone engine.
+- **Tape-Deck**: A playback/looping engine with variable speed and transport-style controls.
+- **Animate**: A vector synthesis engine with sequencing.
+- **SynDRM**: A percussion-focused multi-lane drum engine.
+- **Void Seed**: A generative drone/noise engine.
+- **FMMI**: A two-operator FM engine with per-step parameter overrides.
 
 ### Devices (The Effects)
-Each track features a dedicated effect slot called a "Device".
-- **Silk**: A lush, ethereal reverb/diffuser.
-- **Reflect**: A high-density delay and space modeler.
-- **Texture**: A multi-stage distortion and saturation module.
+Each track can run a downstream chain of effect devices.
+- **Granulator**: A granular processor for texture, spray, and rhythmic slicing.
+- **Silk**: A resonator/filter-style shaping stage.
 - **G-8**: A performance-oriented gate and chopper.
+- **Texture**: A multi-stage distortion and saturation module.
+- **Reflect**: A delay/reverb spatial processor.
 
 ## DSP with `fundsp`
 TLBX-1 uses `fundsp` for complex signal paths. 
