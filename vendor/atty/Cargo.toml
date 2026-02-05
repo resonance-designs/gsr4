@@ -2,8 +2,8 @@
 name = "atty"
 version = "0.2.14"
 edition = "2018"
-license = "Proprietary"
-description = "Minimal atty shim using std::io::IsTerminal"
+license = "MIT OR Apache-2.0"
+description = "Vendored minimal atty shim using std::io::IsTerminal"
 publish = false # Vendored shim; prevent accidental crates.io publish.
 
 [dependencies]

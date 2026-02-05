@@ -1,6 +1,6 @@
 # TLBX-1
 
-![Static Badge](https://img.shields.io/badge/Version-0.1.22-orange)
+![Static Badge](https://img.shields.io/badge/Version-0.1.23-orange)
 
 TLBX-1 is a 4-track audio toolbox built in Rust. It features different audio engines, one of which is inspired by the Torso S-4 workflow. It runs as a standalone app and as a plugin via nih-plug, with a Slint-based UI.
 The UI is built with Slint in combination with the [Resonance Designs Slint UI Component Kit](https://github.com/resonance-designs/rds-slint-ui-kit).
@@ -15,6 +15,7 @@ The UI is built with Slint in combination with the [Resonance Designs Slint UI C
 - Engine 2: Animate (based on Korg Wavestation)
 - Engine 3: SynDRM (multi-channel drum synth + sampler with step sequencing)
 - Engine 4: Void Seed (generative drone engine)
+- Engine 5: FMMI (two-operator FM synth with sequencer + per-step parameter locks)
 - Void Seed Moog filter + drive with pre/post toggle, Close Decay, and stereo width control
 - RDS Slint UI Component Kit for shared UI controls and theming
 - Post-tape granular buffer with bypass toggle (Granulator device)
@@ -23,7 +24,7 @@ The UI is built with Slint in combination with the [Resonance Designs Slint UI C
 - Post-tape Texture device with drive/compress/crush/tilt/noise + gate
 - Post-tape Reflect device with delay + reverb, time divisions, and clear/freeze
 - Experimental: Tape engine can load video files and display playback in place of the waveform (audio still drives playback).
-- Project save/load (JSON)
+- Project save/load (`.tlbx` JSON format)
 - Project/library browser for samples and saved projects
 - Standalone audio device settings (device, sample rate, buffer size)
 - Built-in visualizers (oscilloscope, spectrum, vectorscope)
@@ -100,7 +101,7 @@ Installers include the built documentation site under `documentation/` in the in
 ## Controls (Current UI)
 
 - Track selection buttons choose the active track for editing
-- Engine selector + Load Engine loads the Tape engine for the active track
+- Engine selector + Load Engine loads the selected engine for the active track
 - Loading an engine on an already-loaded track prompts a confirmation warning
 - Load Sample opens a file picker for the active track
 - Record toggles recording for the active track
@@ -120,12 +121,13 @@ Installers include the built documentation site under `documentation/` in the in
 - The engine controls are hidden until an engine is loaded for the active track
 - Tape parameters are organized in a 4x3 grid for efficient control
 - Animate includes a chromatic keybed for note triggering
+- FMMI includes utility modes for Randomize, Clear, and Copy/Paste across step/parameter scopes
 - Keyboard shortcuts (standalone): Space toggles Play/Stop, Escape closes modals
 - Visualizer modes: oscilloscope, spectrum, vectorscope
 
 ## Project Files
 
-Project files are saved as JSON and include:
+Project files are saved as `.tlbx` (JSON-based) and include:
 
 - Sample path per track (if loaded)
 - Track level and mute state

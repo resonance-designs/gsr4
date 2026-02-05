@@ -135,6 +135,7 @@ Packaging expects these environment variables:
 - `src/ui/engines/animate_engine.slint` contains the Animate engine UI component
 - `src/ui/engines/syndrm_engine.slint` contains the SynDRM engine UI component
 - `src/ui/engines/void_seed_engine.slint` contains the Void Seed engine UI component
+- `src/ui/engines/fmmi_engine.slint` contains the FMMI engine UI component
 - `src/ui/devices/granulator_device.slint` contains the Granulator device UI component
 - `src/ui/devices/silk_device.slint` contains the Silk device UI component
 - `src/ui/devices/g8_device.slint` contains the G8 trance gate device UI component
