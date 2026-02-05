@@ -18,11 +18,12 @@ import { ReflectDevice } from "../devices/reflect_device.slint";
 import { Theme } from "../theme/index.slint";
 import { RDSKeybedBus } from "../globals.slint";
 
-export component FMMIEngine {
+export component FMMIEngine inherits Rectangle {
     in-out property <bool> track-muted: false;
 
     in property <[string]> fmmi-waveforms;
     in property <[string]> fmmi-note-options;
+    in property <[string]> fmmi-step-note-labels;
 
     in-out property <int> fmmi-car-wave: 0;
     in-out property <float> fmmi-car-freq: 220;
@@ -35,6 +36,7 @@ export component FMMIEngine {
     in-out property <float> fmmi-feedback: 0;
     in-out property <float> fmmi-drive: 0;
     in-out property <float> fmmi-out-level: 0.5;
+    in-out property <float> fmmi-prob: 100.0;
 
     in-out property <int> fmmi-page: 0;
     in-out property <int> fmmi-edit-step: 0;
@@ -143,6 +145,7 @@ export component FMMIEngine {
     callback fmmi-feedback-changed(float);
     callback fmmi-drive-changed(float);
     callback fmmi-out-level-changed(float);
+    callback fmmi-prob-changed(float);
     callback fmmi-page-changed(int);
     callback fmmi-edit-step-changed(int);
     callback fmmi-sequencer-grid-toggled(int);
@@ -257,247 +260,286 @@ export component FMMIEngine {
     callback fmmi-rand-page-params();
     callback fmmi-rand-all-params();
 
-    private property <string> mod-label: root.fmmi-mod-mode == 1 ? "Ratio (x)" : "Mod Freq (Hz)";
+    private property <string> mod-label: root.fmmi-mod-mode == 1 ? "Ratio (x)" : "Freq (Hz)";
     private property <float> mod-min: root.fmmi-mod-mode == 1 ? 0.1 : 0.1;
     private property <float> mod-max: root.fmmi-mod-mode == 1 ? 16.0 : 20000.0;
     private property <float> mod-step: root.fmmi-mod-mode == 1 ? 0.01 : 0.1;
 
-    private property <string> mod-step-label: root.fmmi-mod-mode == 1 ? "Step Ratio (x)" : "Step Mod (Hz)";
+    private property <string> mod-step-label: root.fmmi-mod-mode == 1 ? "Ratio (x)" : "Mod (Hz)";
+
+    width: 1282px;
+    background: transparent;
 
     VerticalLayout {
         spacing: 12px;
-        width: parent.width;
+        padding: 12px;
 
-        HorizontalLayout {
-            spacing: 10px;
-            width: parent.width;
-
-            RDSHeaderLabel {
-                text: "FMMI";
-                horizontal-alignment: left;
-                padding-horizontal: 12px;
-                padding-vertical: 6px;
-            }
-
+        RDSHeaderLabel {
+            text: "FMMI";
+            horizontal-alignment: left;
+            padding-horizontal: 12px;
+            padding-vertical: 6px;
             HorizontalLayout {
                 spacing: 6px;
-                Text { text: "Mute"; color: #b9b9bf; font-size: 11px; }
+                alignment: center;
                 RDSCircleToggle {
-                    active: root.track-muted;
+                    y: 2px;
+                    active: !root.track-muted;
+                    label: "Mute";
+                    label-active: "Live";
+                    label-pos: "left";
+                    label-color: #b9b9bf;
+                    label-active-color: Theme.active.text_primary;
+                    label-font-size: 11px;
+                    label-font-weight: 500;
                     clicked => root.toggle-track-mute();
                 }
             }
         }
 
-        HorizontalLayout {
+        VerticalLayout {
             spacing: 12px;
+            height: 228px;
             Rectangle {
                 width: parent.width;
                 background: #1e3a5f33;
                 border-width: 2px;
                 border-radius: 6px;
                 border-color: Theme.active.border-strong;
-                HorizontalLayout {
+                VerticalLayout {
                     padding: 12px;
                     spacing: 16px;
 
-                    // Carrier controls
-                    VerticalLayout {
-                        spacing: 6px;
-                        RDSHeaderLabel { width: 210px; bg-color: #fff; text: "Carrier"; }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            VerticalLayout {
-                                Text { text: "Wave"; color: #b9b9bf; font-size: 11px; }
-                                RDSComboBox {
-                                    width: 140px;
-                                    model: root.fmmi-waveforms;
-                                    current-index: root.fmmi-car-wave;
-                                    selected => {
-                                        root.fmmi-car-wave = self.current-index;
-                                        root.fmmi-car-wave-changed(root.fmmi-car-wave);
+                    HorizontalLayout {
+                        GridLayout {
+                            spacing: 12px;
+                            width: parent.width / 2 - 6px;
+                            Row {
+                                // Carrier controls
+                                VerticalLayout {
+                                    spacing: 6px;
+                                    RDSHeaderLabel { bg-color: #fff; text: "Carrier"; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        VerticalLayout {
+                                            padding-top: 6px;
+                                            height: 60px;
+                                            Text { text: "Wave"; color: #b9b9bf; font-size: 11px; }
+                                            RDSComboBox {
+                                                width: 140px;
+                                                model: root.fmmi-waveforms;
+                                                current-index: root.fmmi-car-wave;
+                                                selected => {
+                                                    root.fmmi-car-wave = self.current-index;
+                                                    root.fmmi-car-wave-changed(root.fmmi-car-wave);
+                                                }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            padding-top: 24px;
+                                            RDSKnob {
+                                                renderer: "lo-fi";
+                                                value: root.fmmi-car-freq;
+                                                min-value: 10;
+                                                max-value: 20000;
+                                                size: 102px;
+                                                indicator-position: 36px;
+                                                sensitivity: 1.0;
+                                                scroll-sensitivity: 1.0;
+                                                label: "Freq";
+                                                label-pos: "top-center";
+                                                value-changed(v) => {
+                                                    root.fmmi-car-freq = v;
+                                                    root.fmmi-car-freq-changed(v);
+                                                }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            padding-top: 24px;
+                                            RDSKnob {
+                                                renderer: "lo-fi";
+                                                value: root.fmmi-car-detune;
+                                                min-value: -1200;
+                                                max-value: 1200;
+                                                size: 102px;
+                                                indicator-position: 36px;
+                                                sensitivity: 1.0;
+                                                scroll-sensitivity: 1.0;
+                                                label: "Detune";
+                                                label-pos: "top-center";
+                                                value-changed(v) => {
+                                                    root.fmmi-car-detune = v;
+                                                    root.fmmi-car-detune-changed(v);
+                                                }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            padding-top: 24px;
+                                            RDSKnob {
+                                                renderer: "lo-fi";
+                                                value: root.fmmi-out-level;
+                                                min-value: 0.0;
+                                                max-value: 1.5;
+                                                size: 102px;
+                                                indicator-position: 36px;
+                                                sensitivity: 0.01;
+                                                scroll-sensitivity: 0.01;
+                                                label: "Output";
+                                                label-pos: "top-center";
+                                                value-changed(v) => {
+                                                    root.fmmi-out-level = v;
+                                                    root.fmmi-out-level-changed(v);
+                                                }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            padding-top: 24px;
+                                            RDSKnob {
+                                                renderer: "lo-fi";
+                                                value: root.fmmi-drive;
+                                                min-value: 0.0;
+                                                max-value: 1.0;
+                                                size: 102px;
+                                                indicator-position: 36px;
+                                                sensitivity: 0.01;
+                                                scroll-sensitivity: 0.01;
+                                                label: "Drive";
+                                                label-pos: "top-center";
+                                                value-changed(v) => {
+                                                    root.fmmi-drive = v;
+                                                    root.fmmi-drive-changed(v);
+                                                }
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                            VerticalLayout {
-                                Text { text: "Freq"; color: #b9b9bf; font-size: 11px; }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.fmmi-car-freq;
-                                    min-value: 10;
-                                    max-value: 20000;
-                                    size: 42px;
-                                    indicator-position: 10px;
-                                    sensitivity: 1.0;
-                                    scroll-sensitivity: 1.0;
-                                    value-changed(v) => {
-                                        root.fmmi-car-freq = v;
-                                        root.fmmi-car-freq-changed(v);
-                                    }
-                                }
-                            }
-                            VerticalLayout {
-                                Text { text: "Detune"; color: #b9b9bf; font-size: 11px; }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.fmmi-car-detune;
-                                    min-value: -1200;
-                                    max-value: 1200;
-                                    size: 42px;
-                                    indicator-position: 10px;
-                                    sensitivity: 1.0;
-                                    scroll-sensitivity: 1.0;
-                                    value-changed(v) => {
-                                        root.fmmi-car-detune = v;
-                                        root.fmmi-car-detune-changed(v);
-                                    }
-                                }
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            VerticalLayout {
-                                Text { text: "Output"; color: #b9b9bf; font-size: 11px; }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.fmmi-out-level;
-                                    min-value: 0.0; max-value: 1.5;
-                                    size: 42px; indicator-position: 10px;
-                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
-                                    value-changed(v) => {
-                                        root.fmmi-out-level = v;
-                                        root.fmmi-out-level-changed(v);
-                                    }
-                                }
-                            }
-                            VerticalLayout {
-                                Text { text: "Drive"; color: #b9b9bf; font-size: 11px; }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.fmmi-drive;
-                                    min-value: 0.0; max-value: 1.0;
-                                    size: 42px; indicator-position: 10px;
-                                    sensitivity: 0.01; scroll-sensitivity: 0.01;
-                                    value-changed(v) => {
-                                        root.fmmi-drive = v;
-                                        root.fmmi-drive-changed(v);
+
+                                // Modulator controls
+                                VerticalLayout {
+                                    spacing: 6px;
+                                    RDSHeaderLabel { bg-color: #fff; text: "Modulator"; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+
+                                        VerticalLayout {
+                                            VerticalLayout {
+                                                height: 60px;
+                                                padding-top: 6px;
+                                                Text { text: "Wave"; color: #b9b9bf; font-size: 11px; }
+                                                RDSComboBox {
+                                                    width: 140px;
+                                                    model: root.fmmi-waveforms;
+                                                    current-index: root.fmmi-mod-wave;
+                                                    selected => {
+                                                        root.fmmi-mod-wave = self.current-index;
+                                                        root.fmmi-mod-wave-changed(root.fmmi-mod-wave);
+                                                    }
+                                                }
+                                            }
+
+                                            VerticalLayout {
+                                                height: 60px;
+                                                padding-top: 6px;
+                                                Text { text: "Mode"; color: #b9b9bf; font-size: 11px; }
+                                                RDSComboBox {
+                                                    width: 120px;
+                                                    model: ["Hz", "Ratio"];
+                                                    current-index: root.fmmi-mod-mode;
+                                                    selected => {
+                                                        root.fmmi-mod-mode = self.current-index;
+                                                        root.fmmi-mod-mode-changed(root.fmmi-mod-mode);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            padding-top: 24px;
+                                            RDSKnob {
+                                                renderer: "lo-fi";
+                                                value: root.fmmi-mod-value;
+                                                min-value: mod-min;
+                                                max-value: mod-max;
+                                                size: 102px;
+                                                indicator-position: 36px;
+                                                sensitivity: mod-step;
+                                                scroll-sensitivity: mod-step;
+                                                label: mod-label;
+                                                label-pos: "top-center";
+                                                value-changed(v) => {
+                                                    root.fmmi-mod-value = v;
+                                                    root.fmmi-mod-value-changed(v);
+                                                }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            padding-top: 24px;
+                                            RDSKnob {
+                                                renderer: "lo-fi";
+                                                value: root.fmmi-mod-detune;
+                                                min-value: -1200;
+                                                max-value: 1200;
+                                                size: 102px;
+                                                indicator-position: 36px;
+                                                sensitivity: 1.0;
+                                                scroll-sensitivity: 1.0;
+                                                label: "Detune";
+                                                label-pos: "top-center";
+                                                value-changed(v) => {
+                                                    root.fmmi-mod-detune = v;
+                                                    root.fmmi-mod-detune-changed(v);
+                                                }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            padding-top: 24px;
+                                            RDSKnob {
+                                                renderer: "lo-fi";
+                                                value: root.fmmi-index;
+                                                min-value: 0;
+                                                max-value: 3000;
+                                                size: 102px;
+                                                indicator-position: 36px;
+                                                sensitivity: 1.0;
+                                                scroll-sensitivity: 1.0;
+                                                label: "Index";
+                                                label-pos: "top-center";
+                                                value-changed(v) => {
+                                                    root.fmmi-index = v;
+                                                    root.fmmi-index-changed(v);
+                                                }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            padding-top: 24px;
+                                            RDSKnob {
+                                                renderer: "lo-fi";
+                                                value: root.fmmi-feedback;
+                                                min-value: 0;
+                                                max-value: 2000;
+                                                size: 102px;
+                                                indicator-position: 36px;
+                                                sensitivity: 1.0;
+                                                scroll-sensitivity: 1.0;
+                                                label: "Feedback";
+                                                label-pos: "top-center";
+                                                value-changed(v) => {
+                                                    root.fmmi-feedback = v;
+                                                    root.fmmi-feedback-changed(v);
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-
-                    // Modulator controls
-                    VerticalLayout {
-                        spacing: 6px;
-                        RDSHeaderLabel { width: 300px; bg-color: #fff; text: "Modulator"; }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            VerticalLayout {
-                                Text { text: "Wave"; color: #b9b9bf; font-size: 11px; }
-                                RDSComboBox {
-                                    width: 140px;
-                                    model: root.fmmi-waveforms;
-                                    current-index: root.fmmi-mod-wave;
-                                    selected => {
-                                        root.fmmi-mod-wave = self.current-index;
-                                        root.fmmi-mod-wave-changed(root.fmmi-mod-wave);
-                                    }
-                                }
-                            }
-                            VerticalLayout {
-                                Text { text: "Mode"; color: #b9b9bf; font-size: 11px; }
-                                RDSComboBox {
-                                    width: 120px;
-                                    model: ["Hz", "Ratio"];
-                                    current-index: root.fmmi-mod-mode;
-                                    selected => {
-                                        root.fmmi-mod-mode = self.current-index;
-                                        root.fmmi-mod-mode-changed(root.fmmi-mod-mode);
-                                    }
-                                }
-                            }
-                            VerticalLayout {
-                                Text { text: mod-label; color: #b9b9bf; font-size: 11px; }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.fmmi-mod-value;
-                                    min-value: mod-min;
-                                    max-value: mod-max;
-                                    size: 42px;
-                                    indicator-position: 10px;
-                                    sensitivity: mod-step;
-                                    scroll-sensitivity: mod-step;
-                                    value-changed(v) => {
-                                        root.fmmi-mod-value = v;
-                                        root.fmmi-mod-value-changed(v);
-                                    }
-                                }
-                            }
-                            VerticalLayout {
-                                Text { text: "Detune"; color: #b9b9bf; font-size: 11px; }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.fmmi-mod-detune;
-                                    min-value: -1200;
-                                    max-value: 1200;
-                                    size: 42px;
-                                    indicator-position: 10px;
-                                    sensitivity: 1.0;
-                                    scroll-sensitivity: 1.0;
-                                    value-changed(v) => {
-                                        root.fmmi-mod-detune = v;
-                                        root.fmmi-mod-detune-changed(v);
-                                    }
-                                }
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            VerticalLayout {
-                                Text { text: "Index"; color: #b9b9bf; font-size: 11px; }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.fmmi-index;
-                                    min-value: 0;
-                                    max-value: 3000;
-                                    size: 42px;
-                                    indicator-position: 10px;
-                                    sensitivity: 1.0;
-                                    scroll-sensitivity: 1.0;
-                                    value-changed(v) => {
-                                        root.fmmi-index = v;
-                                        root.fmmi-index-changed(v);
-                                    }
-                                }
-                            }
-                            VerticalLayout {
-                                Text { text: "Feedback"; color: #b9b9bf; font-size: 11px; }
-                                RDSKnob {
-                                    renderer: "lo-fi";
-                                    value: root.fmmi-feedback;
-                                    min-value: 0;
-                                    max-value: 2000;
-                                    size: 42px;
-                                    indicator-position: 10px;
-                                    sensitivity: 1.0;
-                                    scroll-sensitivity: 1.0;
-                                    value-changed(v) => {
-                                        root.fmmi-feedback = v;
-                                        root.fmmi-feedback-changed(v);
-                                    }
-                                }
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            RDSButton {
-                                button-width: 100px;
-                                button-height: 28px;
-                                border-width: 2px;
-                                label: "Randomize";
-                                clicked => root.fmmi-randomize();
-                            }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        RDSButton {
+                            button-height: 28px;
+                            border-width: 2px;
+                            label: "Randomize";
+                            clicked => root.fmmi-randomize();
                         }
                     }
                 }
@@ -515,13 +557,14 @@ export component FMMIEngine {
 
         HorizontalLayout {
             spacing: 12px;
+            height: 522px;
 
             Rectangle {
                 background: #1e3a5f33;
                 border-width: 2px;
                 border-radius: 6px;
                 border-color: Theme.active.border-strong;
-                width: parent.width / 1.5 + 38px;
+                width: parent.width / 1.4 + 8px;
 
                 HorizontalLayout {
                     padding: 12px;
@@ -533,16 +576,313 @@ export component FMMIEngine {
                         VerticalLayout {
                             spacing: 4px;
                             HorizontalLayout {
-                                spacing: 6px;
-                                Text { vertical-alignment: center; text: "FMMI"; width: 40px; color: #b9b9bf; font-size: 11px; }
-                                for s in 16 : RDSSequencerCell {
-                                    property <int> step-index: root.fmmi-page * 16 + s;
-                                    active: root.fmmi-sequencer-grid[step-index];
-                                    current: step-index == root.fmmi-sequencer-current-step;
-                                    edit: step-index == root.fmmi-edit-step;
-                                    cell-width: 38px;
-                                    cell-height: 38px;
-                                    clicked => { root.fmmi-sequencer-grid-toggled(step-index); }
+                                padding-top: 18px;
+                                spacing: 8px;
+                                RDSKnob {
+                                    renderer: "lo-fi";
+                                    value: root.fmmi-prob;
+                                    min-value: 0;
+                                    max-value: 100;
+                                    size: 44px;
+                                    indicator-position: 12px;
+                                    sensitivity: 1;
+                                    scroll-sensitivity: 1;
+                                    label: "Prob";
+                                    label-pos: "top-center";
+                                    value-changed(v) => {
+                                        root.fmmi-prob = v;
+                                        root.fmmi-prob-changed(v);
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    padding-left: 8px;
+                                    for s in 16 : RDSSequencerCell {
+                                        property <int> step-index: root.fmmi-page * 16 + s;
+                                        active: root.fmmi-sequencer-grid[step-index];
+                                        current: step-index == root.fmmi-sequencer-current-step;
+                                        edit: step-index == root.fmmi-edit-step;
+                                        cell-text: root.fmmi-step-note-labels[step-index];
+                                        cell-width: 42px;
+                                        cell-height: 42px;
+                                        clicked => { root.fmmi-sequencer-grid-toggled(step-index); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    Rectangle {
+                        height: 100px;
+                        y: 80px;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 8px;
+                            RDSHeaderLabel {
+                                bg-color: #fff;
+                                text: "Step Params";
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    padding-top: 6px;
+                                    VerticalLayout {
+                                        padding-bottom: 12px;
+                                        Text { text: "Note"; color: #b9b9bf; font-size: 11px; }
+                                    }
+                                    RDSComboBox {
+                                        width: 180px;
+                                        model: root.fmmi-note-options;
+                                        current-index: root.fmmi-step-note-index;
+                                        selected => {
+                                            root.fmmi-step-note-index = self.current-index;
+                                            root.fmmi-step-note-index-changed(root.fmmi-step-note-index);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 6px;
+                                    VerticalLayout {
+                                        padding-bottom: 12px;
+                                        Text { text: "Car Wave"; color: #b9b9bf; font-size: 11px; }
+                                    }
+                                    RDSComboBox {
+                                        width: 110px;
+                                        model: ["Use global", "Sine", "Triangle", "Saw", "Square"];
+                                        current-index: root.fmmi-step-car-wave;
+                                        selected => {
+                                            root.fmmi-step-car-wave = self.current-index;
+                                            root.fmmi-step-car-wave-changed(root.fmmi-step-car-wave);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 6px;
+                                    VerticalLayout {
+                                        padding-bottom: 12px;
+                                        Text { text: "Mod Wave"; color: #b9b9bf; font-size: 11px; }
+                                    }
+                                    RDSComboBox {
+                                        width: 110px;
+                                        model: ["Use global", "Sine", "Triangle", "Saw", "Square"];
+                                        current-index: root.fmmi-step-mod-wave;
+                                        selected => {
+                                            root.fmmi-step-mod-wave = self.current-index;
+                                            root.fmmi-step-mod-wave-changed(root.fmmi-step-mod-wave);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 6px;
+                                    VerticalLayout {
+                                        padding-bottom: 12px;
+                                        Text { text: "Mod Mode"; color: #b9b9bf; font-size: 11px; }
+                                    }
+                                    RDSComboBox {
+                                        width: 110px;
+                                        model: ["Use global", "Hz", "Ratio"];
+                                        current-index: root.fmmi-step-mod-mode;
+                                        selected => {
+                                            root.fmmi-step-mod-mode = self.current-index;
+                                            root.fmmi-step-mod-mode-changed(root.fmmi-step-mod-mode);
+                                        }
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-car-freq;
+                                        min-value: 10;
+                                        max-value: 20000;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Car Freq";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-car-freq = v;
+                                            root.fmmi-step-car-freq-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-car-detune;
+                                        min-value: -1200;
+                                        max-value: 1200;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Car Detune";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-car-detune = v;
+                                            root.fmmi-step-car-detune-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-mod-value;
+                                        min-value: mod-min;
+                                        max-value: mod-max;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: mod-step;
+                                        scroll-sensitivity: mod-step;
+                                        label: mod-step-label;
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-mod-value = v;
+                                            root.fmmi-step-mod-value-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-mod-detune;
+                                        min-value: -1200;
+                                        max-value: 1200;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Mod Detune";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-mod-detune = v;
+                                            root.fmmi-step-mod-detune-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-index;
+                                        min-value: 0;
+                                        max-value: 3000;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Index";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-index = v;
+                                            root.fmmi-step-index-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-feedback;
+                                        min-value: 0;
+                                        max-value: 2000;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Feedback";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-feedback = v;
+                                            root.fmmi-step-feedback-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-drive;
+                                        min-value: 0;
+                                        max-value: 1.0;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 0.01;
+                                        scroll-sensitivity: 0.01;
+                                        label: "Drive";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-drive = v;
+                                            root.fmmi-step-drive-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-out-level;
+                                        min-value: 0;
+                                        max-value: 1.5;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 0.01;
+                                        scroll-sensitivity: 0.01;
+                                        label: "Output";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-out-level = v;
+                                            root.fmmi-step-out-level-changed(v);
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text { text: "Randomize Params"; color: #b9b9bf; font-size: 11px; }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                RDSCircleToggle { label: "Note"; active: root.fmmi-rand-note-enabled; clicked => { root.fmmi-rand-note-enabled = !root.fmmi-rand-note-enabled; root.fmmi-rand-note-enabled-changed(root.fmmi-rand-note-enabled); } }
+                                RDSCircleToggle { label: "CarW"; active: root.fmmi-rand-car-wave-enabled; clicked => { root.fmmi-rand-car-wave-enabled = !root.fmmi-rand-car-wave-enabled; root.fmmi-rand-car-wave-enabled-changed(root.fmmi-rand-car-wave-enabled); } }
+                                RDSCircleToggle { label: "ModW"; active: root.fmmi-rand-mod-wave-enabled; clicked => { root.fmmi-rand-mod-wave-enabled = !root.fmmi-rand-mod-wave-enabled; root.fmmi-rand-mod-wave-enabled-changed(root.fmmi-rand-mod-wave-enabled); } }
+                                RDSCircleToggle { label: "Mode"; active: root.fmmi-rand-mod-mode-enabled; clicked => { root.fmmi-rand-mod-mode-enabled = !root.fmmi-rand-mod-mode-enabled; root.fmmi-rand-mod-mode-enabled-changed(root.fmmi-rand-mod-mode-enabled); } }
+                                RDSCircleToggle { label: "CarF"; active: root.fmmi-rand-car-freq-enabled; clicked => { root.fmmi-rand-car-freq-enabled = !root.fmmi-rand-car-freq-enabled; root.fmmi-rand-car-freq-enabled-changed(root.fmmi-rand-car-freq-enabled); } }
+                                RDSCircleToggle { label: "CarD"; active: root.fmmi-rand-car-detune-enabled; clicked => { root.fmmi-rand-car-detune-enabled = !root.fmmi-rand-car-detune-enabled; root.fmmi-rand-car-detune-enabled-changed(root.fmmi-rand-car-detune-enabled); } }
+                                RDSCircleToggle { label: "ModV"; active: root.fmmi-rand-mod-value-enabled; clicked => { root.fmmi-rand-mod-value-enabled = !root.fmmi-rand-mod-value-enabled; root.fmmi-rand-mod-value-enabled-changed(root.fmmi-rand-mod-value-enabled); } }
+                                RDSCircleToggle { label: "ModD"; active: root.fmmi-rand-mod-detune-enabled; clicked => { root.fmmi-rand-mod-detune-enabled = !root.fmmi-rand-mod-detune-enabled; root.fmmi-rand-mod-detune-enabled-changed(root.fmmi-rand-mod-detune-enabled); } }
+                                RDSCircleToggle { label: "Index"; active: root.fmmi-rand-index-enabled; clicked => { root.fmmi-rand-index-enabled = !root.fmmi-rand-index-enabled; root.fmmi-rand-index-enabled-changed(root.fmmi-rand-index-enabled); } }
+                                RDSCircleToggle { label: "Feed"; active: root.fmmi-rand-feedback-enabled; clicked => { root.fmmi-rand-feedback-enabled = !root.fmmi-rand-feedback-enabled; root.fmmi-rand-feedback-enabled-changed(root.fmmi-rand-feedback-enabled); } }
+                                RDSCircleToggle { label: "Drive"; active: root.fmmi-rand-drive-enabled; clicked => { root.fmmi-rand-drive-enabled = !root.fmmi-rand-drive-enabled; root.fmmi-rand-drive-enabled-changed(root.fmmi-rand-drive-enabled); } }
+                                RDSCircleToggle { label: "Out"; active: root.fmmi-rand-out-level-enabled; clicked => { root.fmmi-rand-out-level-enabled = !root.fmmi-rand-out-level-enabled; root.fmmi-rand-out-level-enabled-changed(root.fmmi-rand-out-level-enabled); } }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand Step"; clicked => root.fmmi-rand-step-params(); }
+                                RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand Page"; clicked => root.fmmi-rand-page-params(); }
+                                RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand All"; clicked => root.fmmi-rand-all-params(); }
+                            }
+
+                            HorizontalLayout {
+                                RDSKeybed {
+                                    octaves: 5;
+                                    scale: "chromatic";
+                                    size: 24px;
+                                    note-triggered(note) => {
+                                        RDSKeybedBus.last-note = note;
+                                        RDSKeybedBus.note-triggered(note);
+                                    }
                                 }
                             }
                         }
@@ -555,132 +895,25 @@ export component FMMIEngine {
                 border-width: 2px;
                 border-radius: 6px;
                 border-color: Theme.active.border-strong;
-                width: parent.width / 3;
+                width: parent.width / 3 - 80px;
+                height: 352px;
 
                 VerticalLayout {
                     padding: 12px;
                     spacing: 12px;
 
                     RDSHeaderLabel {
-                        width: 300px;
-                        bg-color: #fff;
-                        text: "Utility Functions";
-                    }
-                    HorizontalLayout {
-                        spacing: 12px;
-                        padding-top: 8px;
-                        Text { text: "Mode"; color: #b9b9bf; font-size: 11px; vertical-alignment: center; }
-                        RDSTextStepper {
-                            options: ["Randomize", "Clear", "Copy/Paste"];
-                            index: root.fmmi-utility-mode;
-                            font-family: Theme.active.font_body;
-                            button-pos: "left-right";
-                            button-height: 26px;
-                            readout-width: 90px;
-                            readout-height: 26px;
-                            readout-text-size: 12px;
-                            readout-text-weight: 400;
-                            index-changed(v) => { root.fmmi-utility-mode = v; }
-                        }
-                    }
-
-                    if root.fmmi-utility-mode == 0 : VerticalLayout {
-                        spacing: 6px;
-                        padding-top: 6px;
-                        HorizontalLayout {
-                            spacing: 22px;
-                            padding-top: 6px;
-                            VerticalLayout {
-                                spacing: 10px;
-                                Text { text: "Steps"; color: #b9b9bf; font-size: 11px; }
-                                RDSSelectButton { label: "Page"; width: 86px; active: false; clicked => { root.fmmi-randomize-steps-page(); } }
-                                RDSSelectButton { label: "All"; width: 86px; active: false; clicked => { root.fmmi-randomize-steps-all(); } }
-                            }
-                            VerticalLayout {
-                                spacing: 10px;
-                                Text { text: "Params"; color: #b9b9bf; font-size: 11px; }
-                                RDSSelectButton { label: "Page"; width: 86px; active: false; clicked => { root.fmmi-randomize-params-page(); } }
-                                RDSSelectButton { label: "All"; width: 86px; active: false; clicked => { root.fmmi-randomize-params-all(); } }
-                            }
-                            VerticalLayout {
-                                spacing: 10px;
-                                Text { text: "Both"; color: #b9b9bf; font-size: 11px; }
-                                RDSSelectButton { label: "Page"; width: 86px; active: false; clicked => { root.fmmi-randomize-both-page(); } }
-                                RDSSelectButton { label: "All"; width: 86px; active: false; clicked => { root.fmmi-randomize-both-all(); } }
-                            }
-                        }
-                    }
-
-                    if root.fmmi-utility-mode == 1 : VerticalLayout {
-                        spacing: 6px;
-                        padding-top: 6px;
-                        HorizontalLayout {
-                            spacing: 12px;
-                            padding-top: 6px;
-                            VerticalLayout {
-                                spacing: 4px;
-                                Text { text: "Steps"; color: #b9b9bf; font-size: 11px; }
-                                RDSSelectButton { label: "Page"; active: false; clicked => { root.fmmi-clear-steps-page(); } }
-                                RDSSelectButton { label: "All"; active: false; clicked => { root.fmmi-clear-steps-all(); } }
-                            }
-                            VerticalLayout {
-                                spacing: 4px;
-                                Text { text: "Params"; color: #b9b9bf; font-size: 11px; }
-                                RDSSelectButton { label: "Page"; active: false; clicked => { root.fmmi-clear-params-page(); } }
-                                RDSSelectButton { label: "All"; active: false; clicked => { root.fmmi-clear-params-all(); } }
-                            }
-                            VerticalLayout {
-                                spacing: 4px;
-                                Text { text: "Both"; color: #b9b9bf; font-size: 11px; }
-                                RDSSelectButton { label: "Page"; active: false; clicked => { root.fmmi-clear-both-page(); } }
-                                RDSSelectButton { label: "All"; active: false; clicked => { root.fmmi-clear-both-all(); } }
-                            }
-                        }
-                    }
-
-                    if root.fmmi-utility-mode == 2 : VerticalLayout {
-                        spacing: 6px;
-                        padding-top: 6px;
-                        HorizontalLayout {
-                            spacing: 22px;
-                            padding-top: 6px;
-                            VerticalLayout {
-                                spacing: 10px;
-                                Text { text: "Steps"; color: #b9b9bf; font-size: 11px; }
-                                RDSSelectButton { label: "Page"; width: 86px; active: false; clicked => { root.fmmi-copy-steps-page(); } }
-                                RDSSelectButton { label: "All"; width: 86px; active: false; clicked => { root.fmmi-copy-steps-all(); } }
-                            }
-                            VerticalLayout {
-                                spacing: 10px;
-                                Text { text: "Params"; color: #b9b9bf; font-size: 11px; }
-                                RDSSelectButton { label: "Page"; width: 86px; active: false; clicked => { root.fmmi-copy-params-page(); } }
-                                RDSSelectButton { label: "All"; width: 86px; active: false; clicked => { root.fmmi-copy-params-all(); } }
-                            }
-                            VerticalLayout {
-                                spacing: 10px;
-                                Text { text: "Both"; color: #b9b9bf; font-size: 11px; }
-                                RDSSelectButton { label: "Page"; width: 86px; active: false; clicked => { root.fmmi-copy-both-page(); } }
-                                RDSSelectButton { label: "All"; width: 86px; active: false; clicked => { root.fmmi-copy-both-all(); } }
-                            }
-                        }
-                        HorizontalLayout {
-                            padding-top: 12px;
-                            spacing: 8px;
-                            Rectangle { width: 12px; height: 1px; background: transparent; }
-                            RDSSelectButton { label: "Paste"; width: 86px; active: false; clicked => { root.fmmi-paste(); } }
-                        }
-                    }
-
-                    RDSHeaderLabel {
-                        width: 300px;
                         bg-color: #fff;
                         text: "Step Navigation";
                     }
                     HorizontalLayout {
                         spacing: 8px;
+                        height: 46px;
+
                         VerticalLayout {
                             Text { horizontal-alignment: center; text: "Page"; color: #b9b9bf; font-size: 11px; }
                             RDSNumStepper {
+                                width: 165px;
                                 value: root.fmmi-page;
                                 min-value: 0;
                                 max-value: 7;
@@ -699,6 +932,7 @@ export component FMMIEngine {
                                 }
                             }
                         }
+
                         VerticalLayout {
                             spacing: 4px;
                             Text { horizontal-alignment: center; text: "Step"; color: #b9b9bf; font-size: 11px; }
@@ -722,293 +956,122 @@ export component FMMIEngine {
                             }
                         }
                     }
-                }
-            }
-        }
 
-        // Keybed + Step Params
-        HorizontalLayout {
-            spacing: 12px;
-            Rectangle {
-                background: #121216;
-                border-radius: 6px;
-                border-color: #2a2a35;
-                border-width: 2px;
-                width: parent.width / 2 - 10px;
-                VerticalLayout {
-                    padding: 12px;
-                    spacing: 6px;
-                    Text { text: "Keybed"; color: #e4e4ea; font-size: 14px; }
-                    RDSKeybed {
-                        octaves: 4;
-                        scale: "chromatic";
-                        size: 16px;
-                        note-triggered(note) => {
-                            RDSKeybedBus.last-note = note;
-                            RDSKeybedBus.note-triggered(note);
+                    RDSHeaderLabel {
+                        bg-color: #fff;
+                        text: "Utility Functions";
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        padding-top: 8px;
+                        height: 20px;
+
+                        RDSTextStepper {
+                            width: 320px;
+                            options: ["Randomize", "Clear", "Copy/Paste"];
+                            index: root.fmmi-utility-mode;
+                            font-family: Theme.active.font_body;
+                            button-pos: "left-right";
+                            button-height: 26px;
+                            readout-width: 90px;
+                            readout-height: 26px;
+                            readout-text-size: 12px;
+                            readout-text-weight: 400;
+                            index-changed(v) => { root.fmmi-utility-mode = v; }
                         }
                     }
-                }
-            }
-            Rectangle {
-                background: #121216;
-                border-radius: 6px;
-                border-color: #2a2a35;
-                border-width: 2px;
-                width: parent.width / 2 - 10px;
-                VerticalLayout {
-                    padding: 12px;
-                    spacing: 8px;
-                    Text { text: "Step Params"; color: #e4e4ea; font-size: 14px; }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        VerticalLayout {
-                            Text { text: "Note"; color: #b9b9bf; font-size: 11px; }
-                            RDSComboBox {
-                                width: 180px;
-                                model: root.fmmi-note-options;
-                                current-index: root.fmmi-step-note-index;
-                                selected => {
-                                    root.fmmi-step-note-index = self.current-index;
-                                    root.fmmi-step-note-index-changed(root.fmmi-step-note-index);
-                                }
+                    if root.fmmi-utility-mode == 0 : VerticalLayout {
+                        spacing: 6px;
+                        padding-top: 6px;
+                        HorizontalLayout {
+                            height: 90px;
+                            spacing: 10px;
+                            padding-top: 6px;
+                            VerticalLayout {
+                                spacing: 12px;
+                                Text { text: "Steps"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-randomize-steps-page(); } }
+                                RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-randomize-steps-all(); } }
                             }
-                        }
-                        VerticalLayout {
-                            Text { text: "Car Wave"; color: #b9b9bf; font-size: 11px; }
-                            RDSComboBox {
-                                width: 110px;
-                                model: ["Use global", "Sine", "Triangle", "Saw", "Square"];
-                                current-index: root.fmmi-step-car-wave;
-                                selected => {
-                                    root.fmmi-step-car-wave = self.current-index;
-                                    root.fmmi-step-car-wave-changed(root.fmmi-step-car-wave);
-                                }
+                            VerticalLayout {
+                                spacing: 12px;
+                                Text { text: "Params"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-randomize-params-page(); } }
+                                RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-randomize-params-all(); } }
                             }
-                        }
-                        VerticalLayout {
-                            Text { text: "Mod Wave"; color: #b9b9bf; font-size: 11px; }
-                            RDSComboBox {
-                                width: 110px;
-                                model: ["Use global", "Sine", "Triangle", "Saw", "Square"];
-                                current-index: root.fmmi-step-mod-wave;
-                                selected => {
-                                    root.fmmi-step-mod-wave = self.current-index;
-                                    root.fmmi-step-mod-wave-changed(root.fmmi-step-mod-wave);
-                                }
-                            }
-                        }
-                        VerticalLayout {
-                            Text { text: "Mod Mode"; color: #b9b9bf; font-size: 11px; }
-                            RDSComboBox {
-                                width: 110px;
-                                model: ["Use global", "Hz", "Ratio"];
-                                current-index: root.fmmi-step-mod-mode;
-                                selected => {
-                                    root.fmmi-step-mod-mode = self.current-index;
-                                    root.fmmi-step-mod-mode-changed(root.fmmi-step-mod-mode);
-                                }
+                            VerticalLayout {
+                                spacing: 12px;
+                                Text { text: "Both"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-randomize-both-page(); } }
+                                RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-randomize-both-all(); } }
                             }
                         }
                     }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        VerticalLayout {
-                            Rectangle { width: 180px; height: 1px; background: transparent; }
-                        }
-                        VerticalLayout {
-                            Text { text: "Car Freq"; color: #b9b9bf; font-size: 11px; }
-                            RDSNumStepper {
-                                value: root.fmmi-step-car-freq;
-                                min-value: 10;
-                                max-value: 20000;
-                                step: 1;
-                                pad-digits: 5;
-                                button-pos: "left-right";
-                                button-height: 26px;
-                                readout-width: 86px;
-                                readout-height: 26px;
-                                readout-text-size: 12px;
-                                readout-text-weight: 400;
-                                value-changed(v) => {
-                                    root.fmmi-step-car-freq = v;
-                                    root.fmmi-step-car-freq-changed(v);
-                                }
+                    if root.fmmi-utility-mode == 1 : VerticalLayout {
+                        spacing: 6px;
+                        padding-top: 6px;
+                        HorizontalLayout {
+                            height: 90px;
+                            spacing: 22px;
+                            padding-top: 6px;
+                            VerticalLayout {
+                                spacing: 12px;
+                                Text { text: "Steps"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-clear-steps-page(); } }
+                                RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-clear-steps-all(); } }
                             }
-                        }
-                        VerticalLayout {
-                            Text { text: "Car Detune"; color: #b9b9bf; font-size: 11px; }
-                            RDSNumStepper {
-                                value: root.fmmi-step-car-detune;
-                                min-value: -1200;
-                                max-value: 1200;
-                                step: 1;
-                                pad-digits: 4;
-                                button-pos: "left-right";
-                                button-height: 26px;
-                                readout-width: 70px;
-                                readout-height: 26px;
-                                readout-text-size: 12px;
-                                readout-text-weight: 400;
-                                value-changed(v) => {
-                                    root.fmmi-step-car-detune = v;
-                                    root.fmmi-step-car-detune-changed(v);
-                                }
+                            VerticalLayout {
+                                spacing: 12px;
+                                Text { text: "Params"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-clear-params-page(); } }
+                                RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-clear-params-all(); } }
                             }
-                        }
-                        VerticalLayout {
-                            Text { text: mod-step-label; color: #b9b9bf; font-size: 11px; }
-                            RDSNumStepper {
-                                value: root.fmmi-step-mod-value;
-                                min-value: mod-min;
-                                max-value: mod-max;
-                                step: mod-step;
-                                pad-digits: 5;
-                                button-pos: "left-right";
-                                button-height: 26px;
-                                readout-width: 96px;
-                                readout-height: 26px;
-                                readout-text-size: 12px;
-                                readout-text-weight: 400;
-                                value-changed(v) => {
-                                    root.fmmi-step-mod-value = v;
-                                    root.fmmi-step-mod-value-changed(v);
-                                }
-                            }
-                        }
-                        VerticalLayout {
-                            Text { text: "Mod Detune"; color: #b9b9bf; font-size: 11px; }
-                            RDSNumStepper {
-                                value: root.fmmi-step-mod-detune;
-                                min-value: -1200;
-                                max-value: 1200;
-                                step: 1;
-                                pad-digits: 4;
-                                button-pos: "left-right";
-                                button-height: 26px;
-                                readout-width: 70px;
-                                readout-height: 26px;
-                                readout-text-size: 12px;
-                                readout-text-weight: 400;
-                                value-changed(v) => {
-                                    root.fmmi-step-mod-detune = v;
-                                    root.fmmi-step-mod-detune-changed(v);
-                                }
+                            VerticalLayout {
+                                spacing: 12px;
+                                Text { text: "Both"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-clear-both-page(); } }
+                                RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-clear-both-all(); } }
                             }
                         }
                     }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        VerticalLayout {
-                            Text { text: "Index"; color: #b9b9bf; font-size: 11px; }
-                            RDSNumStepper {
-                                value: root.fmmi-step-index;
-                                min-value: 0;
-                                max-value: 3000;
-                                step: 1;
-                                pad-digits: 4;
-                                button-pos: "left-right";
-                                button-height: 26px;
-                                readout-width: 72px;
-                                readout-height: 26px;
-                                readout-text-size: 12px;
-                                readout-text-weight: 400;
-                                value-changed(v) => {
-                                    root.fmmi-step-index = v;
-                                    root.fmmi-step-index-changed(v);
-                                }
+                    if root.fmmi-utility-mode == 2 : VerticalLayout {
+                        spacing: 6px;
+                        padding-top: 6px;
+                        HorizontalLayout {
+                            height: 90px;
+                            spacing: 22px;
+                            padding-top: 6px;
+                            VerticalLayout {
+                                spacing: 12px;
+                                Text { text: "Steps"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-copy-steps-page(); } }
+                                RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-copy-steps-all(); } }
+                            }
+                            VerticalLayout {
+                                spacing: 12px;
+                                Text { text: "Params"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-copy-params-page(); } }
+                                RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-copy-params-all(); } }
+                            }
+                            VerticalLayout {
+                                spacing: 12px;
+                                Text { text: "Both"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-copy-both-page(); } }
+                                RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-copy-both-all(); } }
                             }
                         }
-                        VerticalLayout {
-                            Text { text: "Feedback"; color: #b9b9bf; font-size: 11px; }
-                            RDSNumStepper {
-                                value: root.fmmi-step-feedback;
-                                min-value: 0;
-                                max-value: 2000;
-                                step: 1;
-                                pad-digits: 4;
-                                button-pos: "left-right";
-                                button-height: 26px;
-                                readout-width: 72px;
-                                readout-height: 26px;
-                                readout-text-size: 12px;
-                                readout-text-weight: 400;
-                                value-changed(v) => {
-                                    root.fmmi-step-feedback = v;
-                                    root.fmmi-step-feedback-changed(v);
-                                }
+                        HorizontalLayout {
+                            height: 90px;
+                            spacing: 22px;
+                            padding-top: 16px;
+                            VerticalLayout {
+                                spacing: 12px;
+                                RDSSelectButton { label: "Paste"; width: 320px; active: false; clicked => { root.fmmi-paste(); } }
                             }
                         }
-                        VerticalLayout {
-                            Text { text: "Drive"; color: #b9b9bf; font-size: 11px; }
-                            RDSNumStepper {
-                                value: root.fmmi-step-drive;
-                                min-value: 0;
-                                max-value: 1.0;
-                                step: 0.01;
-                                pad-digits: 2;
-                                button-pos: "left-right";
-                                button-height: 26px;
-                                readout-width: 64px;
-                                readout-height: 26px;
-                                readout-text-size: 12px;
-                                readout-text-weight: 400;
-                                value-changed(v) => {
-                                    root.fmmi-step-drive = v;
-                                    root.fmmi-step-drive-changed(v);
-                                }
-                            }
-                        }
-                        VerticalLayout {
-                            Text { text: "Output"; color: #b9b9bf; font-size: 11px; }
-                            RDSNumStepper {
-                                value: root.fmmi-step-out-level;
-                                min-value: 0;
-                                max-value: 1.5;
-                                step: 0.01;
-                                pad-digits: 2;
-                                button-pos: "left-right";
-                                button-height: 26px;
-                                readout-width: 64px;
-                                readout-height: 26px;
-                                readout-text-size: 12px;
-                                readout-text-weight: 400;
-                                value-changed(v) => {
-                                    root.fmmi-step-out-level = v;
-                                    root.fmmi-step-out-level-changed(v);
-                                }
-                            }
-                        }
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-                        RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand Step"; clicked => root.fmmi-rand-step-params(); }
-                        RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand Page"; clicked => root.fmmi-rand-page-params(); }
-                        RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand All"; clicked => root.fmmi-rand-all-params(); }
-                    }
-
-                    Text { text: "Randomize Params"; color: #b9b9bf; font-size: 11px; }
-                    HorizontalLayout {
-                        spacing: 10px;
-                        RDSCircleToggle { label: "Note"; active: root.fmmi-rand-note-enabled; clicked => { root.fmmi-rand-note-enabled = !root.fmmi-rand-note-enabled; root.fmmi-rand-note-enabled-changed(root.fmmi-rand-note-enabled); } }
-                        RDSCircleToggle { label: "CarW"; active: root.fmmi-rand-car-wave-enabled; clicked => { root.fmmi-rand-car-wave-enabled = !root.fmmi-rand-car-wave-enabled; root.fmmi-rand-car-wave-enabled-changed(root.fmmi-rand-car-wave-enabled); } }
-                        RDSCircleToggle { label: "ModW"; active: root.fmmi-rand-mod-wave-enabled; clicked => { root.fmmi-rand-mod-wave-enabled = !root.fmmi-rand-mod-wave-enabled; root.fmmi-rand-mod-wave-enabled-changed(root.fmmi-rand-mod-wave-enabled); } }
-                        RDSCircleToggle { label: "Mode"; active: root.fmmi-rand-mod-mode-enabled; clicked => { root.fmmi-rand-mod-mode-enabled = !root.fmmi-rand-mod-mode-enabled; root.fmmi-rand-mod-mode-enabled-changed(root.fmmi-rand-mod-mode-enabled); } }
-                        RDSCircleToggle { label: "CarF"; active: root.fmmi-rand-car-freq-enabled; clicked => { root.fmmi-rand-car-freq-enabled = !root.fmmi-rand-car-freq-enabled; root.fmmi-rand-car-freq-enabled-changed(root.fmmi-rand-car-freq-enabled); } }
-                        RDSCircleToggle { label: "CarD"; active: root.fmmi-rand-car-detune-enabled; clicked => { root.fmmi-rand-car-detune-enabled = !root.fmmi-rand-car-detune-enabled; root.fmmi-rand-car-detune-enabled-changed(root.fmmi-rand-car-detune-enabled); } }
-                    }
-                    HorizontalLayout {
-                        spacing: 10px;
-                        RDSCircleToggle { label: "ModV"; active: root.fmmi-rand-mod-value-enabled; clicked => { root.fmmi-rand-mod-value-enabled = !root.fmmi-rand-mod-value-enabled; root.fmmi-rand-mod-value-enabled-changed(root.fmmi-rand-mod-value-enabled); } }
-                        RDSCircleToggle { label: "ModD"; active: root.fmmi-rand-mod-detune-enabled; clicked => { root.fmmi-rand-mod-detune-enabled = !root.fmmi-rand-mod-detune-enabled; root.fmmi-rand-mod-detune-enabled-changed(root.fmmi-rand-mod-detune-enabled); } }
-                        RDSCircleToggle { label: "Index"; active: root.fmmi-rand-index-enabled; clicked => { root.fmmi-rand-index-enabled = !root.fmmi-rand-index-enabled; root.fmmi-rand-index-enabled-changed(root.fmmi-rand-index-enabled); } }
-                        RDSCircleToggle { label: "Feed"; active: root.fmmi-rand-feedback-enabled; clicked => { root.fmmi-rand-feedback-enabled = !root.fmmi-rand-feedback-enabled; root.fmmi-rand-feedback-enabled-changed(root.fmmi-rand-feedback-enabled); } }
-                        RDSCircleToggle { label: "Drive"; active: root.fmmi-rand-drive-enabled; clicked => { root.fmmi-rand-drive-enabled = !root.fmmi-rand-drive-enabled; root.fmmi-rand-drive-enabled-changed(root.fmmi-rand-drive-enabled); } }
-                        RDSCircleToggle { label: "Out"; active: root.fmmi-rand-out-level-enabled; clicked => { root.fmmi-rand-out-level-enabled = !root.fmmi-rand-out-level-enabled; root.fmmi-rand-out-level-enabled-changed(root.fmmi-rand-out-level-enabled); } }
                     }
                 }
             }
@@ -1016,13 +1079,13 @@ export component FMMIEngine {
 
         // Downstream Devices
         VerticalLayout {
-            width: parent.width;
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 34px;
+                padding: 12px;
 
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: 600px;
+                    height: 246px;
                     GranulatorDevice {
                         mosaic-enabled <=> root.mosaic-enabled;
                         mosaic-loop-lock <=> root.mosaic-loop-lock;
@@ -1060,8 +1123,8 @@ export component FMMIEngine {
                 }
 
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: 600px;
+                    height: 246px;
                     SilkDevice {
                         ring-enabled <=> root.ring-enabled;
                         ring-cutoff <=> root.ring-cutoff;
@@ -1101,13 +1164,13 @@ export component FMMIEngine {
             }
 
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 34px;
+                padding: 12px;
+
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: 600px;
+                    height: 246px;
                     TextureDevice {
-                        width: parent.width;
-                        height: parent.height;
                         texture-enabled <=> root.texture-enabled;
                         texture-gate <=> root.texture-gate;
                         texture-drive <=> root.texture-drive;
@@ -1133,11 +1196,9 @@ export component FMMIEngine {
                     }
                 }
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: 600px;
+                    height: 246px;
                     ReflectDevice {
-                        width: parent.width;
-                        height: parent.height;
                         reflect-enabled <=> root.reflect-enabled;
                         reflect-freeze <=> root.reflect-freeze;
                         reflect-delay <=> root.reflect-delay;

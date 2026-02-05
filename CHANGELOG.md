@@ -3,11 +3,6 @@
 ## [0.1.23] - 2026-02-05
 
 - Added new **FMMI** engine (two-operator FM synth) as a standalone engine option.
-- FMMI: added global Carrier/Modulator controls, including knob-based control for key FM parameters.
-- FMMI: added 128-step sequencer workflow (16x8), per-step editing, and per-step wave/mode overrides.
-- FMMI: reworked utility functions to SynDRM-style **Randomize / Clear / Copy-Paste** scopes (page/all, steps/params/both).
-- FMMI: added per-parameter randomization masks so step-parameter randomization can be selectively applied.
-- FMMI: added full downstream device chain support (Granulator, Silk, G8, Texture, Reflect).
 - Project I/O: ensured `.tlbx` (JSON-based) project files are accepted in load workflows.
 - Docs: added dedicated FMMI docs and updated user/developer documentation to include FMMI and current engine/device architecture.
 

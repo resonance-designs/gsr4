@@ -111,6 +111,7 @@ export component ReflectDevice {
         }
 
         Rectangle {
+            width: 620px;
             background: #1e233a33;
             border-width: 2px;
             border-radius: 6px;
@@ -130,7 +131,7 @@ export component ReflectDevice {
                             renderer: "lo-fi";
                             value: root.reflect-reverb;
                             min-value: 0; max-value: 1;
-                            size: 70px; indicator-position: 25px;
+                            size: 76px; indicator-position: 25px;
                             label: "Reverb";
                             label-pos: "top-center";
                             label-font-size: 10px;
@@ -142,7 +143,7 @@ export component ReflectDevice {
                             renderer: "lo-fi";
                             value: root.reflect-size;
                             min-value: 0; max-value: 1;
-                            size: 70px; indicator-position: 25px;
+                            size: 76px; indicator-position: 25px;
                             label: "Size";
                             label-pos: "top-center";
                             label-font-size: 10px;
@@ -154,7 +155,7 @@ export component ReflectDevice {
                             renderer: "lo-fi";
                             value: root.reflect-spread;
                             min-value: 0; max-value: 1;
-                            size: 70px; indicator-position: 25px;
+                            size: 76px; indicator-position: 25px;
                             label: "Spread";
                             label-pos: "top-center";
                             label-font-size: 10px;
@@ -166,7 +167,7 @@ export component ReflectDevice {
                             renderer: "lo-fi";
                             value: root.reflect-damp;
                             min-value: 0; max-value: 1;
-                            size: 70px; indicator-position: 25px;
+                            size: 76px; indicator-position: 25px;
                             label: "Damp";
                             label-pos: "top-center";
                             label-font-size: 10px;
@@ -178,7 +179,7 @@ export component ReflectDevice {
                             renderer: "lo-fi";
                             value: root.reflect-decay;
                             min-value: 0; max-value: 1;
-                            size: 70px; indicator-position: 25px;
+                            size: 76px; indicator-position: 25px;
                             label: "Decay";
                             label-pos: "top-center";
                             label-font-size: 10px;
@@ -188,14 +189,14 @@ export component ReflectDevice {
                         }
                         RDSButton {
                             label: "Clear";
-                            button-width: 70px;
+                            button-width: 76px;
                             button-height: 28px;
                             clicked => root.reflect-clear();
                         }
                         RDSButton {
                             label: "Freeze";
                             active: root.reflect-freeze;
-                            button-width: 70px;
+                            button-width: 76px;
                             button-height: 28px;
                             clicked => root.toggle-reflect-freeze();
                         }
@@ -209,7 +210,7 @@ export component ReflectDevice {
                             renderer: "lo-fi";
                             value: root.reflect-delay;
                             min-value: 0; max-value: 1;
-                            size: 70px; indicator-position: 25px;
+                            size: 76px; indicator-position: 25px;
                             label: "Delay";
                             label-pos: "top-center";
                             label-font-size: 10px;
@@ -221,7 +222,7 @@ export component ReflectDevice {
                             renderer: "lo-fi";
                             value: root.reflect-time;
                             min-value: 0; max-value: 1;
-                            size: 70px; indicator-position: 25px;
+                            size: 76px; indicator-position: 25px;
                             label: "Time";
                             label-pos: "top-center";
                             label-font-size: 10px;
@@ -234,7 +235,7 @@ export component ReflectDevice {
                             renderer: "lo-fi";
                             value: root.reflect-feedback;
                             min-value: 0; max-value: 1;
-                            size: 70px; indicator-position: 25px;
+                            size: 76px; indicator-position: 25px;
                             label: "Feedback";
                             label-pos: "top-center";
                             label-font-size: 10px;
@@ -269,7 +270,7 @@ export component ReflectDevice {
                             renderer: "lo-fi";
                             value: root.reflect-post-gain;
                             min-value: 0; max-value: 1;
-                            size: 70px; indicator-position: 25px;
+                            size: 76px; indicator-position: 25px;
                             label: "Post Gain";
                             label-pos: "top-center";
                             label-font-size: 10px;

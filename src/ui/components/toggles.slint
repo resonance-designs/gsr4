@@ -19,7 +19,9 @@ export component RDSCircleToggle {
     in property <string> label-pos: "right";
     callback clicked();
 
-    private property <string> label-text: root.active ? root.label-active : root.label;
+    private property <string> label-text: root.active
+        ? (root.label-active == "" ? root.label : root.label-active)
+        : root.label;
     private property <bool> has-label: root.label-text != "";
     private property <bool> label-right: root.label-pos == "right";
     private property <bool> label-left: root.label-pos == "left";

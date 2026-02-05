@@ -1396,6 +1396,8 @@ struct Track {
     fmmi_drive: AtomicU32,
     /// FMMI output level.
     fmmi_out_level: AtomicU32,
+    /// FMMI sequencer note trigger probability (0..1).
+    fmmi_prob: AtomicU32,
     /// FMMI sequencer grid (128 steps).
     fmmi_sequencer_grid: Arc<[AtomicBool; FMMI_STEPS]>,
     /// FMMI sequencer current step.
@@ -2154,6 +2156,7 @@ impl Default for Track {
             fmmi_feedback: AtomicU32::new(0.0f32.to_bits()),
             fmmi_drive: AtomicU32::new(0.0f32.to_bits()),
             fmmi_out_level: AtomicU32::new(0.5f32.to_bits()),
+            fmmi_prob: AtomicU32::new(1.0f32.to_bits()),
             fmmi_sequencer_grid: Arc::new(std::array::from_fn(|idx| {
                 AtomicBool::new(idx < FMMI_PAGE_SIZE && idx % 2 == 0)
             })),
@@ -3540,6 +3543,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.fmmi_feedback.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.fmmi_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.fmmi_out_level.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.fmmi_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
     for i in 0..FMMI_STEPS {
         let active = i < FMMI_PAGE_SIZE && i % 2 == 0;
         track.fmmi_sequencer_grid[i].store(active, Ordering::Relaxed);
@@ -8225,6 +8229,8 @@ impl TLBX1 {
         let drive = f32::from_bits(track.fmmi_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let out_level = f32::from_bits(track.fmmi_out_level.load(Ordering::Relaxed))
             .clamp(0.0, 1.5);
+        let prob = f32::from_bits(track.fmmi_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let mut rng_state = track.fmmi_rng_state.load(Ordering::Relaxed);
 
         let mut current_car_freq =
             f32::from_bits(track.fmmi_current_car_freq.load(Ordering::Relaxed));
@@ -8315,6 +8321,7 @@ impl TLBX1 {
                     let step_idx = current_step.max(0) as usize;
                     if step_idx < FMMI_STEPS
                         && track.fmmi_sequencer_grid[step_idx].load(Ordering::Relaxed)
+                        && (prob >= 1.0 || fmmi_rand_unit(&mut rng_state) <= prob)
                     {
                         let step_note = track.fmmi_step_note[step_idx].load(Ordering::Relaxed);
                         let step_car_wave =
@@ -8481,6 +8488,7 @@ impl TLBX1 {
         track.fmmi_gate_stage.store(gate_stage, Ordering::Relaxed);
         track.fmmi_gate_pos.store(gate_pos, Ordering::Relaxed);
         track.fmmi_last_carrier.store(last_carrier.to_bits(), Ordering::Relaxed);
+        track.fmmi_rng_state.store(rng_state, Ordering::Relaxed);
     }
 
     fn process_voidseed(
@@ -11913,6 +11921,16 @@ fn fmmi_midi_to_freq(midi: i32) -> f32 {
     (440.0 * 2.0_f32.powf((midi as f32 - 69.0) / 12.0)).max(1.0)
 }
 
+fn fmmi_midi_to_label(midi: i32) -> Option<String> {
+    if !(FMMI_NOTE_BASE..=FMMI_NOTE_MAX).contains(&midi) {
+        return None;
+    }
+    let note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    let note_index = midi.rem_euclid(12) as usize;
+    let octave = (midi / 12) - 1;
+    Some(format!("{}{}", note_names[note_index], octave))
+}
+
 fn fmmi_rand_next(state: &mut u32) -> u32 {
     let mut x = *state;
     x ^= x << 13;
@@ -14667,6 +14685,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("fmmi_feedback".to_string(), f(&track.fmmi_feedback));
     params.insert("fmmi_drive".to_string(), f(&track.fmmi_drive));
     params.insert("fmmi_out_level".to_string(), f(&track.fmmi_out_level));
+    params.insert("fmmi_prob".to_string(), f(&track.fmmi_prob));
     params.insert("fmmi_page".to_string(), u(&track.fmmi_page));
     params.insert("fmmi_edit_step".to_string(), u(&track.fmmi_edit_step));
     params.insert(
@@ -15496,6 +15515,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.fmmi_feedback, "fmmi_feedback");
     sf(&track.fmmi_drive, "fmmi_drive");
     sf(&track.fmmi_out_level, "fmmi_out_level");
+    sf(&track.fmmi_prob, "fmmi_prob");
     su(&track.fmmi_page, "fmmi_page");
     su(&track.fmmi_edit_step, "fmmi_edit_step");
     track.fmmi_rand_note_enabled.store(true, Ordering::Relaxed);
@@ -17802,12 +17822,19 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].fmmi_drive.load(Ordering::Relaxed));
         let fmmi_out_level =
             f32::from_bits(self.tracks[track_idx].fmmi_out_level.load(Ordering::Relaxed));
+        let fmmi_prob = (f32::from_bits(self.tracks[track_idx].fmmi_prob.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0))
+            * 100.0;
         let fmmi_sequencer_current_step =
             self.tracks[track_idx].fmmi_sequencer_step.load(Ordering::Relaxed);
         let mut fmmi_sequencer_grid = Vec::with_capacity(FMMI_STEPS);
+        let mut fmmi_step_note_labels: Vec<SharedString> = Vec::with_capacity(FMMI_STEPS);
         for i in 0..FMMI_STEPS {
             fmmi_sequencer_grid
                 .push(self.tracks[track_idx].fmmi_sequencer_grid[i].load(Ordering::Relaxed));
+            let note = self.tracks[track_idx].fmmi_step_note[i].load(Ordering::Relaxed);
+            let label = fmmi_midi_to_label(note).unwrap_or_default();
+            fmmi_step_note_labels.push(SharedString::from(label));
         }
         let fmmi_page = self.tracks[track_idx].fmmi_page.load(Ordering::Relaxed) as i32;
         let fmmi_edit_step =
@@ -18602,11 +18629,16 @@ impl SlintWindow {
         self.ui.set_fmmi_feedback(fmmi_feedback);
         self.ui.set_fmmi_drive(fmmi_drive);
         self.ui.set_fmmi_out_level(fmmi_out_level);
+        self.ui.set_fmmi_prob(fmmi_prob);
         self.ui
             .set_fmmi_sequencer_current_step(fmmi_sequencer_current_step);
         self.ui
             .set_fmmi_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
                 fmmi_sequencer_grid,
+            ))));
+        self.ui
+            .set_fmmi_step_note_labels(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                fmmi_step_note_labels,
             ))));
         self.ui.set_fmmi_page(fmmi_page);
         self.ui.set_fmmi_edit_step(fmmi_edit_step);
@@ -19112,6 +19144,10 @@ fn initialize_ui(
         }
     }
     ui.set_fmmi_note_options(ModelRc::new(VecModel::from(fmmi_note_options)));
+    ui.set_fmmi_step_note_labels(ModelRc::new(VecModel::from(vec![
+        SharedString::from("");
+        FMMI_STEPS
+    ])));
     ui.set_engine_types(ModelRc::new(VecModel::from(vec![
         SharedString::from("Tape-Deck"),
         SharedString::from("Animate"),
@@ -25128,6 +25164,18 @@ fn initialize_ui(
             tracks_fmmi[track_idx]
                 .fmmi_out_level
                 .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_prob_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let normalized = (value / 100.0).clamp(0.0, 1.0);
+            tracks_fmmi[track_idx]
+                .fmmi_prob
+                .store(normalized.to_bits(), Ordering::Relaxed);
         }
     });
 

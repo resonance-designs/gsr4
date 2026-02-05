@@ -106,6 +106,7 @@ export component TLBX1UI inherits Window {
     // FMMI Engine Properties
     in property <[string]> fmmi-waveforms;
     in property <[string]> fmmi-note-options;
+    in-out property <[string]> fmmi-step-note-labels;
     in-out property <int> fmmi-car-wave: 0;
     in-out property <float> fmmi-car-freq: 220;
     in-out property <float> fmmi-car-detune: 0;
@@ -117,6 +118,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> fmmi-feedback: 0;
     in-out property <float> fmmi-drive: 0;
     in-out property <float> fmmi-out-level: 0.5;
+    in-out property <float> fmmi-prob: 100.0;
     in-out property <[bool]> fmmi-sequencer-grid;
     in property <int> fmmi-sequencer-current-step: -1;
     in-out property <int> fmmi-page: 0;
@@ -1007,6 +1009,7 @@ export component TLBX1UI inherits Window {
     callback fmmi-feedback-changed(value: float);
     callback fmmi-drive-changed(value: float);
     callback fmmi-out-level-changed(value: float);
+    callback fmmi-prob-changed(value: float);
     callback fmmi-page-changed(page: int);
     callback fmmi-edit-step-changed(step: int);
     callback fmmi-sequencer-grid-toggled(step: int);
@@ -1126,6 +1129,7 @@ export component TLBX1UI inherits Window {
                 }
                 reject
             }
+
             // Main UI Layout
             ScrollView {
                 width: parent.width;
@@ -2549,6 +2553,7 @@ export component TLBX1UI inherits Window {
                                             track-muted <=> root.track-muted;
                                             fmmi-waveforms: root.fmmi-waveforms;
                                             fmmi-note-options: root.fmmi-note-options;
+                                            fmmi-step-note-labels: root.fmmi-step-note-labels;
                                             fmmi-car-wave <=> root.fmmi-car-wave;
                                             fmmi-car-freq <=> root.fmmi-car-freq;
                                             fmmi-car-detune <=> root.fmmi-car-detune;
@@ -2560,6 +2565,7 @@ export component TLBX1UI inherits Window {
                                             fmmi-feedback <=> root.fmmi-feedback;
                                             fmmi-drive <=> root.fmmi-drive;
                                             fmmi-out-level <=> root.fmmi-out-level;
+                                            fmmi-prob <=> root.fmmi-prob;
                                             fmmi-sequencer-grid <=> root.fmmi-sequencer-grid;
                                             fmmi-sequencer-current-step: root.fmmi-sequencer-current-step;
                                             fmmi-page <=> root.fmmi-page;
@@ -2660,6 +2666,7 @@ export component TLBX1UI inherits Window {
                                             fmmi-feedback-changed(value) => { root.fmmi-feedback-changed(value); }
                                             fmmi-drive-changed(value) => { root.fmmi-drive-changed(value); }
                                             fmmi-out-level-changed(value) => { root.fmmi-out-level-changed(value); }
+                                            fmmi-prob-changed(value) => { root.fmmi-prob-changed(value); }
                                             fmmi-page-changed(page) => { root.fmmi-page-changed(page); }
                                             fmmi-edit-step-changed(step) => { root.fmmi-edit-step-changed(step); }
                                             fmmi-sequencer-grid-toggled(step) => { root.fmmi-sequencer-grid-toggled(step); }
@@ -2945,7 +2952,17 @@ export component TLBX1UI inherits Window {
                             }
                         }
                     }
+
+                    // Bottom Margin
+                    HorizontalLayout {
+                        Rectangle {
+                            background: transparent;
+                            width: 1px;
+                            height: 200px;
+                        }
+                    }
                 }
+
                 // BPM Keypad Modal
                 if (root.show-bpm-keypad) : Rectangle {
                     width: parent.width;
