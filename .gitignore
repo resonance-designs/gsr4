@@ -2,6 +2,7 @@
 /docs-site/node_modules
 /node_modules
 **/node_modules
+**/.docusaurus
 /ref/
 /BUGS.md
 
@@ -9,3 +10,4 @@ build.log
 
 node_modules/
 docs-site/build/
+docs-site/.docusaurus/
