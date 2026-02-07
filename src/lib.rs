@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.24
+ * Version: 0.1.25
  * Component: Core Logic
  */
 
@@ -103,6 +103,7 @@ const MOSAIC_PARAM_SMOOTH_MS: f32 = 20.0;
 const MOSAIC_MAX_GRAINS: usize = 128;
 const MOSAIC_GRAIN_MARKER_COUNT: usize = 32;
 const G8_GAIN_SMOOTH_MS: f32 = 5.0;
+const G8_STEPS: usize = 64;
 const REFLECT_MAX_SAMPLE_RATE: usize = 192_000;
 const REFLECT_MAX_DELAY_SECONDS: f32 = 10.0;
 const REFLECT_MAX_DELAY_SAMPLES: usize =
@@ -575,7 +576,7 @@ struct Track {
     /// G8 rate division index (0 = 1, 1 = 1/2, 2 = 1/4, 3 = 1/8, 4 = 1/16).
     g8_rate_index: AtomicU32,
     /// G8 per-step gain values (0..1).
-    g8_steps: Arc<[AtomicU32; 32]>,
+    g8_steps: Arc<[AtomicU32; G8_STEPS]>,
     /// Smoothed G8 gate gain.
     g8_gain_smooth: AtomicU32,
     /// Modul8 enabled.
@@ -9744,6 +9745,7 @@ impl TLBX1 {
                     if modul8_target_range(prev_target).is_some() {
                         modul8_target_set(track, prev_target, base);
                     }
+                    track.modul8_base_target[i].store(u32::MAX, Ordering::Relaxed);
                 }
                 continue;
             }
@@ -9787,7 +9789,7 @@ impl TLBX1 {
                 rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
                 snh = (rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
             }
-            let lfo = modul8_wave_value(wave, phase, snh);
+            let lfo = lfo_waveform_value(wave, phase, snh);
             let range = max_v - min_v;
             let lfo_unipolar = 0.5 * (lfo + 1.0);
             let lfo_value = min_v + lfo_unipolar * range;
@@ -9829,8 +9831,8 @@ impl TLBX1 {
         let step_len = (samples_per_step * division).max(1.0);
         let base_global_phase = (master_step_count as f32 * samples_per_step) + master_phase;
 
-        let mut steps = [1.0f32; 32];
-        for i in 0..32 {
+        let mut steps = [1.0f32; G8_STEPS];
+        for i in 0..G8_STEPS {
             steps[i] = f32::from_bits(track.g8_steps[i].load(Ordering::Relaxed))
                 .clamp(0.0, 1.0);
         }
@@ -9842,7 +9844,7 @@ impl TLBX1 {
         let num_channels = track_output.len();
         for sample_idx in 0..num_buffer_samples {
             let step_pos = (base_global_phase + sample_idx as f32) / step_len;
-            let step_idx = (step_pos.floor() as i64).rem_euclid(32) as usize;
+            let step_idx = (step_pos.floor() as i64).rem_euclid(G8_STEPS as i64) as usize;
             let target_gain = steps[step_idx];
             smooth_gain += (target_gain - smooth_gain) / smoothing_samples;
             let gain = smooth_gain.clamp(0.0, 1.0);
@@ -10881,6 +10883,9 @@ impl Plugin for TLBX1 {
             .tracks
             .iter()
             .any(|track| track.is_playing.load(Ordering::Relaxed));
+        let any_engine_clock = self.tracks.iter().any(|track| {
+            matches!(track.engine_type.load(Ordering::Relaxed), 2 | 3 | 4 | 5)
+        });
         let any_recording = self
             .tracks
             .iter()
@@ -11967,7 +11972,7 @@ impl Plugin for TLBX1 {
             }
         }
 
-        if any_playing || any_pending {
+        if any_playing || any_pending || any_engine_clock {
             let mut phase = master_phase + buffer.samples() as f32;
             let mut step = master_step;
             if samples_per_step > 0.0 {
@@ -12069,19 +12074,6 @@ fn modul8_rate_hz(rate: f32, sync: bool, division: u32, tempo: f32) -> f32 {
         (tempo / 60.0) / beats.max(0.0001)
     } else {
         rate.max(0.01)
-    }
-}
-
-fn modul8_wave_value(wave: u32, phase: f32, sample_hold: f32) -> f32 {
-    match wave {
-        0 => (2.0 * PI * phase).sin(),
-        1 => 1.0 - 4.0 * (phase - 0.5).abs(),
-        2 => 2.0 * phase - 1.0,
-        3 => {
-            if phase < 0.5 { 1.0 } else { -1.0 }
-        }
-        4 => sample_hold,
-        _ => 0.0,
     }
 }
 
@@ -14997,7 +14989,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("ring_enabled".to_string(), b(&track.ring_enabled));
     params.insert("g8_enabled".to_string(), b(&track.g8_enabled));
     params.insert("g8_rate_index".to_string(), u(&track.g8_rate_index));
-    for i in 0..32 {
+    for i in 0..G8_STEPS {
         params.insert(format!("g8_step_{}", i), f(&track.g8_steps[i]));
     }
     params.insert("modul8_enabled".to_string(), b(&track.modul8_enabled));
@@ -15856,7 +15848,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         .store(1.0f32.to_bits(), Ordering::Relaxed);
     sb(&track.g8_enabled, "g8_enabled");
     su(&track.g8_rate_index, "g8_rate_index");
-    for i in 0..32 {
+    for i in 0..G8_STEPS {
         sf(&track.g8_steps[i], &format!("g8_step_{}", i));
     }
     track.modul8_enabled.store(false, Ordering::Relaxed);
@@ -17339,7 +17331,7 @@ impl SlintWindow {
         let ring_decay_mode = self.tracks[track_idx].ring_decay_mode.load(Ordering::Relaxed);
         let g8_enabled = self.tracks[track_idx].g8_enabled.load(Ordering::Relaxed);
         let g8_rate_index = self.tracks[track_idx].g8_rate_index.load(Ordering::Relaxed);
-        let g8_steps: Vec<f32> = (0..32)
+        let g8_steps: Vec<f32> = (0..G8_STEPS)
             .map(|i| f32::from_bits(self.tracks[track_idx].g8_steps[i].load(Ordering::Relaxed)))
             .collect();
         let modul8_enabled = self.tracks[track_idx].modul8_enabled.load(Ordering::Relaxed);
@@ -21184,7 +21176,7 @@ fn initialize_ui(
     ui.on_g8_step_changed(move |index, value| {
         let track_idx = params_g8.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
-            let step_idx = index.clamp(0, 31) as usize;
+            let step_idx = index.clamp(0, (G8_STEPS - 1) as i32) as usize;
             let clamped = value.clamp(0.0, 1.0);
             tracks_g8[track_idx].g8_steps[step_idx]
                 .store(clamped.to_bits(), Ordering::Relaxed);

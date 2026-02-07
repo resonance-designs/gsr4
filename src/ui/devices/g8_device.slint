@@ -3,15 +3,19 @@ import { RDSHeaderLabel, RDSCircleToggle, RDSComboBox, RDSSimpSlider } from "../
 
 /*
 Device: G8
-Description: 32-step trance gate with per-step level bars and quantized rate.
+Description: 64-step trance gate with per-step level bars and quantized rate.
 */
 export component G8Device {
-    in property <length> bar-width: 12px;
-    in property <length> bar-spacing: 4px;
+    in property <length> bar-width: 14.25px;
+    in property <length> bar-spacing: 4.5px;
     in-out property <bool> gate-enabled: true;
     in-out property <int> gate-rate-index: 0;
     in property <[string]> gate-rate-options: ["1", "1/2", "1/4", "1/8", "1/16"];
     in-out property <[float]> gate-steps: [
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
@@ -28,9 +32,7 @@ export component G8Device {
         RDSHeaderLabel {
             text: "G8 Trance Gate";
             horizontal-alignment: left;
-            padding-horizontal: 12px;
-            padding-vertical: 6px;
-            right-padding: 12px;
+
             HorizontalLayout {
                 spacing: 8px;
                 alignment: center;
@@ -79,7 +81,7 @@ export component G8Device {
                 spacing: root.bar-spacing;
                 alignment: center;
 
-                for s in 32 : RDSSimpSlider {
+                for s in 64 : RDSSimpSlider {
                     slider-width: root.bar-width;
                     slider-height: parent.height;
                     orientation: "vertical";

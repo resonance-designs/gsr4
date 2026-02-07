@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.25] - 2026-02-07
+
+- Increased the number of steps for G8 device to 64 and made it full-width in all the engine UI's.
+- Fixed issue with G8 device not working in SynDRM engine. Master step phase/count now advances if any_playing || any_pending || any_engine_clock in lib.rs.
+
 ## [0.1.24] - 2026-02-07
 
 - Added new **Modul8** device (8 LFO modulation section) with engine-scoped targets for the loaded engine plus downstream devices, and full-range modulation depth.
@@ -47,7 +52,7 @@
 
 ## [0.1.17] - 2026-01-29
 
-- Added G8 trance gate device (32-step per-track gate) with UI and DSP, placed after Ring in the downstream chain.
+- Added G8 trance gate device (64-step per-track gate) with UI and DSP, placed after Ring in the downstream chain.
 - Added Granulator rate sync behavior: first half of the control locks to BPM divisions (1, 1/2, 1/4, 1/8, 1/16); second half is free-rate.
 - Documentation updates for G8 and Granulator rate sync.
 

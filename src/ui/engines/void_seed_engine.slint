@@ -95,7 +95,16 @@ export component VoidSeedEngine inherits Rectangle {
 
     in-out property <bool> g8-enabled: true;
     in-out property <int> g8-rate-index: 0;
-    in-out property <[float]> g8-steps;
+    in-out property <[float]> g8-steps: [
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+    ];
 
     callback void-base-freq-changed(float);
     callback void-chaos-depth-changed(float);
@@ -653,8 +662,8 @@ export component VoidSeedEngine inherits Rectangle {
 
                 // G8 Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 200px;
+                    width: 1216px;
+                    height: 186px;
 
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
