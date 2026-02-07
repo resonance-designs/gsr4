@@ -72,6 +72,7 @@ export component RDSKnob inherits Rectangle {
     in-out property <int> label-font-weight: 400;
     in-out property <string> label-pos: "bottom-center";
     in-out property <bool> readout-enabled: true;
+    in property <bool> enabled: true;
     in-out property <string> readout-text: "";
     in-out property <string> readout-mode: "raw";
     in-out property <string> readout-suffix: "";
@@ -244,6 +245,7 @@ export component RDSKnob inherits Rectangle {
 
     // Touch area covers the entire component
     touch := TouchArea {
+        enabled: root.enabled;
         pointer-event(event) => {
             if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
                 root.drag-start-y = self.mouse-y;

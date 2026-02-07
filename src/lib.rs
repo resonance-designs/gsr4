@@ -12034,6 +12034,18 @@ fn lfo_division_beats(index: u32) -> f32 {
     }
 }
 
+fn modul8_division_beats(index: u32) -> f32 {
+    match index {
+        0 => 4.0,   // 1 bar
+        1 => 2.0,   // 1/2
+        2 => 1.0,   // 1/4
+        3 => 0.5,   // 1/8
+        4 => 0.25,  // 1/16
+        5 => 0.125, // 1/32
+        _ => 4.0,
+    }
+}
+
 fn lfo_waveform_value(waveform: u32, phase: f32, sample_hold: f32) -> f32 {
     match waveform {
         0 => (2.0 * PI * phase).sin(),
@@ -12046,6 +12058,28 @@ fn lfo_waveform_value(waveform: u32, phase: f32, sample_hold: f32) -> f32 {
             }
         }
         3 => 2.0 * phase - 1.0,
+        4 => sample_hold,
+        _ => 0.0,
+    }
+}
+
+fn modul8_rate_hz(rate: f32, sync: bool, division: u32, tempo: f32) -> f32 {
+    if sync {
+        let beats = modul8_division_beats(division);
+        (tempo / 60.0) / beats.max(0.0001)
+    } else {
+        rate.max(0.01)
+    }
+}
+
+fn modul8_wave_value(wave: u32, phase: f32, sample_hold: f32) -> f32 {
+    match wave {
+        0 => (2.0 * PI * phase).sin(),
+        1 => 1.0 - 4.0 * (phase - 0.5).abs(),
+        2 => 2.0 * phase - 1.0,
+        3 => {
+            if phase < 0.5 { 1.0 } else { -1.0 }
+        }
         4 => sample_hold,
         _ => 0.0,
     }
@@ -12085,24 +12119,36 @@ fn modul8_target_options_for_engine(engine_type: u32) -> Vec<SharedString> {
         .collect()
 }
 
-macro_rules! modul8_downstream_ids {
-    () => {
-        60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
-        81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
-        102, 103, 104
-    };
-}
-
-const MODUL8_TARGET_IDS_DEFAULT: [u32; 46] = [0, modul8_downstream_ids!()];
-const MODUL8_TARGET_IDS_TAPE: [u32; 50] = [0, 1, 2, 3, 4, modul8_downstream_ids!()];
-const MODUL8_TARGET_IDS_ANIMATE: [u32; 48] = [0, 5, 6, modul8_downstream_ids!()];
+const MODUL8_TARGET_IDS_DEFAULT: [u32; 46] = [
+    0, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
+    81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
+    102, 103, 104,
+];
+const MODUL8_TARGET_IDS_TAPE: [u32; 50] = [
+    0, 1, 2, 3, 4, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,
+    78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99,
+    100, 101, 102, 103, 104,
+];
+const MODUL8_TARGET_IDS_ANIMATE: [u32; 48] = [
+    0, 5, 6, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+    80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
+    102, 103, 104,
+];
 const MODUL8_TARGET_IDS_SYNDRM: [u32; 82] = [
     0, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
-    46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, modul8_downstream_ids!(),
+    46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
+    68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
+    90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
 ];
-const MODUL8_TARGET_IDS_VOID: [u32; 55] = [0, 7, 8, 9, 10, 11, 12, 13, 14, 15, modul8_downstream_ids!()];
+const MODUL8_TARGET_IDS_VOID: [u32; 55] = [
+    0, 7, 8, 9, 10, 11, 12, 13, 14, 15, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
+    73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
+    95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+];
 const MODUL8_TARGET_IDS_FMMI: [u32; 54] = [
-    0, 16, 17, 18, 19, 20, 21, 22, 23, modul8_downstream_ids!(),
+    0, 16, 17, 18, 19, 20, 21, 22, 23, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
+    73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
+    95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
 ];
 
 fn modul8_target_ids_for_engine(engine_type: u32) -> &'static [u32] {
@@ -12224,7 +12270,7 @@ macro_rules! modul8_targets {
             102, "Reflect: Damp", 0.0, 1.0, reflect_damp;
             103, "Reflect: Decay", 0.0, 1.0, reflect_decay;
             104, "Reflect: Post Gain", 0.0, 1.0, reflect_post_gain;
-        );
+        )
     };
 }
 

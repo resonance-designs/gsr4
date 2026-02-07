@@ -1,3 +1,4 @@
+import { Theme } from "../theme/index.slint";
 import {
     RDSHeaderLabel,
     RDSKnob,
@@ -208,7 +209,7 @@ export component VoidSeedEngine inherits Rectangle {
 
             HorizontalLayout {
                 spacing: 6px;
-                Text { text: "Mute"; color: #b9b9bf; font-size: 11px; }
+                Text { text: "Mute"; color: Theme.active.text_secondary; font-size: 11px; }
                 RDSCircleToggle {
                     active: root.track-muted;
                     clicked => root.toggle-track-mute();
@@ -345,7 +346,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Base Freq"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Base Freq"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-base-freq;
                             min-value: 20; max-value: 200;
@@ -355,7 +356,7 @@ export component VoidSeedEngine inherits Rectangle {
                     }
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Mod Rate"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Mod Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-mod-rate;
                             min-value: 0.01; max-value: 10.0;
@@ -367,7 +368,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Feedback"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Feedback"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-feedback;
                             min-value: 0.0; max-value: 0.98;
@@ -377,7 +378,7 @@ export component VoidSeedEngine inherits Rectangle {
                     }
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Diffusion"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Diffusion"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-diffusion;
                             min-value: 0.0; max-value: 1.0;
@@ -389,7 +390,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Close Decay"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Close Decay"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-close-decay;
                             min-value: 1.0; max-value: 20.0;
@@ -402,7 +403,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Moog Cut"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Moog Cut"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-filter-cutoff;
                             min-value: 0.0; max-value: 1.0;
@@ -415,7 +416,7 @@ export component VoidSeedEngine inherits Rectangle {
                     }
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Moog Res"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Moog Res"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-filter-resonance;
                             min-value: 0.0; max-value: 1.0;
@@ -430,7 +431,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Drive"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-drive;
                             min-value: 0.0; max-value: 1.0;
@@ -440,7 +441,7 @@ export component VoidSeedEngine inherits Rectangle {
                     }
                     VerticalLayout {
                         spacing: 6px;
-                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSCircleToggle {
                             active: root.void-filter-pre-drive;
                             label: "POST";

@@ -307,7 +307,7 @@ export component FMMIEngine inherits Rectangle {
                     label: "Mute";
                     label-active: "Live";
                     label-pos: "left";
-                    label-color: #b9b9bf;
+                    label-color: Theme.active.text_secondary;
                     label-active-color: Theme.active.text_primary;
                     label-font-size: 11px;
                     label-font-weight: 500;
@@ -318,7 +318,7 @@ export component FMMIEngine inherits Rectangle {
 
         // Engine Controls
         Rectangle {
-            background: #1e3a5f33;
+            background: Theme.active.ui_device_panel_bg;
             border-width: 2px;
             border-radius: 6px;
             border-color: Theme.active.border-strong;
@@ -340,7 +340,7 @@ export component FMMIEngine inherits Rectangle {
                                     VerticalLayout {
                                         padding-top: 6px;
                                         height: 60px;
-                                        Text { text: "Wave"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Wave"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 140px;
                                             model: root.fmmi-waveforms;
@@ -441,7 +441,7 @@ export component FMMIEngine inherits Rectangle {
                                         VerticalLayout {
                                             height: 60px;
                                             padding-top: 6px;
-                                            Text { text: "Wave"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Wave"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSComboBox {
                                                 width: 140px;
                                                 model: root.fmmi-waveforms;
@@ -456,7 +456,7 @@ export component FMMIEngine inherits Rectangle {
                                         VerticalLayout {
                                             height: 60px;
                                             padding-top: 6px;
-                                            Text { text: "Mode"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Mode"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSComboBox {
                                                 width: 120px;
                                                 model: ["Hz", "Ratio"];
@@ -575,7 +575,7 @@ export component FMMIEngine inherits Rectangle {
             height: 522px;
 
             Rectangle {
-                background: #1e3a5f33;
+                background: Theme.active.ui_device_panel_bg;
                 border-width: 2px;
                 border-radius: 6px;
                 border-color: Theme.active.border-strong;
@@ -647,7 +647,7 @@ export component FMMIEngine inherits Rectangle {
                                     padding-top: 6px;
                                     VerticalLayout {
                                         padding-bottom: 12px;
-                                        Text { text: "Note"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Note"; color: Theme.active.text_secondary; font-size: 11px; }
                                     }
                                     RDSComboBox {
                                         width: 180px;
@@ -663,7 +663,7 @@ export component FMMIEngine inherits Rectangle {
                                     padding-top: 6px;
                                     VerticalLayout {
                                         padding-bottom: 12px;
-                                        Text { text: "Car Wave"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Car Wave"; color: Theme.active.text_secondary; font-size: 11px; }
                                     }
                                     RDSComboBox {
                                         width: 110px;
@@ -679,7 +679,7 @@ export component FMMIEngine inherits Rectangle {
                                     padding-top: 6px;
                                     VerticalLayout {
                                         padding-bottom: 12px;
-                                        Text { text: "Mod Wave"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Mod Wave"; color: Theme.active.text_secondary; font-size: 11px; }
                                     }
                                     RDSComboBox {
                                         width: 110px;
@@ -695,7 +695,7 @@ export component FMMIEngine inherits Rectangle {
                                     padding-top: 6px;
                                     VerticalLayout {
                                         padding-bottom: 12px;
-                                        Text { text: "Mod Mode"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Mod Mode"; color: Theme.active.text_secondary; font-size: 11px; }
                                     }
                                     RDSComboBox {
                                         width: 110px;
@@ -865,7 +865,7 @@ export component FMMIEngine inherits Rectangle {
                                 }
                             }
 
-                            Text { text: "Randomize Params"; color: #b9b9bf; font-size: 11px; }
+                            Text { text: "Randomize Params"; color: Theme.active.text_secondary; font-size: 11px; }
                             HorizontalLayout {
                                 spacing: 10px;
                                 RDSCircleToggle { label: "Note"; active: root.fmmi-rand-note-enabled; clicked => { root.fmmi-rand-note-enabled = !root.fmmi-rand-note-enabled; root.fmmi-rand-note-enabled-changed(root.fmmi-rand-note-enabled); } }
@@ -906,7 +906,7 @@ export component FMMIEngine inherits Rectangle {
             }
 
             Rectangle {
-                background: #1e3a5f33;
+                background: Theme.active.ui_device_panel_bg;
                 border-width: 2px;
                 border-radius: 6px;
                 border-color: Theme.active.border-strong;
@@ -926,7 +926,7 @@ export component FMMIEngine inherits Rectangle {
                         height: 46px;
 
                         VerticalLayout {
-                            Text { horizontal-alignment: center; text: "Page"; color: #b9b9bf; font-size: 11px; }
+                            Text { horizontal-alignment: center; text: "Page"; color: Theme.active.text_secondary; font-size: 11px; }
                             RDSNumStepper {
                                 width: 165px;
                                 value: root.fmmi-page;
@@ -950,7 +950,7 @@ export component FMMIEngine inherits Rectangle {
 
                         VerticalLayout {
                             spacing: 4px;
-                            Text { horizontal-alignment: center; text: "Step"; color: #b9b9bf; font-size: 11px; }
+                            Text { horizontal-alignment: center; text: "Step"; color: Theme.active.text_secondary; font-size: 11px; }
                             RDSNumStepper {
                                 value: root.fmmi-edit-step;
                                 min-value: 0;
@@ -1005,19 +1005,19 @@ export component FMMIEngine inherits Rectangle {
                             padding-top: 6px;
                             VerticalLayout {
                                 spacing: 12px;
-                                Text { text: "Steps"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                Text { text: "Steps"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 12px; }
                                 RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-randomize-steps-page(); } }
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-randomize-steps-all(); } }
                             }
                             VerticalLayout {
                                 spacing: 12px;
-                                Text { text: "Params"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                Text { text: "Params"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 12px; }
                                 RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-randomize-params-page(); } }
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-randomize-params-all(); } }
                             }
                             VerticalLayout {
                                 spacing: 12px;
-                                Text { text: "Both"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                Text { text: "Both"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 12px; }
                                 RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-randomize-both-page(); } }
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-randomize-both-all(); } }
                             }
@@ -1033,19 +1033,19 @@ export component FMMIEngine inherits Rectangle {
                             padding-top: 6px;
                             VerticalLayout {
                                 spacing: 12px;
-                                Text { text: "Steps"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                Text { text: "Steps"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 12px; }
                                 RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-clear-steps-page(); } }
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-clear-steps-all(); } }
                             }
                             VerticalLayout {
                                 spacing: 12px;
-                                Text { text: "Params"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                Text { text: "Params"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 12px; }
                                 RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-clear-params-page(); } }
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-clear-params-all(); } }
                             }
                             VerticalLayout {
                                 spacing: 12px;
-                                Text { text: "Both"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                Text { text: "Both"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 12px; }
                                 RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-clear-both-page(); } }
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-clear-both-all(); } }
                             }
@@ -1061,19 +1061,19 @@ export component FMMIEngine inherits Rectangle {
                             padding-top: 6px;
                             VerticalLayout {
                                 spacing: 12px;
-                                Text { text: "Steps"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                Text { text: "Steps"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 12px; }
                                 RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-copy-steps-page(); } }
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-copy-steps-all(); } }
                             }
                             VerticalLayout {
                                 spacing: 12px;
-                                Text { text: "Params"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                Text { text: "Params"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 12px; }
                                 RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-copy-params-page(); } }
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-copy-params-all(); } }
                             }
                             VerticalLayout {
                                 spacing: 12px;
-                                Text { text: "Both"; horizontal-alignment: center; color: #b9b9bf; font-size: 12px; }
+                                Text { text: "Both"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 12px; }
                                 RDSSelectButton { label: "Page"; width: 92px; active: false; clicked => { root.fmmi-copy-both-page(); } }
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-copy-both-all(); } }
                             }

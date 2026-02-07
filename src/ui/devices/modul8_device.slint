@@ -43,7 +43,7 @@ export component Modul8Device {
                     label: "Bypass";
                     label-active: "On";
                     label-pos: "left";
-                    label-color: #b9b9bf;
+                    label-color: Theme.active.text_secondary;
                     label-active-color: Theme.active.text_primary;
                     label-font-size: 11px;
                     label-font-weight: 500;
@@ -53,7 +53,7 @@ export component Modul8Device {
         }
 
         Rectangle {
-            background: #1e3a5f33;
+            background: Theme.active.ui_device_panel_bg;
             border-width: 2px;
             border-radius: 6px;
             border-color: Theme.active.border-strong;
@@ -75,7 +75,7 @@ export component Modul8Device {
                             Text {
                                 width: 34px;
                                 text: "LFO " + (idx + 1);
-                                color: #b9b9bf;
+                                color: Theme.active.text_secondary;
                                 font-size: 11px;
                                 vertical-alignment: center;
                             }
@@ -109,6 +109,7 @@ export component Modul8Device {
                                 sensitivity: 0.01;
                                 scroll-sensitivity: 0.01;
                                 enabled: !root.modul8-sync[idx];
+                                opacity: root.modul8-sync[idx] ? 0.4 : 1.0;
                                 value-changed(v) => {
                                     root.modul8-rate[idx] = v;
                                     root.modul8-rate-changed(idx, v);
@@ -137,6 +138,7 @@ export component Modul8Device {
                                 model: root.modul8-division-options;
                                 current-index: root.modul8-division[idx];
                                 enabled: root.modul8-sync[idx];
+                                opacity: root.modul8-sync[idx] ? 1.0 : 0.4;
                                 selected => {
                                     root.modul8-division[idx] = self.current-index;
                                     root.modul8-division-changed(idx, self.current-index);

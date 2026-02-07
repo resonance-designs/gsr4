@@ -335,7 +335,7 @@ export component TapeEngine inherits Rectangle {
                     label: "Mute";
                     label-active: "Live";
                     label-pos: "left";
-                    label-color: #b9b9bf;
+                    label-color: Theme.active.text_secondary;
                     label-active-color: Theme.active.text_primary;
                     label-font-size: 11px;
                     label-font-weight: 500;
@@ -346,7 +346,7 @@ export component TapeEngine inherits Rectangle {
 
         // Engine Controls
         Rectangle {
-            background: #1e3a5f33;
+            background: Theme.active.ui_device_panel_bg;
             border-width: 2px;
             border-radius: 6px;
             border-color: Theme.active.border-strong;
@@ -454,7 +454,7 @@ export component TapeEngine inherits Rectangle {
                                 Row {
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "T.Start"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "T.Start"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.trigger-start;
@@ -474,7 +474,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "L.Start"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "L.Start"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.loop-start;
@@ -494,7 +494,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Length"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Length"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.loop-length;
@@ -514,7 +514,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rotate"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Rotate"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.tape-rotate;
@@ -535,7 +535,7 @@ export component TapeEngine inherits Rectangle {
                                 Row {
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Speed"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Speed"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.tape-speed;
@@ -554,7 +554,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Glide"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Glide"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.tape-glide;
@@ -573,7 +573,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "SOS"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "SOS"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.tape-sos;
@@ -592,7 +592,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "XFade"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "XFade"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.loop-xfade;
@@ -618,7 +618,7 @@ export component TapeEngine inherits Rectangle {
                                         VerticalLayout {
                                             spacing: 2px;
                                             width: 126px;
-                                            Text { text: "Rate Mode"; color: #b9b9bf; font-size: 10px; }
+                                            Text { text: "Rate Mode"; color: Theme.active.text_secondary; font-size: 10px; }
                                             RDSComboBox {
                                                 width: 110px;
                                                 height: 24px;
@@ -633,7 +633,7 @@ export component TapeEngine inherits Rectangle {
                                         VerticalLayout {
                                             spacing: 2px;
                                             width: 120px;
-                                            Text { text: "Loop Mode"; color: #b9b9bf; font-size: 10px; }
+                                            Text { text: "Loop Mode"; color: Theme.active.text_secondary; font-size: 10px; }
                                             RDSComboBox {
                                                 width: 110px;
                                                 height: 24px;

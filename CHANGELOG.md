@@ -3,6 +3,8 @@
 ## [0.1.24] - 2026-02-07
 
 - Added new **Modul8** device (8 LFO modulation section) with engine-scoped targets for the loaded engine plus downstream devices, and full-range modulation depth.
+- Removed hardcoded color literals and replaced with Theme constants across all engines and devices.
+- UI layout improvements across all engine's devices section.
 
 ## [0.1.23] - 2026-02-05
 
