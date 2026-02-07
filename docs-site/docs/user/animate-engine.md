@@ -47,6 +47,7 @@ Animate includes a multi-lane, multi-page sequencer:
 Like all engines in TLBX-1, Animate feeds into the shared downstream device chain:
 - **Granulator**
 - **Silk**
+- **Modul8**
 - **G8** (Trance Gate)
 - **Texture**
 - **Reflect**

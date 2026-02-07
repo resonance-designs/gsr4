@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.23
+ * Version: 0.1.24
  * Component: Core Logic
  */
 
@@ -79,6 +79,8 @@ pub const SYNDRM_LANES: usize = 7 + SYNDRM_SAMPLE_CHANNELS;
 pub const FMMI_PAGE_SIZE: usize = 16;
 pub const FMMI_PAGES: usize = 8;
 pub const FMMI_STEPS: usize = FMMI_PAGE_SIZE * FMMI_PAGES;
+pub const MODUL8_LFOS: usize = 8;
+pub const MODUL8_TARGET_COUNT: u32 = 105;
 pub const SYNDRM_FILTER_TYPES: u32 = 4;
 pub const WAVEFORM_SUMMARY_SIZE: usize = 100;
 pub const RECORD_MAX_SECONDS: usize = 30;
@@ -576,6 +578,30 @@ struct Track {
     g8_steps: Arc<[AtomicU32; 32]>,
     /// Smoothed G8 gate gain.
     g8_gain_smooth: AtomicU32,
+    /// Modul8 enabled.
+    modul8_enabled: AtomicBool,
+    /// Modul8 LFO waveforms (0=sine,1=triangle,2=saw,3=square,4=s&h).
+    modul8_wave: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 free-rate Hz.
+    modul8_rate: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 BPM sync toggles.
+    modul8_sync: [AtomicBool; MODUL8_LFOS],
+    /// Modul8 BPM division index.
+    modul8_division: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 modulation amount (0..1).
+    modul8_amount: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 destination index.
+    modul8_target: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 oscillator phase.
+    modul8_phase: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 sample-and-hold value cache.
+    modul8_snh: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 captured base value per LFO target.
+    modul8_base_value: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 captured base target index per LFO (`u32::MAX` = none).
+    modul8_base_target: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 RNG state for S&H.
+    modul8_rng_state: AtomicU32,
     /// Texture device enabled.
     texture_enabled: AtomicBool,
     /// Texture noise gate enabled.
@@ -1703,6 +1729,18 @@ impl Default for Track {
             g8_rate_index: AtomicU32::new(0),
             g8_steps: Arc::new(std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits()))),
             g8_gain_smooth: AtomicU32::new(1.0f32.to_bits()),
+            modul8_enabled: AtomicBool::new(false),
+            modul8_wave: std::array::from_fn(|_| AtomicU32::new(0)),
+            modul8_rate: std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits())),
+            modul8_sync: std::array::from_fn(|_| AtomicBool::new(true)),
+            modul8_division: std::array::from_fn(|_| AtomicU32::new(0)),
+            modul8_amount: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            modul8_target: std::array::from_fn(|_| AtomicU32::new(0)),
+            modul8_phase: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            modul8_snh: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            modul8_base_value: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            modul8_base_target: std::array::from_fn(|_| AtomicU32::new(u32::MAX)),
+            modul8_rng_state: AtomicU32::new(0x89ab_cdef),
             texture_enabled: AtomicBool::new(false),
             texture_gate: AtomicBool::new(false),
             texture_drive: AtomicU32::new(0.0f32.to_bits()),
@@ -2960,6 +2998,24 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track
         .g8_gain_smooth
         .store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.modul8_enabled.store(false, Ordering::Relaxed);
+    for i in 0..MODUL8_LFOS {
+        track.modul8_wave[i].store(0, Ordering::Relaxed);
+        track.modul8_rate[i].store(1.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_sync[i].store(true, Ordering::Relaxed);
+        track.modul8_division[i].store(0, Ordering::Relaxed);
+        track.modul8_amount[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_target[i].store(0, Ordering::Relaxed);
+        track.modul8_phase[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_snh[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .modul8_base_value[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .modul8_base_target[i]
+            .store(u32::MAX, Ordering::Relaxed);
+    }
+    track.modul8_rng_state.store(0x89ab_cdef, Ordering::Relaxed);
     track.texture_enabled.store(false, Ordering::Relaxed);
     track.texture_gate.store(false, Ordering::Relaxed);
     track.texture_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
@@ -9655,6 +9711,94 @@ impl TLBX1 {
         }
     }
 
+    fn process_track_modul8(track: &Track, num_buffer_samples: usize, tempo: f32, sample_rate: f32) {
+        if num_buffer_samples == 0 || sample_rate <= 0.0 {
+            return;
+        }
+        if !track.modul8_enabled.load(Ordering::Relaxed) {
+            for i in 0..MODUL8_LFOS {
+                let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
+                if prev_target != u32::MAX {
+                    let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+                    if modul8_target_range(prev_target).is_some() {
+                        modul8_target_set(track, prev_target, base);
+                    }
+                    track.modul8_base_target[i].store(u32::MAX, Ordering::Relaxed);
+                }
+            }
+            return;
+        }
+
+        let engine_type = track.engine_type.load(Ordering::Relaxed);
+        let target_ids = modul8_target_ids_for_engine(engine_type);
+        if target_ids.is_empty() {
+            return;
+        }
+        let mut rng = track.modul8_rng_state.load(Ordering::Relaxed);
+        for i in 0..MODUL8_LFOS {
+            let amount = f32::from_bits(track.modul8_amount[i].load(Ordering::Relaxed)).clamp(0.0, 1.0);
+            if amount <= 0.0 {
+                let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
+                if prev_target != u32::MAX {
+                    let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+                    if modul8_target_range(prev_target).is_some() {
+                        modul8_target_set(track, prev_target, base);
+                    }
+                }
+                continue;
+            }
+            let target_index = track.modul8_target[i].load(Ordering::Relaxed) as usize;
+            let target = *target_ids.get(target_index).unwrap_or(&0);
+            if target == 0 || target >= MODUL8_TARGET_COUNT {
+                continue;
+            }
+            let Some((min_v, max_v)) = modul8_target_range(target) else {
+                continue;
+            };
+            let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
+            if prev_target != target {
+                if prev_target != u32::MAX {
+                    let prev_base =
+                        f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+                    if modul8_target_range(prev_target).is_some() {
+                        modul8_target_set(track, prev_target, prev_base);
+                    }
+                }
+                if let Some(base_now) = modul8_target_get(track, target) {
+                    track.modul8_base_value[i].store(base_now.to_bits(), Ordering::Relaxed);
+                    track.modul8_base_target[i].store(target, Ordering::Relaxed);
+                } else {
+                    continue;
+                }
+            }
+
+            let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+            let wave = track.modul8_wave[i].load(Ordering::Relaxed).min(4);
+            let rate = f32::from_bits(track.modul8_rate[i].load(Ordering::Relaxed));
+            let sync = track.modul8_sync[i].load(Ordering::Relaxed);
+            let div = track.modul8_division[i].load(Ordering::Relaxed);
+            let mut phase = f32::from_bits(track.modul8_phase[i].load(Ordering::Relaxed)).fract();
+            let mut snh = f32::from_bits(track.modul8_snh[i].load(Ordering::Relaxed));
+            let freq_hz = modul8_rate_hz(rate, sync, div, tempo);
+            let phase_advance = (freq_hz * num_buffer_samples as f32 / sample_rate).max(0.0);
+            let wrapped = phase + phase_advance;
+            phase = wrapped.fract();
+            if wave == 4 && (wrapped >= 1.0 || !snh.is_finite()) {
+                rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
+                snh = (rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
+            }
+            let lfo = modul8_wave_value(wave, phase, snh);
+            let range = max_v - min_v;
+            let lfo_unipolar = 0.5 * (lfo + 1.0);
+            let lfo_value = min_v + lfo_unipolar * range;
+            let value = (base + (lfo_value - base) * amount).clamp(min_v, max_v);
+            modul8_target_set(track, target, value);
+            track.modul8_phase[i].store(phase.to_bits(), Ordering::Relaxed);
+            track.modul8_snh[i].store(snh.to_bits(), Ordering::Relaxed);
+        }
+        track.modul8_rng_state.store(rng, Ordering::Relaxed);
+    }
+
     fn process_track_g8(
         track: &Track,
         track_output: &mut [Vec<f32>],
@@ -10813,6 +10957,8 @@ impl Plugin for TLBX1 {
 
             keep_alive = true;
 
+            Self::process_track_modul8(track, buffer.samples(), global_tempo, master_sr);
+
             // Clear track buffer
             for channel in self.track_buffer.iter_mut() {
                 channel.fill(0.0);
@@ -11888,6 +12034,18 @@ fn lfo_division_beats(index: u32) -> f32 {
     }
 }
 
+fn modul8_division_beats(index: u32) -> f32 {
+    match index {
+        0 => 4.0,   // 1 bar
+        1 => 2.0,   // 1/2
+        2 => 1.0,   // 1/4
+        3 => 0.5,   // 1/8
+        4 => 0.25,  // 1/16
+        5 => 0.125, // 1/32
+        _ => 4.0,
+    }
+}
+
 fn lfo_waveform_value(waveform: u32, phase: f32, sample_hold: f32) -> f32 {
     match waveform {
         0 => (2.0 * PI * phase).sin(),
@@ -11900,6 +12058,28 @@ fn lfo_waveform_value(waveform: u32, phase: f32, sample_hold: f32) -> f32 {
             }
         }
         3 => 2.0 * phase - 1.0,
+        4 => sample_hold,
+        _ => 0.0,
+    }
+}
+
+fn modul8_rate_hz(rate: f32, sync: bool, division: u32, tempo: f32) -> f32 {
+    if sync {
+        let beats = modul8_division_beats(division);
+        (tempo / 60.0) / beats.max(0.0001)
+    } else {
+        rate.max(0.01)
+    }
+}
+
+fn modul8_wave_value(wave: u32, phase: f32, sample_hold: f32) -> f32 {
+    match wave {
+        0 => (2.0 * PI * phase).sin(),
+        1 => 1.0 - 4.0 * (phase - 0.5).abs(),
+        2 => 2.0 * phase - 1.0,
+        3 => {
+            if phase < 0.5 { 1.0 } else { -1.0 }
+        }
         4 => sample_hold,
         _ => 0.0,
     }
@@ -11929,6 +12109,223 @@ fn fmmi_midi_to_label(midi: i32) -> Option<String> {
     let note_index = midi.rem_euclid(12) as usize;
     let octave = (midi / 12) - 1;
     Some(format!("{}{}", note_names[note_index], octave))
+}
+
+fn modul8_target_options_for_engine(engine_type: u32) -> Vec<SharedString> {
+    let ids = modul8_target_ids_for_engine(engine_type);
+    ids.iter()
+        .copied()
+        .map(|id| SharedString::from(modul8_target_label(id)))
+        .collect()
+}
+
+const MODUL8_TARGET_IDS_DEFAULT: [u32; 46] = [
+    0, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
+    81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
+    102, 103, 104,
+];
+const MODUL8_TARGET_IDS_TAPE: [u32; 50] = [
+    0, 1, 2, 3, 4, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,
+    78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99,
+    100, 101, 102, 103, 104,
+];
+const MODUL8_TARGET_IDS_ANIMATE: [u32; 48] = [
+    0, 5, 6, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+    80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
+    102, 103, 104,
+];
+const MODUL8_TARGET_IDS_SYNDRM: [u32; 82] = [
+    0, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+    46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
+    68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
+    90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+];
+const MODUL8_TARGET_IDS_VOID: [u32; 55] = [
+    0, 7, 8, 9, 10, 11, 12, 13, 14, 15, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
+    73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
+    95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+];
+const MODUL8_TARGET_IDS_FMMI: [u32; 54] = [
+    0, 16, 17, 18, 19, 20, 21, 22, 23, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
+    73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
+    95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+];
+
+fn modul8_target_ids_for_engine(engine_type: u32) -> &'static [u32] {
+    match engine_type {
+        1 => &MODUL8_TARGET_IDS_TAPE,
+        2 => &MODUL8_TARGET_IDS_ANIMATE,
+        3 => &MODUL8_TARGET_IDS_SYNDRM,
+        4 => &MODUL8_TARGET_IDS_VOID,
+        5 => &MODUL8_TARGET_IDS_FMMI,
+        _ => &MODUL8_TARGET_IDS_DEFAULT,
+    }
+}
+
+macro_rules! modul8_targets {
+    ($mac:ident, $($args:expr),* $(,)?) => {
+        $mac!(
+            $($args),*;
+            1, "Tape: Speed", -4.0, 4.0, tape_speed;
+            2, "Tape: Rotate", 0.0, 1.0, tape_rotate;
+            3, "Tape: Glide", 0.0, 1.0, tape_glide;
+            4, "Tape: SOS", 0.0, 1.0, tape_sos;
+            5, "Animate: Vector X", 0.0, 1.0, animate_vector_x;
+            6, "Animate: Vector Y", 0.0, 1.0, animate_vector_y;
+            7, "Void: Base Freq", 20.0, 200.0, void_base_freq;
+            8, "Void: Chaos Depth", 0.0, 1.0, void_chaos_depth;
+            9, "Void: Entropy", 0.0, 1.0, void_entropy;
+            10, "Void: Feedback", 0.0, 0.98, void_feedback;
+            11, "Void: Diffusion", 0.0, 1.0, void_diffusion;
+            12, "Void: Mod Rate", 0.01, 10.0, void_mod_rate;
+            13, "Void: Level", 0.0, 1.0, void_level;
+            14, "Void: Pan", -1.0, 1.0, void_pan;
+            15, "Void: Width", -1.0, 1.0, void_width;
+            16, "FMMI: Car Freq", 20.0, 4000.0, fmmi_car_freq;
+            17, "FMMI: Car Detune", -120.0, 120.0, fmmi_car_detune;
+            18, "FMMI: Mod Value", 0.1, 4000.0, fmmi_mod_value;
+            19, "FMMI: Mod Detune", -120.0, 120.0, fmmi_mod_detune;
+            20, "FMMI: Index", 0.0, 4000.0, fmmi_index;
+            21, "FMMI: Feedback", 0.0, 1.0, fmmi_feedback;
+            22, "FMMI: Drive", 0.0, 1.0, fmmi_drive;
+            23, "FMMI: Out Level", 0.0, 1.0, fmmi_out_level;
+            24, "SynDRM Kick: Pitch", 0.0, 1.0, kick_pitch;
+            25, "SynDRM Kick: Decay", 0.0, 1.0, kick_decay;
+            26, "SynDRM Kick: Attack", 0.0, 1.0, kick_attack;
+            27, "SynDRM Kick: Drive", 0.0, 1.0, kick_drive;
+            28, "SynDRM Kick: Level", 0.0, 1.0, kick_level;
+            29, "SynDRM Snare: Tone", 0.0, 1.0, snare_tone;
+            30, "SynDRM Snare: Decay", 0.0, 1.0, snare_decay;
+            31, "SynDRM Snare: Snappy", 0.0, 1.0, snare_snappy;
+            32, "SynDRM Snare: Attack", 0.0, 1.0, snare_attack;
+            33, "SynDRM Snare: Drive", 0.0, 1.0, snare_drive;
+            34, "SynDRM Snare: Level", 0.0, 1.0, snare_level;
+            35, "SynDRM Clap: Pitch", 0.0, 1.0, clap_pitch;
+            36, "SynDRM Clap: Decay", 0.0, 1.0, clap_decay;
+            37, "SynDRM Clap: Tone", 0.0, 1.0, clap_tone;
+            38, "SynDRM Clap: Drive", 0.0, 1.0, clap_drive;
+            39, "SynDRM Clap: Level", 0.0, 1.0, clap_level;
+            40, "SynDRM Hat: Pitch", 0.0, 1.0, hat_pitch;
+            41, "SynDRM Hat: Decay", 0.0, 1.0, hat_decay;
+            42, "SynDRM Hat: Tone", 0.0, 1.0, hat_tone;
+            43, "SynDRM Hat: Drive", 0.0, 1.0, hat_drive;
+            44, "SynDRM Hat: Level", 0.0, 1.0, hat_level;
+            45, "SynDRM Perc1: Pitch", 0.0, 1.0, perc1_pitch;
+            46, "SynDRM Perc1: Decay", 0.0, 1.0, perc1_decay;
+            47, "SynDRM Perc1: Tone", 0.0, 1.0, perc1_tone;
+            48, "SynDRM Perc1: Drive", 0.0, 1.0, perc1_drive;
+            49, "SynDRM Perc1: Level", 0.0, 1.0, perc1_level;
+            50, "SynDRM Perc2: Pitch", 0.0, 1.0, perc2_pitch;
+            51, "SynDRM Perc2: Decay", 0.0, 1.0, perc2_decay;
+            52, "SynDRM Perc2: Tone", 0.0, 1.0, perc2_tone;
+            53, "SynDRM Perc2: Drive", 0.0, 1.0, perc2_drive;
+            54, "SynDRM Perc2: Level", 0.0, 1.0, perc2_level;
+            55, "SynDRM Crash: Tone", 0.0, 1.0, crash_tone;
+            56, "SynDRM Crash: Decay", 0.0, 1.0, crash_decay;
+            57, "SynDRM Crash: Pitch", 0.0, 1.0, crash_pitch;
+            58, "SynDRM Crash: Drive", 0.0, 1.0, crash_drive;
+            59, "SynDRM Crash: Level", 0.0, 1.0, crash_level;
+            60, "Granulator: Pitch", 0.0, 1.0, mosaic_pitch;
+            61, "Granulator: Rate", 0.0, 1.0, mosaic_rate;
+            62, "Granulator: Size", 0.0, 1.0, mosaic_size;
+            63, "Granulator: Contour", 0.0, 1.0, mosaic_contour;
+            64, "Granulator: Warp", 0.0, 1.0, mosaic_warp;
+            65, "Granulator: Spray", 0.0, 1.0, mosaic_spray;
+            66, "Granulator: Pattern", 0.0, 1.0, mosaic_pattern;
+            67, "Granulator: Wet", 0.0, 1.0, mosaic_wet;
+            68, "Granulator: Post Gain", 0.0, 1.0, mosaic_post_gain;
+            69, "Granulator: Detune", 0.0, 1.0, mosaic_detune;
+            70, "Granulator: Spatial", 0.0, 1.0, mosaic_spatial;
+            71, "Granulator: Rand Rate", 0.0, 1.0, mosaic_rand_rate;
+            72, "Granulator: Rand Size", 0.0, 1.0, mosaic_rand_size;
+            73, "Granulator: SOS", 0.0, 1.0, mosaic_sos;
+            74, "Silk: Cutoff", 0.0, 1.0, ring_cutoff;
+            75, "Silk: Resonance", 0.0, 1.0, ring_resonance;
+            76, "Silk: Decay", 0.0, 1.0, ring_decay;
+            77, "Silk: Pitch", 0.0, 1.0, ring_pitch;
+            78, "Silk: Slope", 0.0, 1.0, ring_slope;
+            79, "Silk: Tone", 0.0, 1.0, ring_tone;
+            80, "Silk: Tilt", 0.0, 1.0, ring_tilt;
+            81, "Silk: Wet", 0.0, 1.0, ring_wet;
+            82, "Silk: Detune", 0.0, 1.0, ring_detune;
+            83, "Silk: Waves", 0.0, 1.0, ring_waves;
+            84, "Silk: Waves Rate", 0.0, 1.0, ring_waves_rate;
+            85, "Silk: Noise", 0.0, 1.0, ring_noise;
+            86, "Silk: Noise Rate", 0.0, 1.0, ring_noise_rate;
+            87, "Texture: Drive", 0.0, 1.0, texture_drive;
+            88, "Texture: Compress", 0.0, 1.0, texture_compress;
+            89, "Texture: Crush", 0.0, 1.0, texture_crush;
+            90, "Texture: Tilt", 0.0, 1.0, texture_tilt;
+            91, "Texture: Noise", 0.0, 1.0, texture_noise;
+            92, "Texture: Noise Decay", 0.0, 1.0, texture_noise_decay;
+            93, "Texture: Noise Color", 0.0, 1.0, texture_noise_color;
+            94, "Texture: Wet", 0.0, 1.0, texture_wet;
+            95, "Texture: Post Gain", 0.0, 1.0, texture_post_gain;
+            96, "Reflect: Delay", 0.0, 1.0, reflect_delay;
+            97, "Reflect: Time", 0.0, 1.0, reflect_time;
+            98, "Reflect: Reverb", 0.0, 1.0, reflect_reverb;
+            99, "Reflect: Size", 0.0, 1.0, reflect_size;
+            100, "Reflect: Feedback", 0.0, 1.0, reflect_feedback;
+            101, "Reflect: Spread", 0.0, 1.0, reflect_spread;
+            102, "Reflect: Damp", 0.0, 1.0, reflect_damp;
+            103, "Reflect: Decay", 0.0, 1.0, reflect_decay;
+            104, "Reflect: Post Gain", 0.0, 1.0, reflect_post_gain;
+        )
+    };
+}
+
+macro_rules! modul8_target_label_match {
+    ($id:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+        match $id {
+            0 => "None",
+            $( $tid => $label, )*
+            _ => "None",
+        }
+    };
+}
+
+fn modul8_target_label(target: u32) -> &'static str {
+    modul8_targets!(modul8_target_label_match, target)
+}
+
+macro_rules! modul8_target_range_match {
+    ($id:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+        match $id {
+            $( $tid => Some(($min, $max)), )*
+            _ => None,
+        }
+    };
+}
+
+fn modul8_target_range(target: u32) -> Option<(f32, f32)> {
+    modul8_targets!(modul8_target_range_match, target)
+}
+
+macro_rules! modul8_target_get_match {
+    ($track:expr, $id:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+        match $id {
+            $( $tid => Some(f32::from_bits($track.$field.load(Ordering::Relaxed))), )*
+            _ => None,
+        }
+    };
+}
+
+fn modul8_target_get(track: &Track, target: u32) -> Option<f32> {
+    modul8_targets!(modul8_target_get_match, track, target)
+}
+
+macro_rules! modul8_target_set_match {
+    ($track:expr, $id:expr, $bits:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+        match $id {
+            $( $tid => $track.$field.store($bits, Ordering::Relaxed), )*
+            _ => {}
+        }
+    };
+}
+
+fn modul8_target_set(track: &Track, target: u32, value: f32) {
+    let bits = value.to_bits();
+    modul8_targets!(modul8_target_set_match, track, target, bits)
 }
 
 fn fmmi_rand_next(state: &mut u32) -> u32 {
@@ -14603,6 +15000,15 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     for i in 0..32 {
         params.insert(format!("g8_step_{}", i), f(&track.g8_steps[i]));
     }
+    params.insert("modul8_enabled".to_string(), b(&track.modul8_enabled));
+    for i in 0..MODUL8_LFOS {
+        params.insert(format!("modul8_wave_{}", i), u(&track.modul8_wave[i]));
+        params.insert(format!("modul8_rate_{}", i), f(&track.modul8_rate[i]));
+        params.insert(format!("modul8_sync_{}", i), b(&track.modul8_sync[i]));
+        params.insert(format!("modul8_division_{}", i), u(&track.modul8_division[i]));
+        params.insert(format!("modul8_amount_{}", i), f(&track.modul8_amount[i]));
+        params.insert(format!("modul8_target_{}", i), u(&track.modul8_target[i]));
+    }
     params.insert("texture_enabled".to_string(), b(&track.texture_enabled));
     params.insert("texture_gate".to_string(), b(&track.texture_gate));
     params.insert("texture_drive".to_string(), f(&track.texture_drive));
@@ -15452,6 +15858,33 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su(&track.g8_rate_index, "g8_rate_index");
     for i in 0..32 {
         sf(&track.g8_steps[i], &format!("g8_step_{}", i));
+    }
+    track.modul8_enabled.store(false, Ordering::Relaxed);
+    for i in 0..MODUL8_LFOS {
+        track.modul8_wave[i].store(0, Ordering::Relaxed);
+        track.modul8_rate[i].store(1.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_sync[i].store(true, Ordering::Relaxed);
+        track.modul8_division[i].store(0, Ordering::Relaxed);
+        track.modul8_amount[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_target[i].store(0, Ordering::Relaxed);
+        track.modul8_phase[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_snh[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .modul8_base_value[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .modul8_base_target[i]
+            .store(u32::MAX, Ordering::Relaxed);
+    }
+    track.modul8_rng_state.store(0x89ab_cdef, Ordering::Relaxed);
+    sb(&track.modul8_enabled, "modul8_enabled");
+    for i in 0..MODUL8_LFOS {
+        su(&track.modul8_wave[i], &format!("modul8_wave_{}", i));
+        sf(&track.modul8_rate[i], &format!("modul8_rate_{}", i));
+        sb(&track.modul8_sync[i], &format!("modul8_sync_{}", i));
+        su(&track.modul8_division[i], &format!("modul8_division_{}", i));
+        sf(&track.modul8_amount[i], &format!("modul8_amount_{}", i));
+        su(&track.modul8_target[i], &format!("modul8_target_{}", i));
     }
     track
         .animate_slot_a_attack
@@ -16909,8 +17342,35 @@ impl SlintWindow {
         let g8_steps: Vec<f32> = (0..32)
             .map(|i| f32::from_bits(self.tracks[track_idx].g8_steps[i].load(Ordering::Relaxed)))
             .collect();
-        let engine_loaded = self.tracks[track_idx].engine_type.load(Ordering::Relaxed) != 0;
+        let modul8_enabled = self.tracks[track_idx].modul8_enabled.load(Ordering::Relaxed);
+        let modul8_wave: Vec<i32> = (0..MODUL8_LFOS)
+            .map(|i| self.tracks[track_idx].modul8_wave[i].load(Ordering::Relaxed) as i32)
+            .collect();
+        let modul8_rate: Vec<f32> = (0..MODUL8_LFOS)
+            .map(|i| f32::from_bits(self.tracks[track_idx].modul8_rate[i].load(Ordering::Relaxed)))
+            .collect();
+        let modul8_sync: Vec<bool> = (0..MODUL8_LFOS)
+            .map(|i| self.tracks[track_idx].modul8_sync[i].load(Ordering::Relaxed))
+            .collect();
+        let modul8_division: Vec<i32> = (0..MODUL8_LFOS)
+            .map(|i| self.tracks[track_idx].modul8_division[i].load(Ordering::Relaxed) as i32)
+            .collect();
+        let modul8_amount: Vec<f32> = (0..MODUL8_LFOS)
+            .map(|i| f32::from_bits(self.tracks[track_idx].modul8_amount[i].load(Ordering::Relaxed)))
+            .collect();
         let active_engine_type = self.tracks[track_idx].engine_type.load(Ordering::Relaxed);
+        let modul8_target_len = modul8_target_ids_for_engine(active_engine_type).len() as i32;
+        let modul8_target: Vec<i32> = (0..MODUL8_LFOS)
+            .map(|i| {
+                let v = self.tracks[track_idx].modul8_target[i].load(Ordering::Relaxed) as i32;
+                if modul8_target_len > 0 {
+                    v.clamp(0, modul8_target_len - 1)
+                } else {
+                    0
+                }
+            })
+            .collect();
+        let engine_loaded = active_engine_type != 0;
 
         let animate_slot_types = [
             self.tracks[track_idx].animate_slot_types[0].load(Ordering::Relaxed),
@@ -18187,8 +18647,23 @@ impl SlintWindow {
         self.ui.set_g8_rate_index(g8_rate_index as i32);
         self.ui
             .set_g8_steps(ModelRc::from(std::rc::Rc::new(VecModel::from(g8_steps))));
+        self.ui.set_modul8_enabled(modul8_enabled);
+        self.ui
+            .set_modul8_wave(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_wave))));
+        self.ui
+            .set_modul8_rate(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_rate))));
+        self.ui
+            .set_modul8_sync(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_sync))));
+        self.ui.set_modul8_division(ModelRc::from(std::rc::Rc::new(
+            VecModel::from(modul8_division),
+        )));
+        self.ui
+            .set_modul8_amount(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_amount))));
+        self.ui
+            .set_modul8_target(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_target))));
         self.ui.set_engine_loaded(engine_loaded);
         self.ui.set_active_engine_type(active_engine_type as i32);
+        self.ui.set_modul8_target_options(ModelRc::new(std::rc::Rc::new(VecModel::from(modul8_target_options_for_engine(active_engine_type)))));
 
         self.ui.set_animate_slot_a_type(animate_slot_types[0] as i32);
         self.ui.set_animate_slot_b_type(animate_slot_types[1] as i32);
@@ -19148,6 +19623,7 @@ fn initialize_ui(
         SharedString::from("");
         FMMI_STEPS
     ])));
+    ui.set_modul8_target_options(ModelRc::new(VecModel::from(modul8_target_options_for_engine(0))));
     ui.set_engine_types(ModelRc::new(VecModel::from(vec![
         SharedString::from("Tape-Deck"),
         SharedString::from("Animate"),
@@ -20712,6 +21188,86 @@ fn initialize_ui(
             let clamped = value.clamp(0.0, 1.0);
             tracks_g8[track_idx].g8_steps[step_idx]
                 .store(clamped.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_toggle_modul8_enabled(move || {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let enabled = tracks_modul8[track_idx].modul8_enabled.load(Ordering::Relaxed);
+            tracks_modul8[track_idx]
+                .modul8_enabled
+                .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_wave_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_wave[lfo_idx]
+                .store(value.clamp(0, 4) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_rate_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_rate[lfo_idx]
+                .store(value.clamp(0.01, 20.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_sync_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_sync[lfo_idx].store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_division_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_division[lfo_idx]
+                .store(value.clamp(0, 5) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_amount_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_amount[lfo_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_target_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            let engine_type = tracks_modul8[track_idx].engine_type.load(Ordering::Relaxed);
+            let max_index =
+                modul8_target_ids_for_engine(engine_type).len().saturating_sub(1) as i32;
+            tracks_modul8[track_idx].modul8_target[lfo_idx]
+                .store(value.clamp(0, max_index) as u32, Ordering::Relaxed);
         }
     });
 

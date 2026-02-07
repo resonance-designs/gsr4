@@ -6,3 +6,4 @@
   - This is UI only. Does not change the audio/DSP of the other tracks.
 - Address all the warnings that have accumulated.
 - App crashes when master filter knob is brought above middle position.
+- The G8 device is not working on the Void Seed engine.

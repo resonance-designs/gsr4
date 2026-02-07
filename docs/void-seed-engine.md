@@ -40,6 +40,7 @@ Void Seed includes a dedicated Moog-style filter and drive circuit:
 Void Seed feeds into the shared downstream device chain:
 - **Granulator**
 - **Silk**
+- **Modul8**
 - **G8** (Trance Gate)
 - **Texture**
 - **Reflect**

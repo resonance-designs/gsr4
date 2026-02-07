@@ -1,3 +1,4 @@
+import { Theme } from "../theme/index.slint";
 import {
     RDSHeaderLabel,
     RDSKnob,
@@ -10,6 +11,7 @@ import {
 import { GranulatorDevice } from "../devices/granulator_device.slint";
 import { SilkDevice } from "../devices/silk_device.slint";
 import { G8Device } from "../devices/g8_device.slint";
+import { Modul8Device } from "../devices/modul8_device.slint";
 import { TextureDevice } from "../devices/texture_device.slint";
 import { ReflectDevice } from "../devices/reflect_device.slint";
 
@@ -110,6 +112,15 @@ export component VoidSeedEngine inherits Rectangle {
     callback void-mod-rate-changed(float);
     callback void-level-changed(float);
     callback toggle-void();
+    in property <[string]> modul8-target-options;
+    in-out property <bool> modul8-enabled: false;
+    in-out property <[int]> modul8-wave: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-rate: [1, 1, 1, 1, 1, 1, 1, 1];
+    in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
+    in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
+
     callback toggle-track-mute();
     callback toggle-mosaic-enabled();
     callback toggle-mosaic-loop-lock();
@@ -146,6 +157,13 @@ export component VoidSeedEngine inherits Rectangle {
     callback toggle-g8-enabled();
     callback g8-rate-selected(int);
     callback g8-step-changed(int, float);
+    callback toggle-modul8-enabled();
+    callback modul8-wave-changed(index: int, value: int);
+    callback modul8-rate-changed(index: int, value: float);
+    callback modul8-sync-changed(index: int, value: bool);
+    callback modul8-division-changed(index: int, value: int);
+    callback modul8-amount-changed(index: int, value: float);
+    callback modul8-target-changed(index: int, value: int);
     callback toggle-texture-enabled();
     callback toggle-texture-gate();
     callback texture-drive-changed(float);
@@ -175,8 +193,8 @@ export component VoidSeedEngine inherits Rectangle {
     background: transparent;
 
     VerticalLayout {
-        spacing: 12px;
-        width: parent.width;
+        spacing: 8px;
+        padding: 12px;
 
         HorizontalLayout {
             spacing: 10px;
@@ -191,7 +209,7 @@ export component VoidSeedEngine inherits Rectangle {
 
             HorizontalLayout {
                 spacing: 6px;
-                Text { text: "Mute"; color: #b9b9bf; font-size: 11px; }
+                Text { text: "Mute"; color: Theme.active.text_secondary; font-size: 11px; }
                 RDSCircleToggle {
                     active: root.track-muted;
                     clicked => root.toggle-track-mute();
@@ -328,7 +346,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Base Freq"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Base Freq"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-base-freq;
                             min-value: 20; max-value: 200;
@@ -338,7 +356,7 @@ export component VoidSeedEngine inherits Rectangle {
                     }
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Mod Rate"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Mod Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-mod-rate;
                             min-value: 0.01; max-value: 10.0;
@@ -350,7 +368,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Feedback"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Feedback"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-feedback;
                             min-value: 0.0; max-value: 0.98;
@@ -360,7 +378,7 @@ export component VoidSeedEngine inherits Rectangle {
                     }
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Diffusion"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Diffusion"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-diffusion;
                             min-value: 0.0; max-value: 1.0;
@@ -372,7 +390,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Close Decay"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Close Decay"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-close-decay;
                             min-value: 1.0; max-value: 20.0;
@@ -385,7 +403,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Moog Cut"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Moog Cut"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-filter-cutoff;
                             min-value: 0.0; max-value: 1.0;
@@ -398,7 +416,7 @@ export component VoidSeedEngine inherits Rectangle {
                     }
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Moog Res"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Moog Res"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-filter-resonance;
                             min-value: 0.0; max-value: 1.0;
@@ -413,7 +431,7 @@ export component VoidSeedEngine inherits Rectangle {
                 Row {
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Drive"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSKnob {
                             value: root.void-drive;
                             min-value: 0.0; max-value: 1.0;
@@ -423,7 +441,7 @@ export component VoidSeedEngine inherits Rectangle {
                     }
                     VerticalLayout {
                         spacing: 6px;
-                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                         RDSCircleToggle {
                             active: root.void-filter-pre-drive;
                             label: "POST";
@@ -441,13 +459,16 @@ export component VoidSeedEngine inherits Rectangle {
         // Downstream Devices
         VerticalLayout {
             width: parent.width;
+
+            // Granulator & Silk Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Granulator Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     GranulatorDevice {
                         mosaic-enabled <=> root.mosaic-enabled;
                         mosaic-loop-lock <=> root.mosaic-loop-lock;
@@ -486,8 +507,9 @@ export component VoidSeedEngine inherits Rectangle {
 
                 // Silk Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     SilkDevice {
                         ring-enabled <=> root.ring-enabled;
                         ring-cutoff <=> root.ring-cutoff;
@@ -526,14 +548,16 @@ export component VoidSeedEngine inherits Rectangle {
                 }
             }
 
+            // Texture & Reflect Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
+
+                // Texture Device
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     TextureDevice {
-                        width: parent.width;
-                        height: parent.height;
                         texture-enabled <=> root.texture-enabled;
                         texture-gate <=> root.texture-gate;
                         texture-drive <=> root.texture-drive;
@@ -558,12 +582,13 @@ export component VoidSeedEngine inherits Rectangle {
                         texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                     }
                 }
+
+                // Reflect Device
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     ReflectDevice {
-                        width: parent.width;
-                        height: parent.height;
                         reflect-enabled <=> root.reflect-enabled;
                         reflect-freeze <=> root.reflect-freeze;
                         reflect-delay <=> root.reflect-delay;
@@ -593,11 +618,44 @@ export component VoidSeedEngine inherits Rectangle {
                 }
             }
 
+            // G8 & Modul8 Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
+
+                // Modul8 Device
                 Rectangle {
-                    width: parent.width;
+                    width: 1216px;
+                    height: 354px;
+
+                    Modul8Device {
+                        width: parent.width;
+                        modul8-enabled <=> root.modul8-enabled;
+                        modul8-target-options: root.modul8-target-options;
+                        modul8-wave <=> root.modul8-wave;
+                        modul8-rate <=> root.modul8-rate;
+                        modul8-sync <=> root.modul8-sync;
+                        modul8-division <=> root.modul8-division;
+                        modul8-amount <=> root.modul8-amount;
+                        modul8-target <=> root.modul8-target;
+                        toggle-modul8-enabled => root.toggle-modul8-enabled();
+                        modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                        modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                        modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                        modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                        modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                        modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                // G8 Device
+                Rectangle {
+                    width: (parent.width - 16px) / 2 - 15px;
                     height: 200px;
+
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
                         gate-rate-index <=> root.g8-rate-index;

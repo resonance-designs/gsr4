@@ -13,6 +13,7 @@ import { RDSKeybedBus } from "../globals.slint";
 import { GranulatorDevice } from "../devices/granulator_device.slint";
 import { SilkDevice } from "../devices/silk_device.slint";
 import { G8Device } from "../devices/g8_device.slint";
+import { Modul8Device } from "../devices/modul8_device.slint";
 import { TextureDevice } from "../devices/texture_device.slint";
 import { ReflectDevice } from "../devices/reflect_device.slint";
 
@@ -184,6 +185,15 @@ export component AnimateEngine inherits Rectangle {
     ];
 
     // Engine Callbacks
+    in property <[string]> modul8-target-options;
+    in-out property <bool> modul8-enabled: false;
+    in-out property <[int]> modul8-wave: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-rate: [1, 1, 1, 1, 1, 1, 1, 1];
+    in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
+    in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
+
     callback toggle-track-mute();
     callback animate-slot-a-type-changed(index: int);
     callback animate-slot-b-type-changed(index: int);
@@ -333,6 +343,13 @@ export component AnimateEngine inherits Rectangle {
     callback toggle-g8-enabled();
     callback g8-rate-selected(index: int);
     callback g8-step-changed(index: int, value: float);
+    callback toggle-modul8-enabled();
+    callback modul8-wave-changed(index: int, value: int);
+    callback modul8-rate-changed(index: int, value: float);
+    callback modul8-sync-changed(index: int, value: bool);
+    callback modul8-division-changed(index: int, value: int);
+    callback modul8-amount-changed(index: int, value: float);
+    callback modul8-target-changed(index: int, value: int);
 
     width: 1242px;
     background: transparent;
@@ -341,7 +358,6 @@ export component AnimateEngine inherits Rectangle {
     VerticalLayout {
         spacing: 8px;
         padding: 12px;
-        width: parent.width;
 
         // Engine Title & Mute
         RDSHeaderLabel {
@@ -359,7 +375,7 @@ export component AnimateEngine inherits Rectangle {
                     label: "Mute";
                     label-active: "Live";
                     label-pos: "left";
-                    label-color: #b9b9bf;
+                    label-color: Theme.active.text_secondary;
                     label-active-color: Theme.active.text_primary;
                     label-font-size: 11px;
                     label-font-weight: 500;
@@ -370,7 +386,7 @@ export component AnimateEngine inherits Rectangle {
 
         // Engine Controls
         Rectangle {
-            background: #1e3a5f33;
+            background: Theme.active.ui_device_panel_bg;
             border-width: 2px;
             border-radius: 6px;
             border-color: Theme.active.border-strong;
@@ -433,7 +449,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Level";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -451,7 +467,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Pan";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -472,7 +488,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "CP";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -493,7 +509,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "FP";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -512,7 +528,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "WT LFO";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -533,7 +549,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Start";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -564,7 +580,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Loop S";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -586,7 +602,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 28px;
                                         Text {
                                             text: "Sync";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -603,7 +619,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Rate";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -635,7 +651,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Loop E";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -657,7 +673,7 @@ export component AnimateEngine inherits Rectangle {
                                     spacing: 8px;
                                     Text {
                                         text: "Filter";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 50px;
                                         vertical-alignment: center;
@@ -676,7 +692,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Cut";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -697,7 +713,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Res";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -719,7 +735,7 @@ export component AnimateEngine inherits Rectangle {
                                     spacing: 8px;
                                     Text {
                                         text: "Env";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 50px;
                                         vertical-alignment: center;
@@ -729,7 +745,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "A";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -750,7 +766,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "D";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -771,7 +787,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "S";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -792,7 +808,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "R";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -858,7 +874,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Level";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -879,7 +895,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Pan";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -900,7 +916,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "CP";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -921,7 +937,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "FP";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -943,7 +959,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "WT LFO";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -965,7 +981,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Start";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -997,7 +1013,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Loop S";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1019,7 +1035,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 28px;
                                         Text {
                                             text: "Sync";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1036,7 +1052,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Rate";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1068,7 +1084,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Loop E";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1090,21 +1106,21 @@ export component AnimateEngine inherits Rectangle {
                                     spacing: 8px;
                                     Text {
                                         text: "Filter";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 50px;
                                         vertical-alignment: center;
                                     }
                                     Text {
                                         text: "Filter Env";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 70px;
                                         vertical-alignment: center;
                                     }
                                     Text {
                                         text: "Amp Env";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 60px;
                                         vertical-alignment: center;
@@ -1160,7 +1176,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Level";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1181,7 +1197,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Pan";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1202,7 +1218,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "CP";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1223,7 +1239,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "FP";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1245,7 +1261,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "WT LFO";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1266,7 +1282,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Start";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1297,7 +1313,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Loop S";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1319,7 +1335,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 28px;
                                         Text {
                                             text: "Sync";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1336,7 +1352,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Rate";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1368,7 +1384,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Loop E";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1390,21 +1406,21 @@ export component AnimateEngine inherits Rectangle {
                                     spacing: 8px;
                                     Text {
                                         text: "Filter";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 50px;
                                         vertical-alignment: center;
                                     }
                                     Text {
                                         text: "Filter Env";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 70px;
                                         vertical-alignment: center;
                                     }
                                     Text {
                                         text: "Amp Env";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 60px;
                                         vertical-alignment: center;
@@ -1459,7 +1475,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Level";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1480,7 +1496,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Pan";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1501,7 +1517,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "CP";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1522,7 +1538,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "FP";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1544,7 +1560,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "WT LFO";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1565,7 +1581,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Start";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1596,7 +1612,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Loop S";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1618,7 +1634,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 28px;
                                         Text {
                                             text: "Sync";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1635,7 +1651,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Rate";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1667,7 +1683,7 @@ export component AnimateEngine inherits Rectangle {
                                         width: 40px;
                                         Text {
                                             text: "Loop E";
-                                            color: #b9b9bf;
+                                            color: Theme.active.text_secondary;
                                             font-size: 11px;
                                             horizontal-alignment: center;
                                         }
@@ -1689,21 +1705,21 @@ export component AnimateEngine inherits Rectangle {
                                     spacing: 8px;
                                     Text {
                                         text: "Filter";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 50px;
                                         vertical-alignment: center;
                                     }
                                     Text {
                                         text: "Filter Env";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 70px;
                                         vertical-alignment: center;
                                     }
                                     Text {
                                         text: "Amp Env";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         width: 60px;
                                         vertical-alignment: center;
@@ -1775,7 +1791,7 @@ export component AnimateEngine inherits Rectangle {
                                     spacing: 4px;
                                     Text {
                                         text: "Sync";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                     }
                                     RDSCircleToggle {
@@ -1805,7 +1821,7 @@ export component AnimateEngine inherits Rectangle {
                                     visible: !root.animate-lfo-x-sync;
                                     Text {
                                         text: "Rate";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         horizontal-alignment: center;
                                     }
@@ -1827,7 +1843,7 @@ export component AnimateEngine inherits Rectangle {
                                     width: 50px;
                                     Text {
                                         text: "Amt";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         horizontal-alignment: center;
                                     }
@@ -1870,7 +1886,7 @@ export component AnimateEngine inherits Rectangle {
                                     spacing: 4px;
                                     Text {
                                         text: "Sync";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                     }
                                     RDSCircleToggle {
@@ -1900,7 +1916,7 @@ export component AnimateEngine inherits Rectangle {
                                     visible: !root.animate-lfo-y-sync;
                                     Text {
                                         text: "Rate";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         horizontal-alignment: center;
                                     }
@@ -1922,7 +1938,7 @@ export component AnimateEngine inherits Rectangle {
                                     width: 50px;
                                     Text {
                                         text: "Amt";
-                                        color: #b9b9bf;
+                                        color: Theme.active.text_secondary;
                                         font-size: 11px;
                                         horizontal-alignment: center;
                                     }
@@ -2004,12 +2020,13 @@ export component AnimateEngine inherits Rectangle {
 
             // Granulator & Silk Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Granulator Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     GranulatorDevice {
                         mosaic-enabled <=> root.mosaic-enabled;
                         mosaic-loop-lock <=> root.mosaic-loop-lock;
@@ -2048,8 +2065,9 @@ export component AnimateEngine inherits Rectangle {
 
                 // Silk Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     SilkDevice {
                         ring-enabled <=> root.ring-enabled;
                         ring-cutoff <=> root.ring-cutoff;
@@ -2090,12 +2108,12 @@ export component AnimateEngine inherits Rectangle {
 
             // Texture & Reflect Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Texture Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 280px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
 
                     TextureDevice {
                         texture-enabled <=> root.texture-enabled;
@@ -2125,8 +2143,8 @@ export component AnimateEngine inherits Rectangle {
 
                 // Reflect Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 280px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
 
                     ReflectDevice {
                         reflect-enabled <=> root.reflect-enabled;
@@ -2160,12 +2178,42 @@ export component AnimateEngine inherits Rectangle {
 
             // G8 & Modul8 Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
+
+                // Modul8 Device
+                Rectangle {
+                    width: 1216px;
+                    height: 354px;
+
+                    Modul8Device {
+                        width: parent.width;
+                        modul8-enabled <=> root.modul8-enabled;
+                        modul8-target-options: root.modul8-target-options;
+                        modul8-wave <=> root.modul8-wave;
+                        modul8-rate <=> root.modul8-rate;
+                        modul8-sync <=> root.modul8-sync;
+                        modul8-division <=> root.modul8-division;
+                        modul8-amount <=> root.modul8-amount;
+                        modul8-target <=> root.modul8-target;
+                        toggle-modul8-enabled => root.toggle-modul8-enabled();
+                        modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                        modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                        modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                        modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                        modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                        modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
 
                 // G8 Device
                 Rectangle {
-                    width: parent.width;
+                    width: (parent.width - 16px) / 2 - 15px;
                     height: 200px;
+
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
                         gate-rate-index <=> root.g8-rate-index;
