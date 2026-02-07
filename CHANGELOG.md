@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.24] - 2026-02-05
+## [0.1.24] - 2026-02-07
 
 - Added new **Modul8** device (8 LFO modulation section) with engine-scoped targets for the loaded engine plus downstream devices, and full-range modulation depth.
 

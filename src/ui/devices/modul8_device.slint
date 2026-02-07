@@ -108,6 +108,7 @@ export component Modul8Device {
                                 label-font-size: 10px;
                                 sensitivity: 0.01;
                                 scroll-sensitivity: 0.01;
+                                enabled: !root.modul8-sync[idx];
                                 value-changed(v) => {
                                     root.modul8-rate[idx] = v;
                                     root.modul8-rate-changed(idx, v);
@@ -135,6 +136,7 @@ export component Modul8Device {
                                 width: 86px;
                                 model: root.modul8-division-options;
                                 current-index: root.modul8-division[idx];
+                                enabled: root.modul8-sync[idx];
                                 selected => {
                                     root.modul8-division[idx] = self.current-index;
                                     root.modul8-division-changed(idx, self.current-index);

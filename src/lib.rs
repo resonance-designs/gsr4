@@ -9738,6 +9738,13 @@ impl TLBX1 {
         for i in 0..MODUL8_LFOS {
             let amount = f32::from_bits(track.modul8_amount[i].load(Ordering::Relaxed)).clamp(0.0, 1.0);
             if amount <= 0.0 {
+                let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
+                if prev_target != u32::MAX {
+                    let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+                    if modul8_target_range(prev_target).is_some() {
+                        modul8_target_set(track, prev_target, base);
+                    }
+                }
                 continue;
             }
             let target_index = track.modul8_target[i].load(Ordering::Relaxed) as usize;
@@ -12072,418 +12079,207 @@ fn fmmi_midi_to_label(midi: i32) -> Option<String> {
 
 fn modul8_target_options_for_engine(engine_type: u32) -> Vec<SharedString> {
     let ids = modul8_target_ids_for_engine(engine_type);
-    ids.into_iter()
+    ids.iter()
+        .copied()
         .map(|id| SharedString::from(modul8_target_label(id)))
         .collect()
 }
 
-fn modul8_target_ids_for_engine(engine_type: u32) -> Vec<u32> {
-    let mut ids = vec![0u32];
+macro_rules! modul8_downstream_ids {
+    () => {
+        60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
+        81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
+        102, 103, 104
+    };
+}
+
+const MODUL8_TARGET_IDS_DEFAULT: [u32; 46] = [0, modul8_downstream_ids!()];
+const MODUL8_TARGET_IDS_TAPE: [u32; 50] = [0, 1, 2, 3, 4, modul8_downstream_ids!()];
+const MODUL8_TARGET_IDS_ANIMATE: [u32; 48] = [0, 5, 6, modul8_downstream_ids!()];
+const MODUL8_TARGET_IDS_SYNDRM: [u32; 82] = [
+    0, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+    46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, modul8_downstream_ids!(),
+];
+const MODUL8_TARGET_IDS_VOID: [u32; 55] = [0, 7, 8, 9, 10, 11, 12, 13, 14, 15, modul8_downstream_ids!()];
+const MODUL8_TARGET_IDS_FMMI: [u32; 54] = [
+    0, 16, 17, 18, 19, 20, 21, 22, 23, modul8_downstream_ids!(),
+];
+
+fn modul8_target_ids_for_engine(engine_type: u32) -> &'static [u32] {
     match engine_type {
-        1 => { // Tape
-            ids.extend([1, 2, 3, 4]);
-        }
-        2 => { // Animate
-            ids.extend([5, 6]);
-        }
-        3 => { // SynDRM
-            ids.extend(24..=59);
-        }
-        4 => { // Void Seed
-            ids.extend(7..=15);
-        }
-        5 => { // FMMI
-            ids.extend(16..=23);
-        }
-        _ => {}
+        1 => &MODUL8_TARGET_IDS_TAPE,
+        2 => &MODUL8_TARGET_IDS_ANIMATE,
+        3 => &MODUL8_TARGET_IDS_SYNDRM,
+        4 => &MODUL8_TARGET_IDS_VOID,
+        5 => &MODUL8_TARGET_IDS_FMMI,
+        _ => &MODUL8_TARGET_IDS_DEFAULT,
     }
-    // Downstream devices (granulator, silk, texture, reflect)
-    ids.extend(60..=104);
-    ids
+}
+
+macro_rules! modul8_targets {
+    ($mac:ident, $($args:expr),* $(,)?) => {
+        $mac!(
+            $($args),*;
+            1, "Tape: Speed", -4.0, 4.0, tape_speed;
+            2, "Tape: Rotate", 0.0, 1.0, tape_rotate;
+            3, "Tape: Glide", 0.0, 1.0, tape_glide;
+            4, "Tape: SOS", 0.0, 1.0, tape_sos;
+            5, "Animate: Vector X", 0.0, 1.0, animate_vector_x;
+            6, "Animate: Vector Y", 0.0, 1.0, animate_vector_y;
+            7, "Void: Base Freq", 20.0, 200.0, void_base_freq;
+            8, "Void: Chaos Depth", 0.0, 1.0, void_chaos_depth;
+            9, "Void: Entropy", 0.0, 1.0, void_entropy;
+            10, "Void: Feedback", 0.0, 0.98, void_feedback;
+            11, "Void: Diffusion", 0.0, 1.0, void_diffusion;
+            12, "Void: Mod Rate", 0.01, 10.0, void_mod_rate;
+            13, "Void: Level", 0.0, 1.0, void_level;
+            14, "Void: Pan", -1.0, 1.0, void_pan;
+            15, "Void: Width", -1.0, 1.0, void_width;
+            16, "FMMI: Car Freq", 20.0, 4000.0, fmmi_car_freq;
+            17, "FMMI: Car Detune", -120.0, 120.0, fmmi_car_detune;
+            18, "FMMI: Mod Value", 0.1, 4000.0, fmmi_mod_value;
+            19, "FMMI: Mod Detune", -120.0, 120.0, fmmi_mod_detune;
+            20, "FMMI: Index", 0.0, 4000.0, fmmi_index;
+            21, "FMMI: Feedback", 0.0, 1.0, fmmi_feedback;
+            22, "FMMI: Drive", 0.0, 1.0, fmmi_drive;
+            23, "FMMI: Out Level", 0.0, 1.0, fmmi_out_level;
+            24, "SynDRM Kick: Pitch", 0.0, 1.0, kick_pitch;
+            25, "SynDRM Kick: Decay", 0.0, 1.0, kick_decay;
+            26, "SynDRM Kick: Attack", 0.0, 1.0, kick_attack;
+            27, "SynDRM Kick: Drive", 0.0, 1.0, kick_drive;
+            28, "SynDRM Kick: Level", 0.0, 1.0, kick_level;
+            29, "SynDRM Snare: Tone", 0.0, 1.0, snare_tone;
+            30, "SynDRM Snare: Decay", 0.0, 1.0, snare_decay;
+            31, "SynDRM Snare: Snappy", 0.0, 1.0, snare_snappy;
+            32, "SynDRM Snare: Attack", 0.0, 1.0, snare_attack;
+            33, "SynDRM Snare: Drive", 0.0, 1.0, snare_drive;
+            34, "SynDRM Snare: Level", 0.0, 1.0, snare_level;
+            35, "SynDRM Clap: Pitch", 0.0, 1.0, clap_pitch;
+            36, "SynDRM Clap: Decay", 0.0, 1.0, clap_decay;
+            37, "SynDRM Clap: Tone", 0.0, 1.0, clap_tone;
+            38, "SynDRM Clap: Drive", 0.0, 1.0, clap_drive;
+            39, "SynDRM Clap: Level", 0.0, 1.0, clap_level;
+            40, "SynDRM Hat: Pitch", 0.0, 1.0, hat_pitch;
+            41, "SynDRM Hat: Decay", 0.0, 1.0, hat_decay;
+            42, "SynDRM Hat: Tone", 0.0, 1.0, hat_tone;
+            43, "SynDRM Hat: Drive", 0.0, 1.0, hat_drive;
+            44, "SynDRM Hat: Level", 0.0, 1.0, hat_level;
+            45, "SynDRM Perc1: Pitch", 0.0, 1.0, perc1_pitch;
+            46, "SynDRM Perc1: Decay", 0.0, 1.0, perc1_decay;
+            47, "SynDRM Perc1: Tone", 0.0, 1.0, perc1_tone;
+            48, "SynDRM Perc1: Drive", 0.0, 1.0, perc1_drive;
+            49, "SynDRM Perc1: Level", 0.0, 1.0, perc1_level;
+            50, "SynDRM Perc2: Pitch", 0.0, 1.0, perc2_pitch;
+            51, "SynDRM Perc2: Decay", 0.0, 1.0, perc2_decay;
+            52, "SynDRM Perc2: Tone", 0.0, 1.0, perc2_tone;
+            53, "SynDRM Perc2: Drive", 0.0, 1.0, perc2_drive;
+            54, "SynDRM Perc2: Level", 0.0, 1.0, perc2_level;
+            55, "SynDRM Crash: Tone", 0.0, 1.0, crash_tone;
+            56, "SynDRM Crash: Decay", 0.0, 1.0, crash_decay;
+            57, "SynDRM Crash: Pitch", 0.0, 1.0, crash_pitch;
+            58, "SynDRM Crash: Drive", 0.0, 1.0, crash_drive;
+            59, "SynDRM Crash: Level", 0.0, 1.0, crash_level;
+            60, "Granulator: Pitch", 0.0, 1.0, mosaic_pitch;
+            61, "Granulator: Rate", 0.0, 1.0, mosaic_rate;
+            62, "Granulator: Size", 0.0, 1.0, mosaic_size;
+            63, "Granulator: Contour", 0.0, 1.0, mosaic_contour;
+            64, "Granulator: Warp", 0.0, 1.0, mosaic_warp;
+            65, "Granulator: Spray", 0.0, 1.0, mosaic_spray;
+            66, "Granulator: Pattern", 0.0, 1.0, mosaic_pattern;
+            67, "Granulator: Wet", 0.0, 1.0, mosaic_wet;
+            68, "Granulator: Post Gain", 0.0, 1.0, mosaic_post_gain;
+            69, "Granulator: Detune", 0.0, 1.0, mosaic_detune;
+            70, "Granulator: Spatial", 0.0, 1.0, mosaic_spatial;
+            71, "Granulator: Rand Rate", 0.0, 1.0, mosaic_rand_rate;
+            72, "Granulator: Rand Size", 0.0, 1.0, mosaic_rand_size;
+            73, "Granulator: SOS", 0.0, 1.0, mosaic_sos;
+            74, "Silk: Cutoff", 0.0, 1.0, ring_cutoff;
+            75, "Silk: Resonance", 0.0, 1.0, ring_resonance;
+            76, "Silk: Decay", 0.0, 1.0, ring_decay;
+            77, "Silk: Pitch", 0.0, 1.0, ring_pitch;
+            78, "Silk: Slope", 0.0, 1.0, ring_slope;
+            79, "Silk: Tone", 0.0, 1.0, ring_tone;
+            80, "Silk: Tilt", 0.0, 1.0, ring_tilt;
+            81, "Silk: Wet", 0.0, 1.0, ring_wet;
+            82, "Silk: Detune", 0.0, 1.0, ring_detune;
+            83, "Silk: Waves", 0.0, 1.0, ring_waves;
+            84, "Silk: Waves Rate", 0.0, 1.0, ring_waves_rate;
+            85, "Silk: Noise", 0.0, 1.0, ring_noise;
+            86, "Silk: Noise Rate", 0.0, 1.0, ring_noise_rate;
+            87, "Texture: Drive", 0.0, 1.0, texture_drive;
+            88, "Texture: Compress", 0.0, 1.0, texture_compress;
+            89, "Texture: Crush", 0.0, 1.0, texture_crush;
+            90, "Texture: Tilt", 0.0, 1.0, texture_tilt;
+            91, "Texture: Noise", 0.0, 1.0, texture_noise;
+            92, "Texture: Noise Decay", 0.0, 1.0, texture_noise_decay;
+            93, "Texture: Noise Color", 0.0, 1.0, texture_noise_color;
+            94, "Texture: Wet", 0.0, 1.0, texture_wet;
+            95, "Texture: Post Gain", 0.0, 1.0, texture_post_gain;
+            96, "Reflect: Delay", 0.0, 1.0, reflect_delay;
+            97, "Reflect: Time", 0.0, 1.0, reflect_time;
+            98, "Reflect: Reverb", 0.0, 1.0, reflect_reverb;
+            99, "Reflect: Size", 0.0, 1.0, reflect_size;
+            100, "Reflect: Feedback", 0.0, 1.0, reflect_feedback;
+            101, "Reflect: Spread", 0.0, 1.0, reflect_spread;
+            102, "Reflect: Damp", 0.0, 1.0, reflect_damp;
+            103, "Reflect: Decay", 0.0, 1.0, reflect_decay;
+            104, "Reflect: Post Gain", 0.0, 1.0, reflect_post_gain;
+        );
+    };
+}
+
+macro_rules! modul8_target_label_match {
+    ($id:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+        match $id {
+            0 => "None",
+            $( $tid => $label, )*
+            _ => "None",
+        }
+    };
 }
 
 fn modul8_target_label(target: u32) -> &'static str {
-    match target {
-        0 => "None",
-        1 => "Tape: Speed",
-        2 => "Tape: Rotate",
-        3 => "Tape: Glide",
-        4 => "Tape: SOS",
-        5 => "Animate: Vector X",
-        6 => "Animate: Vector Y",
-        7 => "Void: Base Freq",
-        8 => "Void: Chaos Depth",
-        9 => "Void: Entropy",
-        10 => "Void: Feedback",
-        11 => "Void: Diffusion",
-        12 => "Void: Mod Rate",
-        13 => "Void: Level",
-        14 => "Void: Pan",
-        15 => "Void: Width",
-        16 => "FMMI: Car Freq",
-        17 => "FMMI: Car Detune",
-        18 => "FMMI: Mod Value",
-        19 => "FMMI: Mod Detune",
-        20 => "FMMI: Index",
-        21 => "FMMI: Feedback",
-        22 => "FMMI: Drive",
-        23 => "FMMI: Out Level",
-        24 => "SynDRM Kick: Pitch",
-        25 => "SynDRM Kick: Decay",
-        26 => "SynDRM Kick: Attack",
-        27 => "SynDRM Kick: Drive",
-        28 => "SynDRM Kick: Level",
-        29 => "SynDRM Snare: Tone",
-        30 => "SynDRM Snare: Decay",
-        31 => "SynDRM Snare: Snappy",
-        32 => "SynDRM Snare: Attack",
-        33 => "SynDRM Snare: Drive",
-        34 => "SynDRM Snare: Level",
-        35 => "SynDRM Clap: Pitch",
-        36 => "SynDRM Clap: Decay",
-        37 => "SynDRM Clap: Tone",
-        38 => "SynDRM Clap: Drive",
-        39 => "SynDRM Clap: Level",
-        40 => "SynDRM Hat: Pitch",
-        41 => "SynDRM Hat: Decay",
-        42 => "SynDRM Hat: Tone",
-        43 => "SynDRM Hat: Drive",
-        44 => "SynDRM Hat: Level",
-        45 => "SynDRM Perc1: Pitch",
-        46 => "SynDRM Perc1: Decay",
-        47 => "SynDRM Perc1: Tone",
-        48 => "SynDRM Perc1: Drive",
-        49 => "SynDRM Perc1: Level",
-        50 => "SynDRM Perc2: Pitch",
-        51 => "SynDRM Perc2: Decay",
-        52 => "SynDRM Perc2: Tone",
-        53 => "SynDRM Perc2: Drive",
-        54 => "SynDRM Perc2: Level",
-        55 => "SynDRM Crash: Tone",
-        56 => "SynDRM Crash: Decay",
-        57 => "SynDRM Crash: Pitch",
-        58 => "SynDRM Crash: Drive",
-        59 => "SynDRM Crash: Level",
-        60 => "Granulator: Pitch",
-        61 => "Granulator: Rate",
-        62 => "Granulator: Size",
-        63 => "Granulator: Contour",
-        64 => "Granulator: Warp",
-        65 => "Granulator: Spray",
-        66 => "Granulator: Pattern",
-        67 => "Granulator: Wet",
-        68 => "Granulator: Post Gain",
-        69 => "Granulator: Detune",
-        70 => "Granulator: Spatial",
-        71 => "Granulator: Rand Rate",
-        72 => "Granulator: Rand Size",
-        73 => "Granulator: SOS",
-        74 => "Silk: Cutoff",
-        75 => "Silk: Resonance",
-        76 => "Silk: Decay",
-        77 => "Silk: Pitch",
-        78 => "Silk: Slope",
-        79 => "Silk: Tone",
-        80 => "Silk: Tilt",
-        81 => "Silk: Wet",
-        82 => "Silk: Detune",
-        83 => "Silk: Waves",
-        84 => "Silk: Waves Rate",
-        85 => "Silk: Noise",
-        86 => "Silk: Noise Rate",
-        87 => "Texture: Drive",
-        88 => "Texture: Compress",
-        89 => "Texture: Crush",
-        90 => "Texture: Tilt",
-        91 => "Texture: Noise",
-        92 => "Texture: Noise Decay",
-        93 => "Texture: Noise Color",
-        94 => "Texture: Wet",
-        95 => "Texture: Post Gain",
-        96 => "Reflect: Delay",
-        97 => "Reflect: Time",
-        98 => "Reflect: Reverb",
-        99 => "Reflect: Size",
-        100 => "Reflect: Feedback",
-        101 => "Reflect: Spread",
-        102 => "Reflect: Damp",
-        103 => "Reflect: Decay",
-        104 => "Reflect: Post Gain",
-        _ => "None",
-    }
+    modul8_targets!(modul8_target_label_match, target)
 }
 
-fn modul8_rate_hz(rate: f32, sync: bool, division: u32, tempo: f32) -> f32 {
-    if !sync {
-        return rate.clamp(0.01, 20.0);
-    }
-    let beats = match division.min(5) {
-        0 => 4.0,
-        1 => 2.0,
-        2 => 1.0,
-        3 => 0.5,
-        4 => 0.25,
-        _ => 0.125,
-    };
-    let bps = (tempo / 60.0).clamp(0.1, 20.0);
-    (bps / beats).clamp(0.01, 20.0)
-}
-
-fn modul8_wave_value(wave: u32, phase: f32, sample_hold: f32) -> f32 {
-    match wave.min(4) {
-        0 => (phase * 2.0 * PI).sin(),
-        1 => 1.0 - 4.0 * (phase - 0.5).abs(),
-        2 => 2.0 * phase - 1.0,
-        3 => {
-            if phase < 0.5 { 1.0 } else { -1.0 }
+macro_rules! modul8_target_range_match {
+    ($id:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+        match $id {
+            $( $tid => Some(($min, $max)), )*
+            _ => None,
         }
-        _ => sample_hold.clamp(-1.0, 1.0),
-    }
+    };
 }
 
 fn modul8_target_range(target: u32) -> Option<(f32, f32)> {
-    let range = match target {
-        1 => (-4.0, 4.0),
-        2 | 3 | 4 => (0.0, 1.0),
-        5 | 6 => (0.0, 1.0),
-        7 => (20.0, 200.0),
-        8 | 9 => (0.0, 1.0),
-        10 => (0.0, 0.98),
-        11 => (0.0, 1.0),
-        12 => (0.01, 10.0),
-        13 => (0.0, 1.0),
-        14 | 15 => (-1.0, 1.0),
-        16 => (20.0, 4000.0),
-        17 => (-120.0, 120.0),
-        18 => (0.1, 4000.0),
-        19 => (-120.0, 120.0),
-        20 => (0.0, 4000.0),
-        21..=104 => (0.0, 1.0),
-        _ => return None,
+    modul8_targets!(modul8_target_range_match, target)
+}
+
+macro_rules! modul8_target_get_match {
+    ($track:expr, $id:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+        match $id {
+            $( $tid => Some(f32::from_bits($track.$field.load(Ordering::Relaxed))), )*
+            _ => None,
+        }
     };
-    Some(range)
 }
 
 fn modul8_target_get(track: &Track, target: u32) -> Option<f32> {
-    let v = match target {
-        1 => f32::from_bits(track.tape_speed.load(Ordering::Relaxed)),
-        2 => f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)),
-        3 => f32::from_bits(track.tape_glide.load(Ordering::Relaxed)),
-        4 => f32::from_bits(track.tape_sos.load(Ordering::Relaxed)),
-        5 => f32::from_bits(track.animate_vector_x.load(Ordering::Relaxed)),
-        6 => f32::from_bits(track.animate_vector_y.load(Ordering::Relaxed)),
-        7 => f32::from_bits(track.void_base_freq.load(Ordering::Relaxed)),
-        8 => f32::from_bits(track.void_chaos_depth.load(Ordering::Relaxed)),
-        9 => f32::from_bits(track.void_entropy.load(Ordering::Relaxed)),
-        10 => f32::from_bits(track.void_feedback.load(Ordering::Relaxed)),
-        11 => f32::from_bits(track.void_diffusion.load(Ordering::Relaxed)),
-        12 => f32::from_bits(track.void_mod_rate.load(Ordering::Relaxed)),
-        13 => f32::from_bits(track.void_level.load(Ordering::Relaxed)),
-        14 => f32::from_bits(track.void_pan.load(Ordering::Relaxed)),
-        15 => f32::from_bits(track.void_width.load(Ordering::Relaxed)),
-        16 => f32::from_bits(track.fmmi_car_freq.load(Ordering::Relaxed)),
-        17 => f32::from_bits(track.fmmi_car_detune.load(Ordering::Relaxed)),
-        18 => f32::from_bits(track.fmmi_mod_value.load(Ordering::Relaxed)),
-        19 => f32::from_bits(track.fmmi_mod_detune.load(Ordering::Relaxed)),
-        20 => f32::from_bits(track.fmmi_index.load(Ordering::Relaxed)),
-        21 => f32::from_bits(track.fmmi_feedback.load(Ordering::Relaxed)),
-        22 => f32::from_bits(track.fmmi_drive.load(Ordering::Relaxed)),
-        23 => f32::from_bits(track.fmmi_out_level.load(Ordering::Relaxed)),
-        24 => f32::from_bits(track.kick_pitch.load(Ordering::Relaxed)),
-        25 => f32::from_bits(track.kick_decay.load(Ordering::Relaxed)),
-        26 => f32::from_bits(track.kick_attack.load(Ordering::Relaxed)),
-        27 => f32::from_bits(track.kick_drive.load(Ordering::Relaxed)),
-        28 => f32::from_bits(track.kick_level.load(Ordering::Relaxed)),
-        29 => f32::from_bits(track.snare_tone.load(Ordering::Relaxed)),
-        30 => f32::from_bits(track.snare_decay.load(Ordering::Relaxed)),
-        31 => f32::from_bits(track.snare_snappy.load(Ordering::Relaxed)),
-        32 => f32::from_bits(track.snare_attack.load(Ordering::Relaxed)),
-        33 => f32::from_bits(track.snare_drive.load(Ordering::Relaxed)),
-        34 => f32::from_bits(track.snare_level.load(Ordering::Relaxed)),
-        35 => f32::from_bits(track.clap_pitch.load(Ordering::Relaxed)),
-        36 => f32::from_bits(track.clap_decay.load(Ordering::Relaxed)),
-        37 => f32::from_bits(track.clap_tone.load(Ordering::Relaxed)),
-        38 => f32::from_bits(track.clap_drive.load(Ordering::Relaxed)),
-        39 => f32::from_bits(track.clap_level.load(Ordering::Relaxed)),
-        40 => f32::from_bits(track.hat_pitch.load(Ordering::Relaxed)),
-        41 => f32::from_bits(track.hat_decay.load(Ordering::Relaxed)),
-        42 => f32::from_bits(track.hat_tone.load(Ordering::Relaxed)),
-        43 => f32::from_bits(track.hat_drive.load(Ordering::Relaxed)),
-        44 => f32::from_bits(track.hat_level.load(Ordering::Relaxed)),
-        45 => f32::from_bits(track.perc1_pitch.load(Ordering::Relaxed)),
-        46 => f32::from_bits(track.perc1_decay.load(Ordering::Relaxed)),
-        47 => f32::from_bits(track.perc1_tone.load(Ordering::Relaxed)),
-        48 => f32::from_bits(track.perc1_drive.load(Ordering::Relaxed)),
-        49 => f32::from_bits(track.perc1_level.load(Ordering::Relaxed)),
-        50 => f32::from_bits(track.perc2_pitch.load(Ordering::Relaxed)),
-        51 => f32::from_bits(track.perc2_decay.load(Ordering::Relaxed)),
-        52 => f32::from_bits(track.perc2_tone.load(Ordering::Relaxed)),
-        53 => f32::from_bits(track.perc2_drive.load(Ordering::Relaxed)),
-        54 => f32::from_bits(track.perc2_level.load(Ordering::Relaxed)),
-        55 => f32::from_bits(track.crash_tone.load(Ordering::Relaxed)),
-        56 => f32::from_bits(track.crash_decay.load(Ordering::Relaxed)),
-        57 => f32::from_bits(track.crash_pitch.load(Ordering::Relaxed)),
-        58 => f32::from_bits(track.crash_drive.load(Ordering::Relaxed)),
-        59 => f32::from_bits(track.crash_level.load(Ordering::Relaxed)),
-        60 => f32::from_bits(track.mosaic_pitch.load(Ordering::Relaxed)),
-        61 => f32::from_bits(track.mosaic_rate.load(Ordering::Relaxed)),
-        62 => f32::from_bits(track.mosaic_size.load(Ordering::Relaxed)),
-        63 => f32::from_bits(track.mosaic_contour.load(Ordering::Relaxed)),
-        64 => f32::from_bits(track.mosaic_warp.load(Ordering::Relaxed)),
-        65 => f32::from_bits(track.mosaic_spray.load(Ordering::Relaxed)),
-        66 => f32::from_bits(track.mosaic_pattern.load(Ordering::Relaxed)),
-        67 => f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed)),
-        68 => f32::from_bits(track.mosaic_post_gain.load(Ordering::Relaxed)),
-        69 => f32::from_bits(track.mosaic_detune.load(Ordering::Relaxed)),
-        70 => f32::from_bits(track.mosaic_spatial.load(Ordering::Relaxed)),
-        71 => f32::from_bits(track.mosaic_rand_rate.load(Ordering::Relaxed)),
-        72 => f32::from_bits(track.mosaic_rand_size.load(Ordering::Relaxed)),
-        73 => f32::from_bits(track.mosaic_sos.load(Ordering::Relaxed)),
-        74 => f32::from_bits(track.ring_cutoff.load(Ordering::Relaxed)),
-        75 => f32::from_bits(track.ring_resonance.load(Ordering::Relaxed)),
-        76 => f32::from_bits(track.ring_decay.load(Ordering::Relaxed)),
-        77 => f32::from_bits(track.ring_pitch.load(Ordering::Relaxed)),
-        78 => f32::from_bits(track.ring_slope.load(Ordering::Relaxed)),
-        79 => f32::from_bits(track.ring_tone.load(Ordering::Relaxed)),
-        80 => f32::from_bits(track.ring_tilt.load(Ordering::Relaxed)),
-        81 => f32::from_bits(track.ring_wet.load(Ordering::Relaxed)),
-        82 => f32::from_bits(track.ring_detune.load(Ordering::Relaxed)),
-        83 => f32::from_bits(track.ring_waves.load(Ordering::Relaxed)),
-        84 => f32::from_bits(track.ring_waves_rate.load(Ordering::Relaxed)),
-        85 => f32::from_bits(track.ring_noise.load(Ordering::Relaxed)),
-        86 => f32::from_bits(track.ring_noise_rate.load(Ordering::Relaxed)),
-        87 => f32::from_bits(track.texture_drive.load(Ordering::Relaxed)),
-        88 => f32::from_bits(track.texture_compress.load(Ordering::Relaxed)),
-        89 => f32::from_bits(track.texture_crush.load(Ordering::Relaxed)),
-        90 => f32::from_bits(track.texture_tilt.load(Ordering::Relaxed)),
-        91 => f32::from_bits(track.texture_noise.load(Ordering::Relaxed)),
-        92 => f32::from_bits(track.texture_noise_decay.load(Ordering::Relaxed)),
-        93 => f32::from_bits(track.texture_noise_color.load(Ordering::Relaxed)),
-        94 => f32::from_bits(track.texture_wet.load(Ordering::Relaxed)),
-        95 => f32::from_bits(track.texture_post_gain.load(Ordering::Relaxed)),
-        96 => f32::from_bits(track.reflect_delay.load(Ordering::Relaxed)),
-        97 => f32::from_bits(track.reflect_time.load(Ordering::Relaxed)),
-        98 => f32::from_bits(track.reflect_reverb.load(Ordering::Relaxed)),
-        99 => f32::from_bits(track.reflect_size.load(Ordering::Relaxed)),
-        100 => f32::from_bits(track.reflect_feedback.load(Ordering::Relaxed)),
-        101 => f32::from_bits(track.reflect_spread.load(Ordering::Relaxed)),
-        102 => f32::from_bits(track.reflect_damp.load(Ordering::Relaxed)),
-        103 => f32::from_bits(track.reflect_decay.load(Ordering::Relaxed)),
-        104 => f32::from_bits(track.reflect_post_gain.load(Ordering::Relaxed)),
-        _ => return None,
+    modul8_targets!(modul8_target_get_match, track, target)
+}
+
+macro_rules! modul8_target_set_match {
+    ($track:expr, $id:expr, $bits:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+        match $id {
+            $( $tid => $track.$field.store($bits, Ordering::Relaxed), )*
+            _ => {}
+        }
     };
-    Some(v)
 }
 
 fn modul8_target_set(track: &Track, target: u32, value: f32) {
     let bits = value.to_bits();
-    match target {
-        1 => track.tape_speed.store(bits, Ordering::Relaxed),
-        2 => track.tape_rotate.store(bits, Ordering::Relaxed),
-        3 => track.tape_glide.store(bits, Ordering::Relaxed),
-        4 => track.tape_sos.store(bits, Ordering::Relaxed),
-        5 => track.animate_vector_x.store(bits, Ordering::Relaxed),
-        6 => track.animate_vector_y.store(bits, Ordering::Relaxed),
-        7 => track.void_base_freq.store(bits, Ordering::Relaxed),
-        8 => track.void_chaos_depth.store(bits, Ordering::Relaxed),
-        9 => track.void_entropy.store(bits, Ordering::Relaxed),
-        10 => track.void_feedback.store(bits, Ordering::Relaxed),
-        11 => track.void_diffusion.store(bits, Ordering::Relaxed),
-        12 => track.void_mod_rate.store(bits, Ordering::Relaxed),
-        13 => track.void_level.store(bits, Ordering::Relaxed),
-        14 => track.void_pan.store(bits, Ordering::Relaxed),
-        15 => track.void_width.store(bits, Ordering::Relaxed),
-        16 => track.fmmi_car_freq.store(bits, Ordering::Relaxed),
-        17 => track.fmmi_car_detune.store(bits, Ordering::Relaxed),
-        18 => track.fmmi_mod_value.store(bits, Ordering::Relaxed),
-        19 => track.fmmi_mod_detune.store(bits, Ordering::Relaxed),
-        20 => track.fmmi_index.store(bits, Ordering::Relaxed),
-        21 => track.fmmi_feedback.store(bits, Ordering::Relaxed),
-        22 => track.fmmi_drive.store(bits, Ordering::Relaxed),
-        23 => track.fmmi_out_level.store(bits, Ordering::Relaxed),
-        24 => track.kick_pitch.store(bits, Ordering::Relaxed),
-        25 => track.kick_decay.store(bits, Ordering::Relaxed),
-        26 => track.kick_attack.store(bits, Ordering::Relaxed),
-        27 => track.kick_drive.store(bits, Ordering::Relaxed),
-        28 => track.kick_level.store(bits, Ordering::Relaxed),
-        29 => track.snare_tone.store(bits, Ordering::Relaxed),
-        30 => track.snare_decay.store(bits, Ordering::Relaxed),
-        31 => track.snare_snappy.store(bits, Ordering::Relaxed),
-        32 => track.snare_attack.store(bits, Ordering::Relaxed),
-        33 => track.snare_drive.store(bits, Ordering::Relaxed),
-        34 => track.snare_level.store(bits, Ordering::Relaxed),
-        35 => track.clap_pitch.store(bits, Ordering::Relaxed),
-        36 => track.clap_decay.store(bits, Ordering::Relaxed),
-        37 => track.clap_tone.store(bits, Ordering::Relaxed),
-        38 => track.clap_drive.store(bits, Ordering::Relaxed),
-        39 => track.clap_level.store(bits, Ordering::Relaxed),
-        40 => track.hat_pitch.store(bits, Ordering::Relaxed),
-        41 => track.hat_decay.store(bits, Ordering::Relaxed),
-        42 => track.hat_tone.store(bits, Ordering::Relaxed),
-        43 => track.hat_drive.store(bits, Ordering::Relaxed),
-        44 => track.hat_level.store(bits, Ordering::Relaxed),
-        45 => track.perc1_pitch.store(bits, Ordering::Relaxed),
-        46 => track.perc1_decay.store(bits, Ordering::Relaxed),
-        47 => track.perc1_tone.store(bits, Ordering::Relaxed),
-        48 => track.perc1_drive.store(bits, Ordering::Relaxed),
-        49 => track.perc1_level.store(bits, Ordering::Relaxed),
-        50 => track.perc2_pitch.store(bits, Ordering::Relaxed),
-        51 => track.perc2_decay.store(bits, Ordering::Relaxed),
-        52 => track.perc2_tone.store(bits, Ordering::Relaxed),
-        53 => track.perc2_drive.store(bits, Ordering::Relaxed),
-        54 => track.perc2_level.store(bits, Ordering::Relaxed),
-        55 => track.crash_tone.store(bits, Ordering::Relaxed),
-        56 => track.crash_decay.store(bits, Ordering::Relaxed),
-        57 => track.crash_pitch.store(bits, Ordering::Relaxed),
-        58 => track.crash_drive.store(bits, Ordering::Relaxed),
-        59 => track.crash_level.store(bits, Ordering::Relaxed),
-        60 => track.mosaic_pitch.store(bits, Ordering::Relaxed),
-        61 => track.mosaic_rate.store(bits, Ordering::Relaxed),
-        62 => track.mosaic_size.store(bits, Ordering::Relaxed),
-        63 => track.mosaic_contour.store(bits, Ordering::Relaxed),
-        64 => track.mosaic_warp.store(bits, Ordering::Relaxed),
-        65 => track.mosaic_spray.store(bits, Ordering::Relaxed),
-        66 => track.mosaic_pattern.store(bits, Ordering::Relaxed),
-        67 => track.mosaic_wet.store(bits, Ordering::Relaxed),
-        68 => track.mosaic_post_gain.store(bits, Ordering::Relaxed),
-        69 => track.mosaic_detune.store(bits, Ordering::Relaxed),
-        70 => track.mosaic_spatial.store(bits, Ordering::Relaxed),
-        71 => track.mosaic_rand_rate.store(bits, Ordering::Relaxed),
-        72 => track.mosaic_rand_size.store(bits, Ordering::Relaxed),
-        73 => track.mosaic_sos.store(bits, Ordering::Relaxed),
-        74 => track.ring_cutoff.store(bits, Ordering::Relaxed),
-        75 => track.ring_resonance.store(bits, Ordering::Relaxed),
-        76 => track.ring_decay.store(bits, Ordering::Relaxed),
-        77 => track.ring_pitch.store(bits, Ordering::Relaxed),
-        78 => track.ring_slope.store(bits, Ordering::Relaxed),
-        79 => track.ring_tone.store(bits, Ordering::Relaxed),
-        80 => track.ring_tilt.store(bits, Ordering::Relaxed),
-        81 => track.ring_wet.store(bits, Ordering::Relaxed),
-        82 => track.ring_detune.store(bits, Ordering::Relaxed),
-        83 => track.ring_waves.store(bits, Ordering::Relaxed),
-        84 => track.ring_waves_rate.store(bits, Ordering::Relaxed),
-        85 => track.ring_noise.store(bits, Ordering::Relaxed),
-        86 => track.ring_noise_rate.store(bits, Ordering::Relaxed),
-        87 => track.texture_drive.store(bits, Ordering::Relaxed),
-        88 => track.texture_compress.store(bits, Ordering::Relaxed),
-        89 => track.texture_crush.store(bits, Ordering::Relaxed),
-        90 => track.texture_tilt.store(bits, Ordering::Relaxed),
-        91 => track.texture_noise.store(bits, Ordering::Relaxed),
-        92 => track.texture_noise_decay.store(bits, Ordering::Relaxed),
-        93 => track.texture_noise_color.store(bits, Ordering::Relaxed),
-        94 => track.texture_wet.store(bits, Ordering::Relaxed),
-        95 => track.texture_post_gain.store(bits, Ordering::Relaxed),
-        96 => track.reflect_delay.store(bits, Ordering::Relaxed),
-        97 => track.reflect_time.store(bits, Ordering::Relaxed),
-        98 => track.reflect_reverb.store(bits, Ordering::Relaxed),
-        99 => track.reflect_size.store(bits, Ordering::Relaxed),
-        100 => track.reflect_feedback.store(bits, Ordering::Relaxed),
-        101 => track.reflect_spread.store(bits, Ordering::Relaxed),
-        102 => track.reflect_damp.store(bits, Ordering::Relaxed),
-        103 => track.reflect_decay.store(bits, Ordering::Relaxed),
-        104 => track.reflect_post_gain.store(bits, Ordering::Relaxed),
-        _ => {}
-    }
+    modul8_targets!(modul8_target_set_match, track, target, bits)
 }
 
 fn fmmi_rand_next(state: &mut u32) -> u32 {
@@ -21421,8 +21217,11 @@ fn initialize_ui(
         let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
             let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            let engine_type = tracks_modul8[track_idx].engine_type.load(Ordering::Relaxed);
+            let max_index =
+                modul8_target_ids_for_engine(engine_type).len().saturating_sub(1) as i32;
             tracks_modul8[track_idx].modul8_target[lfo_idx]
-                .store(value.clamp(0, (MODUL8_TARGET_COUNT - 1) as i32) as u32, Ordering::Relaxed);
+                .store(value.clamp(0, max_index) as u32, Ordering::Relaxed);
         }
     });
 
