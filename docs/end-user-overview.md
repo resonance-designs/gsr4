@@ -11,6 +11,7 @@ This space is reserved for end-user walkthroughs of the UI. Add more docs here t
 - Loading samples and managing tracks
 - Tape-Deck controls and loop behavior
 - Granulator bypass and granular behavior
+- Modul8 8‑LFO modulation device for engine + downstream parameters
 - Exporting and saving projects
 
 ## Latest Changes
@@ -20,4 +21,4 @@ This space is reserved for end-user walkthroughs of the UI. Add more docs here t
 - Tape-Deck engine supports experimental video loading (audio still drives playback).
 - Void Seed adds Moog filter + drive with pre/post toggle, Close Decay, and stereo width control.
 - FMMI engine added with global FM controls, step locks, randomize/clear/copy-paste utilities, and per-parameter randomization masks.
-- Void Seed and FMMI can feed the full downstream device chain (Granulator, Silk, G8, Texture, Reflect).
+- Void Seed and FMMI can feed the full downstream device chain (Granulator, Silk, Modul8, G8, Texture, Reflect).

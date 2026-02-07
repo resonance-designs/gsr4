@@ -1,0 +1,150 @@
+import { Theme } from "../theme/index.slint";
+import { RDSHeaderLabel, RDSCircleToggle, RDSComboBox, RDSKnob } from "../components/index.slint";
+
+/*
+Device: Modul8
+Description: Eight assignable LFO modulators for engine and downstream parameters.
+*/
+export component Modul8Device {
+    in-out property <bool> modul8-enabled: false;
+    in property <[string]> modul8-target-options;
+    in property <[string]> modul8-division-options: ["1", "1/2", "1/4", "1/8", "1/16", "1/32"];
+    in property <[string]> modul8-wave-options: ["Sine", "Triangle", "Saw", "Square", "S&H"];
+
+    in-out property <[int]> modul8-wave: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-rate: [1, 1, 1, 1, 1, 1, 1, 1];
+    in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
+    in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
+
+    callback toggle-modul8-enabled();
+    callback modul8-wave-changed(index: int, value: int);
+    callback modul8-rate-changed(index: int, value: float);
+    callback modul8-sync-changed(index: int, value: bool);
+    callback modul8-division-changed(index: int, value: int);
+    callback modul8-amount-changed(index: int, value: float);
+    callback modul8-target-changed(index: int, value: int);
+
+    VerticalLayout {
+        spacing: 8px;
+
+        RDSHeaderLabel {
+            text: "Modul8";
+            horizontal-alignment: left;
+            padding-horizontal: 12px;
+            padding-vertical: 6px;
+            right-padding: 12px;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: center;
+                RDSCircleToggle {
+                    active: root.modul8-enabled;
+                    label: "Bypass";
+                    label-active: "On";
+                    label-pos: "left";
+                    label-color: #b9b9bf;
+                    label-active-color: Theme.active.text_primary;
+                    label-font-size: 11px;
+                    label-font-weight: 500;
+                    clicked => root.toggle-modul8-enabled();
+                }
+            }
+        }
+
+        Rectangle {
+            background: #1e3a5f33;
+            border-width: 2px;
+            border-radius: 6px;
+            border-color: Theme.active.border-strong;
+            clip: true;
+
+            VerticalLayout {
+                padding: 10px;
+                spacing: 8px;
+
+                for i in 8 : HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        width: 34px;
+                        text: "LFO " + (i + 1);
+                        color: #b9b9bf;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                    RDSComboBox {
+                        width: 100px;
+                        model: root.modul8-wave-options;
+                        current-index: root.modul8-wave[i];
+                        selected => {
+                            root.modul8-wave[i] = self.current-index;
+                            root.modul8-wave-changed(i, self.current-index);
+                        }
+                    }
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.modul8-rate[i];
+                        min-value: 0.01;
+                        max-value: 20;
+                        size: 44px;
+                        indicator-position: 12px;
+                        label: "Rate";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        sensitivity: 0.01;
+                        scroll-sensitivity: 0.01;
+                        value-changed(v) => {
+                            root.modul8-rate[i] = v;
+                            root.modul8-rate-changed(i, v);
+                        }
+                    }
+                    RDSCircleToggle {
+                        active: root.modul8-sync[i];
+                        label: "Sync";
+                        label-pos: "left";
+                        label-font-size: 11px;
+                        clicked => {
+                            root.modul8-sync[i] = !root.modul8-sync[i];
+                            root.modul8-sync-changed(i, root.modul8-sync[i]);
+                        }
+                    }
+                    RDSComboBox {
+                        width: 86px;
+                        model: root.modul8-division-options;
+                        current-index: root.modul8-division[i];
+                        selected => {
+                            root.modul8-division[i] = self.current-index;
+                            root.modul8-division-changed(i, self.current-index);
+                        }
+                    }
+                    RDSKnob {
+                        renderer: "lo-fi";
+                        value: root.modul8-amount[i];
+                        min-value: 0;
+                        max-value: 1;
+                        size: 44px;
+                        indicator-position: 12px;
+                        label: "Amt";
+                        label-pos: "top-center";
+                        label-font-size: 10px;
+                        sensitivity: 0.01;
+                        scroll-sensitivity: 0.01;
+                        value-changed(v) => {
+                            root.modul8-amount[i] = v;
+                            root.modul8-amount-changed(i, v);
+                        }
+                    }
+                    RDSComboBox {
+                        width: 220px;
+                        model: root.modul8-target-options;
+                        current-index: root.modul8-target[i];
+                        selected => {
+                            root.modul8-target[i] = self.current-index;
+                            root.modul8-target-changed(i, self.current-index);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

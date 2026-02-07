@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.23
+ * Version: 0.1.24
  * Component: UI Definitions
  */
 
@@ -205,6 +205,14 @@ export component TLBX1UI inherits Window {
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
     ];
+    in property <[string]> modul8-target-options;
+    in-out property <bool> modul8-enabled: false;
+    in-out property <[int]> modul8-wave: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-rate: [1, 1, 1, 1, 1, 1, 1, 1];
+    in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
+    in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
     in-out property <bool> metronome-enabled: false;
     in-out property <float> metronome-count-in: 0.0;
     in-out property <bool> metronome-count-playback: false;
@@ -643,6 +651,13 @@ export component TLBX1UI inherits Window {
     callback toggle-g8-enabled();
     callback g8-rate-selected(index: int);
     callback g8-step-changed(index: int, value: float);
+    callback toggle-modul8-enabled();
+    callback modul8-wave-changed(index: int, value: int);
+    callback modul8-rate-changed(index: int, value: float);
+    callback modul8-sync-changed(index: int, value: bool);
+    callback modul8-division-changed(index: int, value: int);
+    callback modul8-amount-changed(index: int, value: float);
+    callback modul8-target-changed(index: int, value: int);
     callback toggle-metronome();
     callback metronome-count-in-changed(value: float);
     callback toggle-metronome-count-playback();
@@ -1562,6 +1577,14 @@ export component TLBX1UI inherits Window {
                                             g8-enabled <=> root.g8-enabled;
                                             g8-rate-index <=> root.g8-rate-index;
                                             g8-steps <=> root.g8-steps;
+                                            modul8-target-options: root.modul8-target-options;
+                                            modul8-enabled <=> root.modul8-enabled;
+                                            modul8-wave <=> root.modul8-wave;
+                                            modul8-rate <=> root.modul8-rate;
+                                            modul8-sync <=> root.modul8-sync;
+                                            modul8-division <=> root.modul8-division;
+                                            modul8-amount <=> root.modul8-amount;
+                                            modul8-target <=> root.modul8-target;
                                             texture-enabled <=> root.texture-enabled;
                                             texture-gate <=> root.texture-gate;
                                             texture-drive <=> root.texture-drive;
@@ -1643,6 +1666,13 @@ export component TLBX1UI inherits Window {
                                             toggle-g8-enabled => root.toggle-g8-enabled();
                                             g8-rate-selected(index) => { root.g8-rate-selected(index); }
                                             g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
+                                            toggle-modul8-enabled => root.toggle-modul8-enabled();
+                                            modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                                            modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                                            modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                                            modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                                            modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                                             toggle-texture-enabled => root.toggle-texture-enabled();
                                             toggle-texture-gate => root.toggle-texture-gate();
                                             texture-drive-changed(value) => { root.texture-drive-changed(value); }
@@ -1790,6 +1820,14 @@ export component TLBX1UI inherits Window {
                                             g8-enabled <=> root.g8-enabled;
                                             g8-rate-index <=> root.g8-rate-index;
                                             g8-steps <=> root.g8-steps;
+                                            modul8-target-options: root.modul8-target-options;
+                                            modul8-enabled <=> root.modul8-enabled;
+                                            modul8-wave <=> root.modul8-wave;
+                                            modul8-rate <=> root.modul8-rate;
+                                            modul8-sync <=> root.modul8-sync;
+                                            modul8-division <=> root.modul8-division;
+                                            modul8-amount <=> root.modul8-amount;
+                                            modul8-target <=> root.modul8-target;
                                             ring-enabled <=> root.ring-enabled;
                                             ring-cutoff <=> root.ring-cutoff;
                                             ring-resonance <=> root.ring-resonance;
@@ -1929,6 +1967,13 @@ export component TLBX1UI inherits Window {
                                             toggle-g8-enabled => root.toggle-g8-enabled();
                                             g8-rate-selected(index) => { root.g8-rate-selected(index); }
                                             g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
+                                            toggle-modul8-enabled => root.toggle-modul8-enabled();
+                                            modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                                            modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                                            modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                                            modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                                            modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                                             toggle-ring-enabled => root.toggle-ring-enabled();
                                             toggle-ring-pre-post => root.toggle-ring-pre-post();
                                             ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
@@ -2654,6 +2699,14 @@ export component TLBX1UI inherits Window {
                                             g8-enabled <=> root.g8-enabled;
                                             g8-rate-index <=> root.g8-rate-index;
                                             g8-steps <=> root.g8-steps;
+                                            modul8-target-options: root.modul8-target-options;
+                                            modul8-enabled <=> root.modul8-enabled;
+                                            modul8-wave <=> root.modul8-wave;
+                                            modul8-rate <=> root.modul8-rate;
+                                            modul8-sync <=> root.modul8-sync;
+                                            modul8-division <=> root.modul8-division;
+                                            modul8-amount <=> root.modul8-amount;
+                                            modul8-target <=> root.modul8-target;
 
                                             fmmi-car-wave-changed(index) => { root.fmmi-car-wave-changed(index); }
                                             fmmi-car-freq-changed(value) => { root.fmmi-car-freq-changed(value); }
@@ -2756,6 +2809,13 @@ export component TLBX1UI inherits Window {
                                             toggle-g8-enabled => root.toggle-g8-enabled();
                                             g8-rate-selected(index) => { root.g8-rate-selected(index); }
                                             g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
+                                            toggle-modul8-enabled => root.toggle-modul8-enabled();
+                                            modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                                            modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                                            modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                                            modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                                            modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                                             toggle-texture-enabled => root.toggle-texture-enabled();
                                             toggle-texture-gate => root.toggle-texture-gate();
                                             texture-drive-changed(value) => { root.texture-drive-changed(value); }
@@ -2833,6 +2893,14 @@ export component TLBX1UI inherits Window {
                                             g8-enabled <=> root.g8-enabled;
                                             g8-rate-index <=> root.g8-rate-index;
                                             g8-steps <=> root.g8-steps;
+                                            modul8-target-options: root.modul8-target-options;
+                                            modul8-enabled <=> root.modul8-enabled;
+                                            modul8-wave <=> root.modul8-wave;
+                                            modul8-rate <=> root.modul8-rate;
+                                            modul8-sync <=> root.modul8-sync;
+                                            modul8-division <=> root.modul8-division;
+                                            modul8-amount <=> root.modul8-amount;
+                                            modul8-target <=> root.modul8-target;
                                             ring-enabled <=> root.ring-enabled;
                                             ring-cutoff <=> root.ring-cutoff;
                                             ring-resonance <=> root.ring-resonance;
@@ -2919,6 +2987,13 @@ export component TLBX1UI inherits Window {
                                             toggle-g8-enabled => root.toggle-g8-enabled();
                                             g8-rate-selected(index) => { root.g8-rate-selected(index); }
                                             g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
+                                            toggle-modul8-enabled => root.toggle-modul8-enabled();
+                                            modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                                            modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                                            modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                                            modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                                            modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                                             toggle-ring-enabled => root.toggle-ring-enabled();
                                             ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
                                             ring-resonance-changed(value) => { root.ring-resonance-changed(value); }

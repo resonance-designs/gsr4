@@ -64,6 +64,7 @@ FMMI feeds into the same downstream chain as other engines:
 
 - **Granulator**
 - **Silk**
+- **Modul8**
 - **G8** (Trance Gate)
 - **Texture**
 - **Reflect**

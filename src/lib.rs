@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.23
+ * Version: 0.1.24
  * Component: Core Logic
  */
 
@@ -79,6 +79,8 @@ pub const SYNDRM_LANES: usize = 7 + SYNDRM_SAMPLE_CHANNELS;
 pub const FMMI_PAGE_SIZE: usize = 16;
 pub const FMMI_PAGES: usize = 8;
 pub const FMMI_STEPS: usize = FMMI_PAGE_SIZE * FMMI_PAGES;
+pub const MODUL8_LFOS: usize = 8;
+pub const MODUL8_TARGET_COUNT: u32 = 105;
 pub const SYNDRM_FILTER_TYPES: u32 = 4;
 pub const WAVEFORM_SUMMARY_SIZE: usize = 100;
 pub const RECORD_MAX_SECONDS: usize = 30;
@@ -576,6 +578,30 @@ struct Track {
     g8_steps: Arc<[AtomicU32; 32]>,
     /// Smoothed G8 gate gain.
     g8_gain_smooth: AtomicU32,
+    /// Modul8 enabled.
+    modul8_enabled: AtomicBool,
+    /// Modul8 LFO waveforms (0=sine,1=triangle,2=saw,3=square,4=s&h).
+    modul8_wave: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 free-rate Hz.
+    modul8_rate: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 BPM sync toggles.
+    modul8_sync: [AtomicBool; MODUL8_LFOS],
+    /// Modul8 BPM division index.
+    modul8_division: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 modulation amount (0..1).
+    modul8_amount: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 destination index.
+    modul8_target: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 oscillator phase.
+    modul8_phase: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 sample-and-hold value cache.
+    modul8_snh: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 captured base value per LFO target.
+    modul8_base_value: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 captured base target index per LFO (`u32::MAX` = none).
+    modul8_base_target: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 RNG state for S&H.
+    modul8_rng_state: AtomicU32,
     /// Texture device enabled.
     texture_enabled: AtomicBool,
     /// Texture noise gate enabled.
@@ -1703,6 +1729,18 @@ impl Default for Track {
             g8_rate_index: AtomicU32::new(0),
             g8_steps: Arc::new(std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits()))),
             g8_gain_smooth: AtomicU32::new(1.0f32.to_bits()),
+            modul8_enabled: AtomicBool::new(false),
+            modul8_wave: std::array::from_fn(|_| AtomicU32::new(0)),
+            modul8_rate: std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits())),
+            modul8_sync: std::array::from_fn(|_| AtomicBool::new(true)),
+            modul8_division: std::array::from_fn(|_| AtomicU32::new(0)),
+            modul8_amount: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            modul8_target: std::array::from_fn(|_| AtomicU32::new(0)),
+            modul8_phase: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            modul8_snh: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            modul8_base_value: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            modul8_base_target: std::array::from_fn(|_| AtomicU32::new(u32::MAX)),
+            modul8_rng_state: AtomicU32::new(0x89ab_cdef),
             texture_enabled: AtomicBool::new(false),
             texture_gate: AtomicBool::new(false),
             texture_drive: AtomicU32::new(0.0f32.to_bits()),
@@ -2960,6 +2998,24 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track
         .g8_gain_smooth
         .store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.modul8_enabled.store(false, Ordering::Relaxed);
+    for i in 0..MODUL8_LFOS {
+        track.modul8_wave[i].store(0, Ordering::Relaxed);
+        track.modul8_rate[i].store(1.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_sync[i].store(true, Ordering::Relaxed);
+        track.modul8_division[i].store(0, Ordering::Relaxed);
+        track.modul8_amount[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_target[i].store(0, Ordering::Relaxed);
+        track.modul8_phase[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_snh[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .modul8_base_value[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .modul8_base_target[i]
+            .store(u32::MAX, Ordering::Relaxed);
+    }
+    track.modul8_rng_state.store(0x89ab_cdef, Ordering::Relaxed);
     track.texture_enabled.store(false, Ordering::Relaxed);
     track.texture_gate.store(false, Ordering::Relaxed);
     track.texture_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
@@ -9655,6 +9711,87 @@ impl TLBX1 {
         }
     }
 
+    fn process_track_modul8(track: &Track, num_buffer_samples: usize, tempo: f32, sample_rate: f32) {
+        if num_buffer_samples == 0 || sample_rate <= 0.0 {
+            return;
+        }
+        if !track.modul8_enabled.load(Ordering::Relaxed) {
+            for i in 0..MODUL8_LFOS {
+                let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
+                if prev_target != u32::MAX {
+                    let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+                    if modul8_target_range(prev_target).is_some() {
+                        modul8_target_set(track, prev_target, base);
+                    }
+                    track.modul8_base_target[i].store(u32::MAX, Ordering::Relaxed);
+                }
+            }
+            return;
+        }
+
+        let engine_type = track.engine_type.load(Ordering::Relaxed);
+        let target_ids = modul8_target_ids_for_engine(engine_type);
+        if target_ids.is_empty() {
+            return;
+        }
+        let mut rng = track.modul8_rng_state.load(Ordering::Relaxed);
+        for i in 0..MODUL8_LFOS {
+            let amount = f32::from_bits(track.modul8_amount[i].load(Ordering::Relaxed)).clamp(0.0, 1.0);
+            if amount <= 0.0 {
+                continue;
+            }
+            let target_index = track.modul8_target[i].load(Ordering::Relaxed) as usize;
+            let target = *target_ids.get(target_index).unwrap_or(&0);
+            if target == 0 || target >= MODUL8_TARGET_COUNT {
+                continue;
+            }
+            let Some((min_v, max_v)) = modul8_target_range(target) else {
+                continue;
+            };
+            let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
+            if prev_target != target {
+                if prev_target != u32::MAX {
+                    let prev_base =
+                        f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+                    if modul8_target_range(prev_target).is_some() {
+                        modul8_target_set(track, prev_target, prev_base);
+                    }
+                }
+                if let Some(base_now) = modul8_target_get(track, target) {
+                    track.modul8_base_value[i].store(base_now.to_bits(), Ordering::Relaxed);
+                    track.modul8_base_target[i].store(target, Ordering::Relaxed);
+                } else {
+                    continue;
+                }
+            }
+
+            let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+            let wave = track.modul8_wave[i].load(Ordering::Relaxed).min(4);
+            let rate = f32::from_bits(track.modul8_rate[i].load(Ordering::Relaxed));
+            let sync = track.modul8_sync[i].load(Ordering::Relaxed);
+            let div = track.modul8_division[i].load(Ordering::Relaxed);
+            let mut phase = f32::from_bits(track.modul8_phase[i].load(Ordering::Relaxed)).fract();
+            let mut snh = f32::from_bits(track.modul8_snh[i].load(Ordering::Relaxed));
+            let freq_hz = modul8_rate_hz(rate, sync, div, tempo);
+            let phase_advance = (freq_hz * num_buffer_samples as f32 / sample_rate).max(0.0);
+            let wrapped = phase + phase_advance;
+            phase = wrapped.fract();
+            if wave == 4 && (wrapped >= 1.0 || !snh.is_finite()) {
+                rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
+                snh = (rng as f32 / u32::MAX as f32) * 2.0 - 1.0;
+            }
+            let lfo = modul8_wave_value(wave, phase, snh);
+            let range = max_v - min_v;
+            let lfo_unipolar = 0.5 * (lfo + 1.0);
+            let lfo_value = min_v + lfo_unipolar * range;
+            let value = (base + (lfo_value - base) * amount).clamp(min_v, max_v);
+            modul8_target_set(track, target, value);
+            track.modul8_phase[i].store(phase.to_bits(), Ordering::Relaxed);
+            track.modul8_snh[i].store(snh.to_bits(), Ordering::Relaxed);
+        }
+        track.modul8_rng_state.store(rng, Ordering::Relaxed);
+    }
+
     fn process_track_g8(
         track: &Track,
         track_output: &mut [Vec<f32>],
@@ -10813,6 +10950,8 @@ impl Plugin for TLBX1 {
 
             keep_alive = true;
 
+            Self::process_track_modul8(track, buffer.samples(), global_tempo, master_sr);
+
             // Clear track buffer
             for channel in self.track_buffer.iter_mut() {
                 channel.fill(0.0);
@@ -11929,6 +12068,422 @@ fn fmmi_midi_to_label(midi: i32) -> Option<String> {
     let note_index = midi.rem_euclid(12) as usize;
     let octave = (midi / 12) - 1;
     Some(format!("{}{}", note_names[note_index], octave))
+}
+
+fn modul8_target_options_for_engine(engine_type: u32) -> Vec<SharedString> {
+    let ids = modul8_target_ids_for_engine(engine_type);
+    ids.into_iter()
+        .map(|id| SharedString::from(modul8_target_label(id)))
+        .collect()
+}
+
+fn modul8_target_ids_for_engine(engine_type: u32) -> Vec<u32> {
+    let mut ids = vec![0u32];
+    match engine_type {
+        1 => { // Tape
+            ids.extend([1, 2, 3, 4]);
+        }
+        2 => { // Animate
+            ids.extend([5, 6]);
+        }
+        3 => { // SynDRM
+            ids.extend(24..=59);
+        }
+        4 => { // Void Seed
+            ids.extend(7..=15);
+        }
+        5 => { // FMMI
+            ids.extend(16..=23);
+        }
+        _ => {}
+    }
+    // Downstream devices (granulator, silk, texture, reflect)
+    ids.extend(60..=104);
+    ids
+}
+
+fn modul8_target_label(target: u32) -> &'static str {
+    match target {
+        0 => "None",
+        1 => "Tape: Speed",
+        2 => "Tape: Rotate",
+        3 => "Tape: Glide",
+        4 => "Tape: SOS",
+        5 => "Animate: Vector X",
+        6 => "Animate: Vector Y",
+        7 => "Void: Base Freq",
+        8 => "Void: Chaos Depth",
+        9 => "Void: Entropy",
+        10 => "Void: Feedback",
+        11 => "Void: Diffusion",
+        12 => "Void: Mod Rate",
+        13 => "Void: Level",
+        14 => "Void: Pan",
+        15 => "Void: Width",
+        16 => "FMMI: Car Freq",
+        17 => "FMMI: Car Detune",
+        18 => "FMMI: Mod Value",
+        19 => "FMMI: Mod Detune",
+        20 => "FMMI: Index",
+        21 => "FMMI: Feedback",
+        22 => "FMMI: Drive",
+        23 => "FMMI: Out Level",
+        24 => "SynDRM Kick: Pitch",
+        25 => "SynDRM Kick: Decay",
+        26 => "SynDRM Kick: Attack",
+        27 => "SynDRM Kick: Drive",
+        28 => "SynDRM Kick: Level",
+        29 => "SynDRM Snare: Tone",
+        30 => "SynDRM Snare: Decay",
+        31 => "SynDRM Snare: Snappy",
+        32 => "SynDRM Snare: Attack",
+        33 => "SynDRM Snare: Drive",
+        34 => "SynDRM Snare: Level",
+        35 => "SynDRM Clap: Pitch",
+        36 => "SynDRM Clap: Decay",
+        37 => "SynDRM Clap: Tone",
+        38 => "SynDRM Clap: Drive",
+        39 => "SynDRM Clap: Level",
+        40 => "SynDRM Hat: Pitch",
+        41 => "SynDRM Hat: Decay",
+        42 => "SynDRM Hat: Tone",
+        43 => "SynDRM Hat: Drive",
+        44 => "SynDRM Hat: Level",
+        45 => "SynDRM Perc1: Pitch",
+        46 => "SynDRM Perc1: Decay",
+        47 => "SynDRM Perc1: Tone",
+        48 => "SynDRM Perc1: Drive",
+        49 => "SynDRM Perc1: Level",
+        50 => "SynDRM Perc2: Pitch",
+        51 => "SynDRM Perc2: Decay",
+        52 => "SynDRM Perc2: Tone",
+        53 => "SynDRM Perc2: Drive",
+        54 => "SynDRM Perc2: Level",
+        55 => "SynDRM Crash: Tone",
+        56 => "SynDRM Crash: Decay",
+        57 => "SynDRM Crash: Pitch",
+        58 => "SynDRM Crash: Drive",
+        59 => "SynDRM Crash: Level",
+        60 => "Granulator: Pitch",
+        61 => "Granulator: Rate",
+        62 => "Granulator: Size",
+        63 => "Granulator: Contour",
+        64 => "Granulator: Warp",
+        65 => "Granulator: Spray",
+        66 => "Granulator: Pattern",
+        67 => "Granulator: Wet",
+        68 => "Granulator: Post Gain",
+        69 => "Granulator: Detune",
+        70 => "Granulator: Spatial",
+        71 => "Granulator: Rand Rate",
+        72 => "Granulator: Rand Size",
+        73 => "Granulator: SOS",
+        74 => "Silk: Cutoff",
+        75 => "Silk: Resonance",
+        76 => "Silk: Decay",
+        77 => "Silk: Pitch",
+        78 => "Silk: Slope",
+        79 => "Silk: Tone",
+        80 => "Silk: Tilt",
+        81 => "Silk: Wet",
+        82 => "Silk: Detune",
+        83 => "Silk: Waves",
+        84 => "Silk: Waves Rate",
+        85 => "Silk: Noise",
+        86 => "Silk: Noise Rate",
+        87 => "Texture: Drive",
+        88 => "Texture: Compress",
+        89 => "Texture: Crush",
+        90 => "Texture: Tilt",
+        91 => "Texture: Noise",
+        92 => "Texture: Noise Decay",
+        93 => "Texture: Noise Color",
+        94 => "Texture: Wet",
+        95 => "Texture: Post Gain",
+        96 => "Reflect: Delay",
+        97 => "Reflect: Time",
+        98 => "Reflect: Reverb",
+        99 => "Reflect: Size",
+        100 => "Reflect: Feedback",
+        101 => "Reflect: Spread",
+        102 => "Reflect: Damp",
+        103 => "Reflect: Decay",
+        104 => "Reflect: Post Gain",
+        _ => "None",
+    }
+}
+
+fn modul8_rate_hz(rate: f32, sync: bool, division: u32, tempo: f32) -> f32 {
+    if !sync {
+        return rate.clamp(0.01, 20.0);
+    }
+    let beats = match division.min(5) {
+        0 => 4.0,
+        1 => 2.0,
+        2 => 1.0,
+        3 => 0.5,
+        4 => 0.25,
+        _ => 0.125,
+    };
+    let bps = (tempo / 60.0).clamp(0.1, 20.0);
+    (bps / beats).clamp(0.01, 20.0)
+}
+
+fn modul8_wave_value(wave: u32, phase: f32, sample_hold: f32) -> f32 {
+    match wave.min(4) {
+        0 => (phase * 2.0 * PI).sin(),
+        1 => 1.0 - 4.0 * (phase - 0.5).abs(),
+        2 => 2.0 * phase - 1.0,
+        3 => {
+            if phase < 0.5 { 1.0 } else { -1.0 }
+        }
+        _ => sample_hold.clamp(-1.0, 1.0),
+    }
+}
+
+fn modul8_target_range(target: u32) -> Option<(f32, f32)> {
+    let range = match target {
+        1 => (-4.0, 4.0),
+        2 | 3 | 4 => (0.0, 1.0),
+        5 | 6 => (0.0, 1.0),
+        7 => (20.0, 200.0),
+        8 | 9 => (0.0, 1.0),
+        10 => (0.0, 0.98),
+        11 => (0.0, 1.0),
+        12 => (0.01, 10.0),
+        13 => (0.0, 1.0),
+        14 | 15 => (-1.0, 1.0),
+        16 => (20.0, 4000.0),
+        17 => (-120.0, 120.0),
+        18 => (0.1, 4000.0),
+        19 => (-120.0, 120.0),
+        20 => (0.0, 4000.0),
+        21..=104 => (0.0, 1.0),
+        _ => return None,
+    };
+    Some(range)
+}
+
+fn modul8_target_get(track: &Track, target: u32) -> Option<f32> {
+    let v = match target {
+        1 => f32::from_bits(track.tape_speed.load(Ordering::Relaxed)),
+        2 => f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)),
+        3 => f32::from_bits(track.tape_glide.load(Ordering::Relaxed)),
+        4 => f32::from_bits(track.tape_sos.load(Ordering::Relaxed)),
+        5 => f32::from_bits(track.animate_vector_x.load(Ordering::Relaxed)),
+        6 => f32::from_bits(track.animate_vector_y.load(Ordering::Relaxed)),
+        7 => f32::from_bits(track.void_base_freq.load(Ordering::Relaxed)),
+        8 => f32::from_bits(track.void_chaos_depth.load(Ordering::Relaxed)),
+        9 => f32::from_bits(track.void_entropy.load(Ordering::Relaxed)),
+        10 => f32::from_bits(track.void_feedback.load(Ordering::Relaxed)),
+        11 => f32::from_bits(track.void_diffusion.load(Ordering::Relaxed)),
+        12 => f32::from_bits(track.void_mod_rate.load(Ordering::Relaxed)),
+        13 => f32::from_bits(track.void_level.load(Ordering::Relaxed)),
+        14 => f32::from_bits(track.void_pan.load(Ordering::Relaxed)),
+        15 => f32::from_bits(track.void_width.load(Ordering::Relaxed)),
+        16 => f32::from_bits(track.fmmi_car_freq.load(Ordering::Relaxed)),
+        17 => f32::from_bits(track.fmmi_car_detune.load(Ordering::Relaxed)),
+        18 => f32::from_bits(track.fmmi_mod_value.load(Ordering::Relaxed)),
+        19 => f32::from_bits(track.fmmi_mod_detune.load(Ordering::Relaxed)),
+        20 => f32::from_bits(track.fmmi_index.load(Ordering::Relaxed)),
+        21 => f32::from_bits(track.fmmi_feedback.load(Ordering::Relaxed)),
+        22 => f32::from_bits(track.fmmi_drive.load(Ordering::Relaxed)),
+        23 => f32::from_bits(track.fmmi_out_level.load(Ordering::Relaxed)),
+        24 => f32::from_bits(track.kick_pitch.load(Ordering::Relaxed)),
+        25 => f32::from_bits(track.kick_decay.load(Ordering::Relaxed)),
+        26 => f32::from_bits(track.kick_attack.load(Ordering::Relaxed)),
+        27 => f32::from_bits(track.kick_drive.load(Ordering::Relaxed)),
+        28 => f32::from_bits(track.kick_level.load(Ordering::Relaxed)),
+        29 => f32::from_bits(track.snare_tone.load(Ordering::Relaxed)),
+        30 => f32::from_bits(track.snare_decay.load(Ordering::Relaxed)),
+        31 => f32::from_bits(track.snare_snappy.load(Ordering::Relaxed)),
+        32 => f32::from_bits(track.snare_attack.load(Ordering::Relaxed)),
+        33 => f32::from_bits(track.snare_drive.load(Ordering::Relaxed)),
+        34 => f32::from_bits(track.snare_level.load(Ordering::Relaxed)),
+        35 => f32::from_bits(track.clap_pitch.load(Ordering::Relaxed)),
+        36 => f32::from_bits(track.clap_decay.load(Ordering::Relaxed)),
+        37 => f32::from_bits(track.clap_tone.load(Ordering::Relaxed)),
+        38 => f32::from_bits(track.clap_drive.load(Ordering::Relaxed)),
+        39 => f32::from_bits(track.clap_level.load(Ordering::Relaxed)),
+        40 => f32::from_bits(track.hat_pitch.load(Ordering::Relaxed)),
+        41 => f32::from_bits(track.hat_decay.load(Ordering::Relaxed)),
+        42 => f32::from_bits(track.hat_tone.load(Ordering::Relaxed)),
+        43 => f32::from_bits(track.hat_drive.load(Ordering::Relaxed)),
+        44 => f32::from_bits(track.hat_level.load(Ordering::Relaxed)),
+        45 => f32::from_bits(track.perc1_pitch.load(Ordering::Relaxed)),
+        46 => f32::from_bits(track.perc1_decay.load(Ordering::Relaxed)),
+        47 => f32::from_bits(track.perc1_tone.load(Ordering::Relaxed)),
+        48 => f32::from_bits(track.perc1_drive.load(Ordering::Relaxed)),
+        49 => f32::from_bits(track.perc1_level.load(Ordering::Relaxed)),
+        50 => f32::from_bits(track.perc2_pitch.load(Ordering::Relaxed)),
+        51 => f32::from_bits(track.perc2_decay.load(Ordering::Relaxed)),
+        52 => f32::from_bits(track.perc2_tone.load(Ordering::Relaxed)),
+        53 => f32::from_bits(track.perc2_drive.load(Ordering::Relaxed)),
+        54 => f32::from_bits(track.perc2_level.load(Ordering::Relaxed)),
+        55 => f32::from_bits(track.crash_tone.load(Ordering::Relaxed)),
+        56 => f32::from_bits(track.crash_decay.load(Ordering::Relaxed)),
+        57 => f32::from_bits(track.crash_pitch.load(Ordering::Relaxed)),
+        58 => f32::from_bits(track.crash_drive.load(Ordering::Relaxed)),
+        59 => f32::from_bits(track.crash_level.load(Ordering::Relaxed)),
+        60 => f32::from_bits(track.mosaic_pitch.load(Ordering::Relaxed)),
+        61 => f32::from_bits(track.mosaic_rate.load(Ordering::Relaxed)),
+        62 => f32::from_bits(track.mosaic_size.load(Ordering::Relaxed)),
+        63 => f32::from_bits(track.mosaic_contour.load(Ordering::Relaxed)),
+        64 => f32::from_bits(track.mosaic_warp.load(Ordering::Relaxed)),
+        65 => f32::from_bits(track.mosaic_spray.load(Ordering::Relaxed)),
+        66 => f32::from_bits(track.mosaic_pattern.load(Ordering::Relaxed)),
+        67 => f32::from_bits(track.mosaic_wet.load(Ordering::Relaxed)),
+        68 => f32::from_bits(track.mosaic_post_gain.load(Ordering::Relaxed)),
+        69 => f32::from_bits(track.mosaic_detune.load(Ordering::Relaxed)),
+        70 => f32::from_bits(track.mosaic_spatial.load(Ordering::Relaxed)),
+        71 => f32::from_bits(track.mosaic_rand_rate.load(Ordering::Relaxed)),
+        72 => f32::from_bits(track.mosaic_rand_size.load(Ordering::Relaxed)),
+        73 => f32::from_bits(track.mosaic_sos.load(Ordering::Relaxed)),
+        74 => f32::from_bits(track.ring_cutoff.load(Ordering::Relaxed)),
+        75 => f32::from_bits(track.ring_resonance.load(Ordering::Relaxed)),
+        76 => f32::from_bits(track.ring_decay.load(Ordering::Relaxed)),
+        77 => f32::from_bits(track.ring_pitch.load(Ordering::Relaxed)),
+        78 => f32::from_bits(track.ring_slope.load(Ordering::Relaxed)),
+        79 => f32::from_bits(track.ring_tone.load(Ordering::Relaxed)),
+        80 => f32::from_bits(track.ring_tilt.load(Ordering::Relaxed)),
+        81 => f32::from_bits(track.ring_wet.load(Ordering::Relaxed)),
+        82 => f32::from_bits(track.ring_detune.load(Ordering::Relaxed)),
+        83 => f32::from_bits(track.ring_waves.load(Ordering::Relaxed)),
+        84 => f32::from_bits(track.ring_waves_rate.load(Ordering::Relaxed)),
+        85 => f32::from_bits(track.ring_noise.load(Ordering::Relaxed)),
+        86 => f32::from_bits(track.ring_noise_rate.load(Ordering::Relaxed)),
+        87 => f32::from_bits(track.texture_drive.load(Ordering::Relaxed)),
+        88 => f32::from_bits(track.texture_compress.load(Ordering::Relaxed)),
+        89 => f32::from_bits(track.texture_crush.load(Ordering::Relaxed)),
+        90 => f32::from_bits(track.texture_tilt.load(Ordering::Relaxed)),
+        91 => f32::from_bits(track.texture_noise.load(Ordering::Relaxed)),
+        92 => f32::from_bits(track.texture_noise_decay.load(Ordering::Relaxed)),
+        93 => f32::from_bits(track.texture_noise_color.load(Ordering::Relaxed)),
+        94 => f32::from_bits(track.texture_wet.load(Ordering::Relaxed)),
+        95 => f32::from_bits(track.texture_post_gain.load(Ordering::Relaxed)),
+        96 => f32::from_bits(track.reflect_delay.load(Ordering::Relaxed)),
+        97 => f32::from_bits(track.reflect_time.load(Ordering::Relaxed)),
+        98 => f32::from_bits(track.reflect_reverb.load(Ordering::Relaxed)),
+        99 => f32::from_bits(track.reflect_size.load(Ordering::Relaxed)),
+        100 => f32::from_bits(track.reflect_feedback.load(Ordering::Relaxed)),
+        101 => f32::from_bits(track.reflect_spread.load(Ordering::Relaxed)),
+        102 => f32::from_bits(track.reflect_damp.load(Ordering::Relaxed)),
+        103 => f32::from_bits(track.reflect_decay.load(Ordering::Relaxed)),
+        104 => f32::from_bits(track.reflect_post_gain.load(Ordering::Relaxed)),
+        _ => return None,
+    };
+    Some(v)
+}
+
+fn modul8_target_set(track: &Track, target: u32, value: f32) {
+    let bits = value.to_bits();
+    match target {
+        1 => track.tape_speed.store(bits, Ordering::Relaxed),
+        2 => track.tape_rotate.store(bits, Ordering::Relaxed),
+        3 => track.tape_glide.store(bits, Ordering::Relaxed),
+        4 => track.tape_sos.store(bits, Ordering::Relaxed),
+        5 => track.animate_vector_x.store(bits, Ordering::Relaxed),
+        6 => track.animate_vector_y.store(bits, Ordering::Relaxed),
+        7 => track.void_base_freq.store(bits, Ordering::Relaxed),
+        8 => track.void_chaos_depth.store(bits, Ordering::Relaxed),
+        9 => track.void_entropy.store(bits, Ordering::Relaxed),
+        10 => track.void_feedback.store(bits, Ordering::Relaxed),
+        11 => track.void_diffusion.store(bits, Ordering::Relaxed),
+        12 => track.void_mod_rate.store(bits, Ordering::Relaxed),
+        13 => track.void_level.store(bits, Ordering::Relaxed),
+        14 => track.void_pan.store(bits, Ordering::Relaxed),
+        15 => track.void_width.store(bits, Ordering::Relaxed),
+        16 => track.fmmi_car_freq.store(bits, Ordering::Relaxed),
+        17 => track.fmmi_car_detune.store(bits, Ordering::Relaxed),
+        18 => track.fmmi_mod_value.store(bits, Ordering::Relaxed),
+        19 => track.fmmi_mod_detune.store(bits, Ordering::Relaxed),
+        20 => track.fmmi_index.store(bits, Ordering::Relaxed),
+        21 => track.fmmi_feedback.store(bits, Ordering::Relaxed),
+        22 => track.fmmi_drive.store(bits, Ordering::Relaxed),
+        23 => track.fmmi_out_level.store(bits, Ordering::Relaxed),
+        24 => track.kick_pitch.store(bits, Ordering::Relaxed),
+        25 => track.kick_decay.store(bits, Ordering::Relaxed),
+        26 => track.kick_attack.store(bits, Ordering::Relaxed),
+        27 => track.kick_drive.store(bits, Ordering::Relaxed),
+        28 => track.kick_level.store(bits, Ordering::Relaxed),
+        29 => track.snare_tone.store(bits, Ordering::Relaxed),
+        30 => track.snare_decay.store(bits, Ordering::Relaxed),
+        31 => track.snare_snappy.store(bits, Ordering::Relaxed),
+        32 => track.snare_attack.store(bits, Ordering::Relaxed),
+        33 => track.snare_drive.store(bits, Ordering::Relaxed),
+        34 => track.snare_level.store(bits, Ordering::Relaxed),
+        35 => track.clap_pitch.store(bits, Ordering::Relaxed),
+        36 => track.clap_decay.store(bits, Ordering::Relaxed),
+        37 => track.clap_tone.store(bits, Ordering::Relaxed),
+        38 => track.clap_drive.store(bits, Ordering::Relaxed),
+        39 => track.clap_level.store(bits, Ordering::Relaxed),
+        40 => track.hat_pitch.store(bits, Ordering::Relaxed),
+        41 => track.hat_decay.store(bits, Ordering::Relaxed),
+        42 => track.hat_tone.store(bits, Ordering::Relaxed),
+        43 => track.hat_drive.store(bits, Ordering::Relaxed),
+        44 => track.hat_level.store(bits, Ordering::Relaxed),
+        45 => track.perc1_pitch.store(bits, Ordering::Relaxed),
+        46 => track.perc1_decay.store(bits, Ordering::Relaxed),
+        47 => track.perc1_tone.store(bits, Ordering::Relaxed),
+        48 => track.perc1_drive.store(bits, Ordering::Relaxed),
+        49 => track.perc1_level.store(bits, Ordering::Relaxed),
+        50 => track.perc2_pitch.store(bits, Ordering::Relaxed),
+        51 => track.perc2_decay.store(bits, Ordering::Relaxed),
+        52 => track.perc2_tone.store(bits, Ordering::Relaxed),
+        53 => track.perc2_drive.store(bits, Ordering::Relaxed),
+        54 => track.perc2_level.store(bits, Ordering::Relaxed),
+        55 => track.crash_tone.store(bits, Ordering::Relaxed),
+        56 => track.crash_decay.store(bits, Ordering::Relaxed),
+        57 => track.crash_pitch.store(bits, Ordering::Relaxed),
+        58 => track.crash_drive.store(bits, Ordering::Relaxed),
+        59 => track.crash_level.store(bits, Ordering::Relaxed),
+        60 => track.mosaic_pitch.store(bits, Ordering::Relaxed),
+        61 => track.mosaic_rate.store(bits, Ordering::Relaxed),
+        62 => track.mosaic_size.store(bits, Ordering::Relaxed),
+        63 => track.mosaic_contour.store(bits, Ordering::Relaxed),
+        64 => track.mosaic_warp.store(bits, Ordering::Relaxed),
+        65 => track.mosaic_spray.store(bits, Ordering::Relaxed),
+        66 => track.mosaic_pattern.store(bits, Ordering::Relaxed),
+        67 => track.mosaic_wet.store(bits, Ordering::Relaxed),
+        68 => track.mosaic_post_gain.store(bits, Ordering::Relaxed),
+        69 => track.mosaic_detune.store(bits, Ordering::Relaxed),
+        70 => track.mosaic_spatial.store(bits, Ordering::Relaxed),
+        71 => track.mosaic_rand_rate.store(bits, Ordering::Relaxed),
+        72 => track.mosaic_rand_size.store(bits, Ordering::Relaxed),
+        73 => track.mosaic_sos.store(bits, Ordering::Relaxed),
+        74 => track.ring_cutoff.store(bits, Ordering::Relaxed),
+        75 => track.ring_resonance.store(bits, Ordering::Relaxed),
+        76 => track.ring_decay.store(bits, Ordering::Relaxed),
+        77 => track.ring_pitch.store(bits, Ordering::Relaxed),
+        78 => track.ring_slope.store(bits, Ordering::Relaxed),
+        79 => track.ring_tone.store(bits, Ordering::Relaxed),
+        80 => track.ring_tilt.store(bits, Ordering::Relaxed),
+        81 => track.ring_wet.store(bits, Ordering::Relaxed),
+        82 => track.ring_detune.store(bits, Ordering::Relaxed),
+        83 => track.ring_waves.store(bits, Ordering::Relaxed),
+        84 => track.ring_waves_rate.store(bits, Ordering::Relaxed),
+        85 => track.ring_noise.store(bits, Ordering::Relaxed),
+        86 => track.ring_noise_rate.store(bits, Ordering::Relaxed),
+        87 => track.texture_drive.store(bits, Ordering::Relaxed),
+        88 => track.texture_compress.store(bits, Ordering::Relaxed),
+        89 => track.texture_crush.store(bits, Ordering::Relaxed),
+        90 => track.texture_tilt.store(bits, Ordering::Relaxed),
+        91 => track.texture_noise.store(bits, Ordering::Relaxed),
+        92 => track.texture_noise_decay.store(bits, Ordering::Relaxed),
+        93 => track.texture_noise_color.store(bits, Ordering::Relaxed),
+        94 => track.texture_wet.store(bits, Ordering::Relaxed),
+        95 => track.texture_post_gain.store(bits, Ordering::Relaxed),
+        96 => track.reflect_delay.store(bits, Ordering::Relaxed),
+        97 => track.reflect_time.store(bits, Ordering::Relaxed),
+        98 => track.reflect_reverb.store(bits, Ordering::Relaxed),
+        99 => track.reflect_size.store(bits, Ordering::Relaxed),
+        100 => track.reflect_feedback.store(bits, Ordering::Relaxed),
+        101 => track.reflect_spread.store(bits, Ordering::Relaxed),
+        102 => track.reflect_damp.store(bits, Ordering::Relaxed),
+        103 => track.reflect_decay.store(bits, Ordering::Relaxed),
+        104 => track.reflect_post_gain.store(bits, Ordering::Relaxed),
+        _ => {}
+    }
 }
 
 fn fmmi_rand_next(state: &mut u32) -> u32 {
@@ -14603,6 +15158,15 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     for i in 0..32 {
         params.insert(format!("g8_step_{}", i), f(&track.g8_steps[i]));
     }
+    params.insert("modul8_enabled".to_string(), b(&track.modul8_enabled));
+    for i in 0..MODUL8_LFOS {
+        params.insert(format!("modul8_wave_{}", i), u(&track.modul8_wave[i]));
+        params.insert(format!("modul8_rate_{}", i), f(&track.modul8_rate[i]));
+        params.insert(format!("modul8_sync_{}", i), b(&track.modul8_sync[i]));
+        params.insert(format!("modul8_division_{}", i), u(&track.modul8_division[i]));
+        params.insert(format!("modul8_amount_{}", i), f(&track.modul8_amount[i]));
+        params.insert(format!("modul8_target_{}", i), u(&track.modul8_target[i]));
+    }
     params.insert("texture_enabled".to_string(), b(&track.texture_enabled));
     params.insert("texture_gate".to_string(), b(&track.texture_gate));
     params.insert("texture_drive".to_string(), f(&track.texture_drive));
@@ -15452,6 +16016,33 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su(&track.g8_rate_index, "g8_rate_index");
     for i in 0..32 {
         sf(&track.g8_steps[i], &format!("g8_step_{}", i));
+    }
+    track.modul8_enabled.store(false, Ordering::Relaxed);
+    for i in 0..MODUL8_LFOS {
+        track.modul8_wave[i].store(0, Ordering::Relaxed);
+        track.modul8_rate[i].store(1.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_sync[i].store(true, Ordering::Relaxed);
+        track.modul8_division[i].store(0, Ordering::Relaxed);
+        track.modul8_amount[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_target[i].store(0, Ordering::Relaxed);
+        track.modul8_phase[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_snh[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .modul8_base_value[i]
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .modul8_base_target[i]
+            .store(u32::MAX, Ordering::Relaxed);
+    }
+    track.modul8_rng_state.store(0x89ab_cdef, Ordering::Relaxed);
+    sb(&track.modul8_enabled, "modul8_enabled");
+    for i in 0..MODUL8_LFOS {
+        su(&track.modul8_wave[i], &format!("modul8_wave_{}", i));
+        sf(&track.modul8_rate[i], &format!("modul8_rate_{}", i));
+        sb(&track.modul8_sync[i], &format!("modul8_sync_{}", i));
+        su(&track.modul8_division[i], &format!("modul8_division_{}", i));
+        sf(&track.modul8_amount[i], &format!("modul8_amount_{}", i));
+        su(&track.modul8_target[i], &format!("modul8_target_{}", i));
     }
     track
         .animate_slot_a_attack
@@ -16909,8 +17500,35 @@ impl SlintWindow {
         let g8_steps: Vec<f32> = (0..32)
             .map(|i| f32::from_bits(self.tracks[track_idx].g8_steps[i].load(Ordering::Relaxed)))
             .collect();
-        let engine_loaded = self.tracks[track_idx].engine_type.load(Ordering::Relaxed) != 0;
+        let modul8_enabled = self.tracks[track_idx].modul8_enabled.load(Ordering::Relaxed);
+        let modul8_wave: Vec<i32> = (0..MODUL8_LFOS)
+            .map(|i| self.tracks[track_idx].modul8_wave[i].load(Ordering::Relaxed) as i32)
+            .collect();
+        let modul8_rate: Vec<f32> = (0..MODUL8_LFOS)
+            .map(|i| f32::from_bits(self.tracks[track_idx].modul8_rate[i].load(Ordering::Relaxed)))
+            .collect();
+        let modul8_sync: Vec<bool> = (0..MODUL8_LFOS)
+            .map(|i| self.tracks[track_idx].modul8_sync[i].load(Ordering::Relaxed))
+            .collect();
+        let modul8_division: Vec<i32> = (0..MODUL8_LFOS)
+            .map(|i| self.tracks[track_idx].modul8_division[i].load(Ordering::Relaxed) as i32)
+            .collect();
+        let modul8_amount: Vec<f32> = (0..MODUL8_LFOS)
+            .map(|i| f32::from_bits(self.tracks[track_idx].modul8_amount[i].load(Ordering::Relaxed)))
+            .collect();
         let active_engine_type = self.tracks[track_idx].engine_type.load(Ordering::Relaxed);
+        let modul8_target_len = modul8_target_ids_for_engine(active_engine_type).len() as i32;
+        let modul8_target: Vec<i32> = (0..MODUL8_LFOS)
+            .map(|i| {
+                let v = self.tracks[track_idx].modul8_target[i].load(Ordering::Relaxed) as i32;
+                if modul8_target_len > 0 {
+                    v.clamp(0, modul8_target_len - 1)
+                } else {
+                    0
+                }
+            })
+            .collect();
+        let engine_loaded = active_engine_type != 0;
 
         let animate_slot_types = [
             self.tracks[track_idx].animate_slot_types[0].load(Ordering::Relaxed),
@@ -18187,8 +18805,23 @@ impl SlintWindow {
         self.ui.set_g8_rate_index(g8_rate_index as i32);
         self.ui
             .set_g8_steps(ModelRc::from(std::rc::Rc::new(VecModel::from(g8_steps))));
+        self.ui.set_modul8_enabled(modul8_enabled);
+        self.ui
+            .set_modul8_wave(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_wave))));
+        self.ui
+            .set_modul8_rate(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_rate))));
+        self.ui
+            .set_modul8_sync(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_sync))));
+        self.ui.set_modul8_division(ModelRc::from(std::rc::Rc::new(
+            VecModel::from(modul8_division),
+        )));
+        self.ui
+            .set_modul8_amount(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_amount))));
+        self.ui
+            .set_modul8_target(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_target))));
         self.ui.set_engine_loaded(engine_loaded);
         self.ui.set_active_engine_type(active_engine_type as i32);
+        self.ui.set_modul8_target_options(ModelRc::new(std::rc::Rc::new(VecModel::from(modul8_target_options_for_engine(active_engine_type)))));
 
         self.ui.set_animate_slot_a_type(animate_slot_types[0] as i32);
         self.ui.set_animate_slot_b_type(animate_slot_types[1] as i32);
@@ -19148,6 +19781,7 @@ fn initialize_ui(
         SharedString::from("");
         FMMI_STEPS
     ])));
+    ui.set_modul8_target_options(ModelRc::new(VecModel::from(modul8_target_options_for_engine(0))));
     ui.set_engine_types(ModelRc::new(VecModel::from(vec![
         SharedString::from("Tape-Deck"),
         SharedString::from("Animate"),
@@ -20712,6 +21346,83 @@ fn initialize_ui(
             let clamped = value.clamp(0.0, 1.0);
             tracks_g8[track_idx].g8_steps[step_idx]
                 .store(clamped.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_toggle_modul8_enabled(move || {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let enabled = tracks_modul8[track_idx].modul8_enabled.load(Ordering::Relaxed);
+            tracks_modul8[track_idx]
+                .modul8_enabled
+                .store(!enabled, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_wave_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_wave[lfo_idx]
+                .store(value.clamp(0, 4) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_rate_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_rate[lfo_idx]
+                .store(value.clamp(0.01, 20.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_sync_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_sync[lfo_idx].store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_division_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_division[lfo_idx]
+                .store(value.clamp(0, 5) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_amount_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_amount[lfo_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_target_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_target[lfo_idx]
+                .store(value.clamp(0, (MODUL8_TARGET_COUNT - 1) as i32) as u32, Ordering::Relaxed);
         }
     });
 

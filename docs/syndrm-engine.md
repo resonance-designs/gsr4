@@ -59,6 +59,7 @@ The **Utility Functions** section provides workflow tools for the current lane o
 SynDRM feeds into the shared downstream device chain:
 - **Granulator**
 - **Silk**
+- **Modul8**
 - **G8** (Trance Gate)
 - **Texture**
 - **Reflect**

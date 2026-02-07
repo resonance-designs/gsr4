@@ -22,6 +22,7 @@ Welcome to the TLBX-1 documentation hub.
 ### Downstream Devices
 - **[Granulator](/docs/user/granulator)**: Rhythmic and atmospheric granular processing.
 - **[Silk Device](/docs/user/silk-device)**: Resonator and filter bank.
+- **[Modul8 Device](/docs/user/modul8-device)**: 8‑LFO modulation device for engine + downstream parameters.
 - **[G8 Device](/docs/user/g8-device)**: 32-step rhythmic volume gate.
 - **[Texture Device](/docs/user/texture-device)**: Saturation, compression, and lo-fi degradation.
 - **[Reflect Device](/docs/user/reflect-device)**: High-quality delay and algorithmic reverb.

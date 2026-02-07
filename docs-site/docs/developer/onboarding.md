@@ -139,6 +139,7 @@ The version is sourced from `Cargo.toml` and propagated to `README.md`, package.
 - `src/ui/engines/fmmi_engine.slint` contains the FMMI engine UI component
 - `src/ui/devices/granulator_device.slint` contains the Granulator device UI component
 - `src/ui/devices/silk_device.slint` contains the Silk device UI component
+- `src/ui/devices/modul8_device.slint` contains the Modul8 device UI component
 - `src/ui/devices/g8_device.slint` contains the G8 trance gate device UI component
 - `src/ui/devices/texture_device.slint` contains the Texture device UI component
 - `src/ui/devices/reflect_device.slint` contains the Reflect device UI component
