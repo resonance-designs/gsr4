@@ -358,7 +358,6 @@ export component AnimateEngine inherits Rectangle {
     VerticalLayout {
         spacing: 8px;
         padding: 12px;
-        width: parent.width;
 
         // Engine Title & Mute
         RDSHeaderLabel {
@@ -2021,12 +2020,13 @@ export component AnimateEngine inherits Rectangle {
 
             // Granulator & Silk Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Granulator Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     GranulatorDevice {
                         mosaic-enabled <=> root.mosaic-enabled;
                         mosaic-loop-lock <=> root.mosaic-loop-lock;
@@ -2065,8 +2065,9 @@ export component AnimateEngine inherits Rectangle {
 
                 // Silk Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     SilkDevice {
                         ring-enabled <=> root.ring-enabled;
                         ring-cutoff <=> root.ring-cutoff;
@@ -2107,12 +2108,12 @@ export component AnimateEngine inherits Rectangle {
 
             // Texture & Reflect Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Texture Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 280px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
 
                     TextureDevice {
                         texture-enabled <=> root.texture-enabled;
@@ -2142,8 +2143,8 @@ export component AnimateEngine inherits Rectangle {
 
                 // Reflect Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 280px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
 
                     ReflectDevice {
                         reflect-enabled <=> root.reflect-enabled;
@@ -2177,12 +2178,15 @@ export component AnimateEngine inherits Rectangle {
 
             // G8 & Modul8 Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
+                // Modul8 Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 200px;
+                    width: 1216px;
+                    height: 354px;
+
                     Modul8Device {
+                        width: parent.width;
                         modul8-enabled <=> root.modul8-enabled;
                         modul8-target-options: root.modul8-target-options;
                         modul8-wave <=> root.modul8-wave;
@@ -2200,10 +2204,16 @@ export component AnimateEngine inherits Rectangle {
                         modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                     }
                 }
+            }
 
+            HorizontalLayout {
+                spacing: 8px;
+
+                // G8 Device
                 Rectangle {
                     width: (parent.width - 16px) / 2 - 15px;
                     height: 200px;
+
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
                         gate-rate-index <=> root.g8-rate-index;

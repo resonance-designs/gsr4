@@ -63,84 +63,117 @@ export component Modul8Device {
                 padding: 10px;
                 spacing: 8px;
 
-                for i in 8 : HorizontalLayout {
-                    spacing: 8px;
-                    Text {
-                        width: 34px;
-                        text: "LFO " + (i + 1);
-                        color: #b9b9bf;
-                        font-size: 11px;
-                        vertical-alignment: center;
-                    }
-                    RDSComboBox {
-                        width: 100px;
-                        model: root.modul8-wave-options;
-                        current-index: root.modul8-wave[i];
-                        selected => {
-                            root.modul8-wave[i] = self.current-index;
-                            root.modul8-wave-changed(i, self.current-index);
+                for row in 4 : HorizontalLayout {
+                    spacing: 16px;
+
+                    for col in 2 : HorizontalLayout {
+                        spacing: 8px;
+                        property <int> idx: row * 2 + col;
+
+                        VerticalLayout {
+                            y: 10px;
+                            Text {
+                                width: 34px;
+                                text: "LFO " + (idx + 1);
+                                color: #b9b9bf;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                            }
                         }
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.modul8-rate[i];
-                        min-value: 0.01;
-                        max-value: 20;
-                        size: 44px;
-                        indicator-position: 12px;
-                        label: "Rate";
-                        label-pos: "top-center";
-                        label-font-size: 10px;
-                        sensitivity: 0.01;
-                        scroll-sensitivity: 0.01;
-                        value-changed(v) => {
-                            root.modul8-rate[i] = v;
-                            root.modul8-rate-changed(i, v);
+
+                        VerticalLayout {
+                            y: 28px;
+                            RDSComboBox {
+                                width: 100px;
+                                model: root.modul8-wave-options;
+                                current-index: root.modul8-wave[idx];
+                                selected => {
+                                    root.modul8-wave[idx] = self.current-index;
+                                    root.modul8-wave-changed(idx, self.current-index);
+                                }
+                            }
                         }
-                    }
-                    RDSCircleToggle {
-                        active: root.modul8-sync[i];
-                        label: "Sync";
-                        label-pos: "left";
-                        label-font-size: 11px;
-                        clicked => {
-                            root.modul8-sync[i] = !root.modul8-sync[i];
-                            root.modul8-sync-changed(i, root.modul8-sync[i]);
+
+                        VerticalLayout {
+                            padding-top: 22px;
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.modul8-rate[idx];
+                                min-value: 0.01;
+                                max-value: 20;
+                                size: 44px;
+                                indicator-position: 12px;
+                                label: "Rate";
+                                label-pos: "top-center";
+                                label-font-size: 10px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.modul8-rate[idx] = v;
+                                    root.modul8-rate-changed(idx, v);
+                                }
+                            }
                         }
-                    }
-                    RDSComboBox {
-                        width: 86px;
-                        model: root.modul8-division-options;
-                        current-index: root.modul8-division[i];
-                        selected => {
-                            root.modul8-division[i] = self.current-index;
-                            root.modul8-division-changed(i, self.current-index);
+
+                        VerticalLayout {
+                            y: 36px;
+                            RDSCircleToggle {
+                                active: root.modul8-sync[idx];
+                                label: "Sync";
+                                label-pos: "left";
+                                label-font-size: 11px;
+                                clicked => {
+                                    root.modul8-sync[idx] = !root.modul8-sync[idx];
+                                    root.modul8-sync-changed(idx, root.modul8-sync[idx]);
+                                }
+                            }
                         }
-                    }
-                    RDSKnob {
-                        renderer: "lo-fi";
-                        value: root.modul8-amount[i];
-                        min-value: 0;
-                        max-value: 1;
-                        size: 44px;
-                        indicator-position: 12px;
-                        label: "Amt";
-                        label-pos: "top-center";
-                        label-font-size: 10px;
-                        sensitivity: 0.01;
-                        scroll-sensitivity: 0.01;
-                        value-changed(v) => {
-                            root.modul8-amount[i] = v;
-                            root.modul8-amount-changed(i, v);
+
+                        VerticalLayout {
+                            y: 28px;
+                            RDSComboBox {
+                                width: 86px;
+                                model: root.modul8-division-options;
+                                current-index: root.modul8-division[idx];
+                                selected => {
+                                    root.modul8-division[idx] = self.current-index;
+                                    root.modul8-division-changed(idx, self.current-index);
+                                }
+                            }
                         }
-                    }
-                    RDSComboBox {
-                        width: 220px;
-                        model: root.modul8-target-options;
-                        current-index: root.modul8-target[i];
-                        selected => {
-                            root.modul8-target[i] = self.current-index;
-                            root.modul8-target-changed(i, self.current-index);
+
+                        VerticalLayout {
+                            padding-top: 22px;
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.modul8-amount[idx];
+                                min-value: 0;
+                                max-value: 1;
+                                size: 44px;
+                                indicator-position: 12px;
+                                label: "Amt";
+                                label-pos: "top-center";
+                                label-font-size: 10px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.modul8-amount[idx] = v;
+                                    root.modul8-amount-changed(idx, v);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            y: 28px;
+                            RDSComboBox {
+                                width: 180px;
+                                model: root.modul8-target-options;
+                                current-index: root.modul8-target[idx];
+                                selected => {
+                                    root.modul8-target[idx] = self.current-index;
+                                    root.modul8-target-changed(idx, self.current-index);
+                                }
+                            }
                         }
                     }
                 }

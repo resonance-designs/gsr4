@@ -192,8 +192,8 @@ export component VoidSeedEngine inherits Rectangle {
     background: transparent;
 
     VerticalLayout {
-        spacing: 12px;
-        width: parent.width;
+        spacing: 8px;
+        padding: 12px;
 
         HorizontalLayout {
             spacing: 10px;
@@ -458,13 +458,16 @@ export component VoidSeedEngine inherits Rectangle {
         // Downstream Devices
         VerticalLayout {
             width: parent.width;
+
+            // Granulator & Silk Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Granulator Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     GranulatorDevice {
                         mosaic-enabled <=> root.mosaic-enabled;
                         mosaic-loop-lock <=> root.mosaic-loop-lock;
@@ -503,8 +506,9 @@ export component VoidSeedEngine inherits Rectangle {
 
                 // Silk Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     SilkDevice {
                         ring-enabled <=> root.ring-enabled;
                         ring-cutoff <=> root.ring-cutoff;
@@ -543,14 +547,16 @@ export component VoidSeedEngine inherits Rectangle {
                 }
             }
 
+            // Texture & Reflect Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
+
+                // Texture Device
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     TextureDevice {
-                        width: parent.width;
-                        height: parent.height;
                         texture-enabled <=> root.texture-enabled;
                         texture-gate <=> root.texture-gate;
                         texture-drive <=> root.texture-drive;
@@ -575,12 +581,13 @@ export component VoidSeedEngine inherits Rectangle {
                         texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                     }
                 }
+
+                // Reflect Device
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     ReflectDevice {
-                        width: parent.width;
-                        height: parent.height;
                         reflect-enabled <=> root.reflect-enabled;
                         reflect-freeze <=> root.reflect-freeze;
                         reflect-delay <=> root.reflect-delay;
@@ -609,13 +616,18 @@ export component VoidSeedEngine inherits Rectangle {
                     }
                 }
             }
-            HorizontalLayout {
-                spacing: 22px;
 
+            // G8 & Modul8 Devices
+            HorizontalLayout {
+                spacing: 8px;
+
+                // Modul8 Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 200px;
+                    width: 1216px;
+                    height: 354px;
+
                     Modul8Device {
+                        width: parent.width;
                         modul8-enabled <=> root.modul8-enabled;
                         modul8-target-options: root.modul8-target-options;
                         modul8-wave <=> root.modul8-wave;
@@ -633,10 +645,16 @@ export component VoidSeedEngine inherits Rectangle {
                         modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                     }
                 }
+            }
 
+            HorizontalLayout {
+                spacing: 8px;
+
+                // G8 Device
                 Rectangle {
                     width: (parent.width - 16px) / 2 - 15px;
                     height: 200px;
+
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
                         gate-rate-index <=> root.g8-rate-index;
