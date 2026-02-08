@@ -8,6 +8,7 @@
 - FMMI: Added control for adjusting the amount of randomness applied to note/step-trigger when a user initiates a randomization.
 - FMMI: Added a scale picker that drives the note randomization and keybed highlighting. Scales can be added to scales.json.
 - FMMI: Added a switchable mono/poly mode to switch between note/gate-cutting mono mode and a new mode with 8 voices with it's own phases/envelopes per voice.
+- Updated documentation
 
 ## [0.1.25] - 2026-02-08
 
