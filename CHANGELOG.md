@@ -1,9 +1,14 @@
 # Changelog
 
-## [0.1.25] - 2026-02-07
+## [0.1.25] - 2026-02-08
 
 - Increased the number of steps for G8 device to 64 and made it full-width in all the engine UI's.
-- Fixed issue with G8 device not working in SynDRM engine. Master step phase/count now advances if any_playing || any_pending || any_engine_clock in lib.rs.
+- Fixed issue with G8 and Modul8 devices not working in SynDRM engine.
+- Fixed issue with Modul8 targets not being selectable from the combobox.
+- Added additional targets for Tape-Deck and SynDRM engines in Modul8 device.
+- Updated the Resonance Designs Slint UI Component Kit to version 0.1.13.
+- Added bias/center control to LFO's of the Modul8 device.
+- Updated documentation.
 
 ## [0.1.24] - 2026-02-07
 

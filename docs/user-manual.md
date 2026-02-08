@@ -38,7 +38,7 @@ Each track features a chain of downstream devices for further processing:
 
 - **[Granulator](./granulator.md)**: Rhythmic and atmospheric granular processing.
 - **[Silk](./silk-device.md)**: Resonator, filter bank, and harmonic shaper.
-- **[Modul8](./modul8-device.md)**: 8‑LFO modulation device for engine + downstream parameters.
+- **[Modul8](./modul8-device.md)**: 8‑LFO modulation device for engine + downstream parameters, with per‑LFO Amount and Bias (center) controls.
 - **[G8 (Trance Gate)](./g8-device.md)**: 64-step rhythmic volume gating.
 - **[Texture](./texture-device.md)**: Saturation, compression, and lo-fi degradation.
 - **[Reflect](./reflect-device.md)**: High-quality delay and algorithmic reverb.

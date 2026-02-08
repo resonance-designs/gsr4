@@ -19,14 +19,12 @@ export component RDSSlider inherits Rectangle {
     in-out property <float> max-value: 127;
     in-out property <string> size: "large"; // "small", "medium", or "large"
     in-out property <string> orientation: "vertical"; // "vertical" or "horizontal"
+    in-out property <length> drag-start-pos: 0px;
+    in-out property <float> drag-start-value: 0;
+    in-out property <float> drag-sensitivity: 1.0; // Adjust drag sensitivity
+    in-out property <float> scroll-sensitivity: 1.0; // Adjust scroll sensitivity
 
     callback value-changed(float); // Callback when value changes
-
-    // Private properties for drag tracking
-    private property <length> drag-start-pos: 0px;
-    private property <float> drag-start-value: 0;
-    private property <float> drag-sensitivity: 1.0; // Adjust drag sensitivity
-    private property <float> scroll-sensitivity: 1.0; // Adjust scroll sensitivity
 
     // Size scale factors
     private property <float> scale: root.size == "small" ? 0.5 : (root.size == "medium" ? 0.75 : 1.0);
@@ -38,6 +36,7 @@ export component RDSSlider inherits Rectangle {
     in-out property <length> height-override: 0px;
     private property <length> effective-height: root.height-override > 0px ? root.height-override : root.base-height * root.scale;
     private property <length> scaled-travel: Math.max(10px, root.effective-height - 120px * root.scale);
+    private property <int> markings-count: Math.max(31, Math.round((root.effective-height - 100px * root.scale) / (10px * root.scale)) + 1);
 
     width: root.is-horizontal ? root.effective-height : root.base-width * root.scale;
     height: root.is-horizontal ? root.base-width * root.scale : root.effective-height;
@@ -52,7 +51,7 @@ export component RDSSlider inherits Rectangle {
         width: root.is-horizontal ? root.effective-height - 100px * root.scale : 25px * root.scale;
         height: root.is-horizontal ? 25px * root.scale : root.effective-height - 100px * root.scale;
 
-        for idx[i] in 31 : Rectangle {
+        for idx[i] in root.markings-count : Rectangle {
             x: root.is-horizontal
                 ? (idx * 10px * root.scale)
                 : (Math.mod(idx, 5) == 0 ? 0px : 10px * root.scale);
@@ -75,7 +74,7 @@ export component RDSSlider inherits Rectangle {
         width: root.is-horizontal ? root.effective-height - 100px * root.scale : 25px * root.scale;
         height: root.is-horizontal ? 25px * root.scale : root.effective-height - 100px * root.scale;
 
-        for idx[i] in 31 : Rectangle {
+        for idx[i] in root.markings-count : Rectangle {
             x: root.is-horizontal ? (idx * 10px * root.scale) : 0px;
             y: root.is-horizontal ? 0px : (idx * 10px * root.scale);
             width: root.is-horizontal
@@ -85,6 +84,18 @@ export component RDSSlider inherits Rectangle {
                 ? (Math.mod(idx, 5) == 0 ? 25px : 15px) * root.scale
                 : 2px * root.scale;
             background: Theme.active.border_strong;
+        }
+    }
+
+    scroll-area := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        scroll-event(event) => {
+            let delta = event.delta-y != 0px ? event.delta-y : event.delta-x;
+            root.value = root.value - (delta / 1px) * root.scroll-sensitivity;
+            root.value = Math.max(root.min-value, Math.min(root.max-value, root.value));
+            root.value-changed(root.value);
+            return accept;
         }
     }
 
@@ -241,7 +252,8 @@ export component RDSSlider inherits Rectangle {
 
             scroll-event(event) => {
                 // Handle scroll wheel (convert delta-y from length to float)
-                root.value = root.value - (event.delta-y / 1px) * root.scroll-sensitivity;
+                let delta = event.delta-y != 0px ? event.delta-y : event.delta-x;
+                root.value = root.value - (delta / 1px) * root.scroll-sensitivity;
 
                 // Clamp value to range
                 root.value = Math.max(root.min-value, Math.min(root.max-value, root.value));

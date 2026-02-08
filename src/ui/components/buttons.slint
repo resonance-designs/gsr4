@@ -46,7 +46,7 @@ export component RDSButton {
     Rectangle {
         width: parent.width;
         height: parent.height;
-        background: touch.pressed ? (root.active ? Theme.active.accent_secondary : Theme.active.background_hover) : (touch.has-hover ? Theme.active.background_hover : root.background);
+        background: touch.pressed ? (root.active ? Theme.active.accent_secondary : Theme.active.background_hover) : (touch.has-hover ? (root.active ? Theme.active.accent_highlight : Theme.active.background_hover) : root.background);
         border-width: root.border-width;
         border-color: root.border-color;
         border-radius: root.border-radius;
@@ -123,7 +123,7 @@ export component RDSSelectButton {
         border-radius: Theme.active.radius_large;
         border-color: @linear-gradient(180deg, #242424 0%, #161616 100%);
         border-width: 1px;
-        drop-shadow-blur: root.active ? 8px : 8px;
+        drop-shadow-blur: 8px;
         drop-shadow-offset-y: root.active ? 2px : 6px;
         drop-shadow-color: #000;
 

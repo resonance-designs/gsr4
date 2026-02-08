@@ -35,6 +35,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> kick-cut-group: 0;
     in-out property <float> kick-cut-by: 0;
     in-out property <float> kick-prob: 1.0;
+    in-out property <bool> kick-lane-enabled: true;
     in-out property <[bool]> kick-sequencer-grid;
     in property <int> kick-sequencer-current-step: -1;
     in-out property <float> snare-tone: 0.5;
@@ -50,6 +51,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> snare-cut-group: 0;
     in-out property <float> snare-cut-by: 0;
     in-out property <float> snare-prob: 1.0;
+    in-out property <bool> snare-lane-enabled: true;
     in-out property <[bool]> snare-sequencer-grid;
     in property <int> snare-sequencer-current-step: -1;
     in-out property <float> clap-pitch: 0.5;
@@ -64,6 +66,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> clap-cut-group: 0;
     in-out property <float> clap-cut-by: 0;
     in-out property <float> clap-prob: 1.0;
+    in-out property <bool> clap-lane-enabled: true;
     in-out property <[bool]> clap-sequencer-grid;
     in property <int> clap-sequencer-current-step: -1;
     in-out property <float> hat-pitch: 0.5;
@@ -78,6 +81,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> hat-cut-group: 0;
     in-out property <float> hat-cut-by: 0;
     in-out property <float> hat-prob: 1.0;
+    in-out property <bool> hat-lane-enabled: true;
     in-out property <[bool]> hat-sequencer-grid;
     in property <int> hat-sequencer-current-step: -1;
     in-out property <float> perc1-pitch: 0.5;
@@ -92,6 +96,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> perc1-cut-group: 0;
     in-out property <float> perc1-cut-by: 0;
     in-out property <float> perc1-prob: 1.0;
+    in-out property <bool> perc1-lane-enabled: true;
     in-out property <[bool]> perc1-sequencer-grid;
     in property <int> perc1-sequencer-current-step: -1;
     in-out property <float> perc2-pitch: 0.5;
@@ -106,6 +111,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> perc2-cut-group: 0;
     in-out property <float> perc2-cut-by: 0;
     in-out property <float> perc2-prob: 1.0;
+    in-out property <bool> perc2-lane-enabled: true;
     in-out property <[bool]> perc2-sequencer-grid;
     in property <int> perc2-sequencer-current-step: -1;
     in-out property <float> crash-pitch: 0.7;
@@ -120,6 +126,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> crash-cut-group: 0;
     in-out property <float> crash-cut-by: 0;
     in-out property <float> crash-prob: 1.0;
+    in-out property <bool> crash-lane-enabled: true;
     in-out property <[bool]> crash-sequencer-grid;
     in property <int> crash-sequencer-current-step: -1;
     in property <[string]> samp-labels;
@@ -136,6 +143,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <[float]> samp-cut-group;
     in-out property <[float]> samp-cut-by;
     in-out property <[float]> samp-prob;
+    in-out property <[bool]> samp-lane-enabled;
     in-out property <[bool]> samp-sequencer-grid;
     in property <[int]> samp-sequencer-current-step;
     in-out property <int> syndrm-page: 0;
@@ -313,6 +321,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
     in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
     in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-bias: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
     in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
 
     callback toggle-track-mute();
@@ -329,6 +338,7 @@ export component SynDRMEngine inherits Rectangle {
     callback kick-cut-group-changed(value: float);
     callback kick-cut-by-changed(value: float);
     callback kick-prob-changed(value: float);
+    callback kick-lane-enabled-changed(value: bool);
     callback kick-sequencer-grid-toggled(step: int);
     callback snare-tone-changed(value: float);
     callback snare-decay-changed(value: float);
@@ -343,6 +353,7 @@ export component SynDRMEngine inherits Rectangle {
     callback snare-cut-group-changed(value: float);
     callback snare-cut-by-changed(value: float);
     callback snare-prob-changed(value: float);
+    callback snare-lane-enabled-changed(value: bool);
     callback snare-sequencer-grid-toggled(step: int);
     callback clap-pitch-changed(value: float);
     callback clap-decay-changed(value: float);
@@ -356,6 +367,7 @@ export component SynDRMEngine inherits Rectangle {
     callback clap-cut-group-changed(value: float);
     callback clap-cut-by-changed(value: float);
     callback clap-prob-changed(value: float);
+    callback clap-lane-enabled-changed(value: bool);
     callback clap-sequencer-grid-toggled(step: int);
     callback hat-pitch-changed(value: float);
     callback hat-decay-changed(value: float);
@@ -369,6 +381,7 @@ export component SynDRMEngine inherits Rectangle {
     callback hat-cut-group-changed(value: float);
     callback hat-cut-by-changed(value: float);
     callback hat-prob-changed(value: float);
+    callback hat-lane-enabled-changed(value: bool);
     callback hat-sequencer-grid-toggled(step: int);
     callback perc1-pitch-changed(value: float);
     callback perc1-decay-changed(value: float);
@@ -382,6 +395,7 @@ export component SynDRMEngine inherits Rectangle {
     callback perc1-cut-group-changed(value: float);
     callback perc1-cut-by-changed(value: float);
     callback perc1-prob-changed(value: float);
+    callback perc1-lane-enabled-changed(value: bool);
     callback perc1-sequencer-grid-toggled(step: int);
     callback perc2-pitch-changed(value: float);
     callback perc2-decay-changed(value: float);
@@ -395,6 +409,7 @@ export component SynDRMEngine inherits Rectangle {
     callback perc2-cut-group-changed(value: float);
     callback perc2-cut-by-changed(value: float);
     callback perc2-prob-changed(value: float);
+    callback perc2-lane-enabled-changed(value: bool);
     callback perc2-sequencer-grid-toggled(step: int);
     callback crash-pitch-changed(value: float);
     callback crash-decay-changed(value: float);
@@ -408,6 +423,7 @@ export component SynDRMEngine inherits Rectangle {
     callback crash-cut-group-changed(value: float);
     callback crash-cut-by-changed(value: float);
     callback crash-prob-changed(value: float);
+    callback crash-lane-enabled-changed(value: bool);
     callback crash-sequencer-grid-toggled(step: int);
     callback syndrm-page-changed(page: int);
     callback syndrm-edit-lane-changed(lane: int);
@@ -499,6 +515,7 @@ export component SynDRMEngine inherits Rectangle {
     callback samp-cut-group-changed(index: int, value: float);
     callback samp-cut-by-changed(index: int, value: float);
     callback samp-prob-changed(index: int, value: float);
+    callback samp-lane-enabled-changed(index: int, value: bool);
     callback samp-sequencer-grid-toggled(index: int, step: int);
     callback syndrm-step-samp-pitch-changed(value: float);
     callback syndrm-step-samp-attack-changed(value: float);
@@ -622,6 +639,7 @@ export component SynDRMEngine inherits Rectangle {
     callback modul8-sync-changed(index: int, value: bool);
     callback modul8-division-changed(index: int, value: int);
     callback modul8-amount-changed(index: int, value: float);
+    callback modul8-bias-changed(index: int, value: float);
     callback modul8-target-changed(index: int, value: int);
 
     width: 1242px;
@@ -664,7 +682,7 @@ export component SynDRMEngine inherits Rectangle {
             border-radius: 6px;
             border-color: Theme.active.border-strong;
 
-            // Drums
+            // SynDRM Layout
             VerticalLayout {
                 HorizontalLayout {
                     spacing: 8px;
@@ -2205,9 +2223,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Kick"; width: 34px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Kick"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.kick-lane-enabled;
+                                        clicked => {
+                                            root.kick-lane-enabled = !root.kick-lane-enabled;
+                                            root.kick-lane-enabled-changed(root.kick-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.kick-prob;
@@ -2233,9 +2258,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Snare"; width: 34px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Snare"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.snare-lane-enabled;
+                                        clicked => {
+                                            root.snare-lane-enabled = !root.snare-lane-enabled;
+                                            root.snare-lane-enabled-changed(root.snare-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.snare-prob;
@@ -2261,9 +2293,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Clap"; width: 34px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Clap"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.clap-lane-enabled;
+                                        clicked => {
+                                            root.clap-lane-enabled = !root.clap-lane-enabled;
+                                            root.clap-lane-enabled-changed(root.clap-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.clap-prob;
@@ -2289,9 +2328,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Hat"; width: 34px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Hat"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.hat-lane-enabled;
+                                        clicked => {
+                                            root.hat-lane-enabled = !root.hat-lane-enabled;
+                                            root.hat-lane-enabled-changed(root.hat-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.hat-prob;
@@ -2317,9 +2363,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Perc 1"; width: 34px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Perc 1"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.perc1-lane-enabled;
+                                        clicked => {
+                                            root.perc1-lane-enabled = !root.perc1-lane-enabled;
+                                            root.perc1-lane-enabled-changed(root.perc1-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.perc1-prob;
@@ -2345,9 +2398,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Perc 2"; width: 34px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Perc 2"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.perc2-lane-enabled;
+                                        clicked => {
+                                            root.perc2-lane-enabled = !root.perc2-lane-enabled;
+                                            root.perc2-lane-enabled-changed(root.perc2-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.perc2-prob;
@@ -2373,9 +2433,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Crash"; width: 34px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Crash"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.crash-lane-enabled;
+                                        clicked => {
+                                            root.crash-lane-enabled = !root.crash-lane-enabled;
+                                            root.crash-lane-enabled-changed(root.crash-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.crash-prob;
@@ -2400,9 +2467,16 @@ export component SynDRMEngine inherits Rectangle {
                             for samp_idx in 7 : HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: root.samp-labels[samp_idx]; width: 34px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: root.samp-labels[samp_idx]; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.samp-lane-enabled[samp_idx];
+                                        clicked => {
+                                            root.samp-lane-enabled[samp_idx] = !root.samp-lane-enabled[samp_idx];
+                                            root.samp-lane-enabled-changed(samp_idx, root.samp-lane-enabled[samp_idx]);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.samp-prob[samp_idx];
@@ -4182,6 +4256,7 @@ export component SynDRMEngine inherits Rectangle {
                         modul8-sync <=> root.modul8-sync;
                         modul8-division <=> root.modul8-division;
                         modul8-amount <=> root.modul8-amount;
+                        modul8-bias <=> root.modul8-bias;
                         modul8-target <=> root.modul8-target;
                         toggle-modul8-enabled => root.toggle-modul8-enabled();
                         modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
@@ -4189,6 +4264,7 @@ export component SynDRMEngine inherits Rectangle {
                         modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
                         modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
                         modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                        modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
                         modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                     }
                 }

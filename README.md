@@ -20,7 +20,7 @@ The UI is built with Slint in combination with the [Resonance Designs Slint UI C
 - RDS Slint UI Component Kit for shared UI controls and theming
 - Post-tape granular buffer with bypass toggle (Granulator device)
 - Post-tape filter with bypass toggle (Silk device)
-- Post-tape Modul8 device with 8 LFOs and engine-scoped targets
+- Post-tape Modul8 device with 8 LFOs, engine-scoped targets, and per-LFO Bias (center)
 - Post-tape trance gate with bypass toggle (G8 device)
 - Post-tape Texture device with drive/compress/crush/tilt/noise + gate
 - Post-tape Reflect device with delay + reverb, time divisions, and clear/freeze
@@ -112,7 +112,7 @@ Installers include the built documentation site under `documentation/` in the in
 - Loop Start/Length/XFade apply to the active track
 - Mosaic enable toggles the post-tape granular buffer per track
 - Ring enable toggles the post-tape filter device per track (Silk device)
-- Modul8 enable toggles the post-tape modulation device per track
+- Modul8 enable toggles the post-tape modulation device per track (LFOs run when transport is playing)
 - G8 enable toggles the post-tape trance gate device per track
 - Texture enable toggles the post-tape Texture/Deform device per track
 - Reflect enable toggles the post-tape Reflect/Vast device per track

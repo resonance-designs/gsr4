@@ -236,6 +236,7 @@ export component TapeEngine inherits Rectangle {
     in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
     in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
     in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-bias: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
     in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
 
 
@@ -313,6 +314,7 @@ export component TapeEngine inherits Rectangle {
     callback modul8-sync-changed(index: int, value: bool);
     callback modul8-division-changed(index: int, value: int);
     callback modul8-amount-changed(index: int, value: float);
+    callback modul8-bias-changed(index: int, value: float);
     callback modul8-target-changed(index: int, value: int);
 
     width: 1242px;
@@ -856,6 +858,7 @@ export component TapeEngine inherits Rectangle {
                         modul8-sync <=> root.modul8-sync;
                         modul8-division <=> root.modul8-division;
                         modul8-amount <=> root.modul8-amount;
+                        modul8-bias <=> root.modul8-bias;
                         modul8-target <=> root.modul8-target;
                         toggle-modul8-enabled => root.toggle-modul8-enabled();
                         modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
@@ -863,6 +866,7 @@ export component TapeEngine inherits Rectangle {
                         modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
                         modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
                         modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                        modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
                         modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                     }
                 }

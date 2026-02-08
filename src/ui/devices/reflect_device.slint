@@ -187,18 +187,26 @@ export component ReflectDevice {
                             sensitivity: 0.01; scroll-sensitivity: 0.01;
                             value-changed(v) => { root.reflect-decay = v; root.reflect-decay-changed(v); }
                         }
-                        RDSButton {
-                            label: "Clear";
-                            button-width: 76px;
-                            button-height: 28px;
-                            clicked => root.reflect-clear();
-                        }
-                        RDSButton {
-                            label: "Freeze";
-                            active: root.reflect-freeze;
-                            button-width: 76px;
-                            button-height: 28px;
-                            clicked => root.toggle-reflect-freeze();
+                        VerticalLayout {
+                            width: 156px;
+                            HorizontalLayout {
+                                padding-bottom: 12px;
+                                RDSButton {
+                                    label: "Clear";
+                                    button-width: 76px;
+                                    button-height: 28px;
+                                    clicked => root.reflect-clear();
+                                }
+                            }
+                            HorizontalLayout {
+                                RDSButton {
+                                    label: "Freeze";
+                                    active: root.reflect-freeze;
+                                    button-width: 76px;
+                                    button-height: 28px;
+                                    clicked => root.toggle-reflect-freeze();
+                                }
+                            }
                         }
                     }
                 }
@@ -244,25 +252,30 @@ export component ReflectDevice {
                             value-changed(v) => { root.reflect-feedback = v; root.reflect-feedback-changed(v); }
                         }
                         VerticalLayout {
-                            RDSComboBox {
-                                width: 140px;
-                                model: ["Straight", "Dotted", "Triplet", "Free"];
-                                current-index: root.reflect-time-mode;
-                                selected(index) => {
-                                    root.reflect-time-mode = index;
-                                    root.reflect-time-mode-selected(index);
+                            HorizontalLayout {
+                                padding-bottom: 12px;
+                                RDSComboBox {
+                                    width: 74px;
+                                    model: ["Straight", "Dotted", "Triplet", "Free"];
+                                    current-index: root.reflect-time-mode;
+                                    selected(index) => {
+                                        root.reflect-time-mode = index;
+                                        root.reflect-time-mode-selected(index);
+                                    }
                                 }
                             }
-                            RDSComboBox {
-                                width: 140px;
-                                model: root.reflect-time-division-model;
-                                current-index: root.reflect-time-division-index-ui;
-                                enabled: root.reflect-time-mode != 3;
-                                selected(index) => {
-                                    let next = Math.max(0, Math.min(root.reflect-time-divisions.length - 1, index));
-                                    let norm = next / Math.max(1, root.reflect-time-divisions.length - 1);
-                                    root.reflect-time = norm;
-                                    root.reflect-time-changed(norm);
+                            HorizontalLayout {
+                                RDSComboBox {
+                                    width: 74px;
+                                    model: root.reflect-time-division-model;
+                                    current-index: root.reflect-time-division-index-ui;
+                                    enabled: root.reflect-time-mode != 3;
+                                    selected(index) => {
+                                        let next = Math.max(0, Math.min(root.reflect-time-divisions.length - 1, index));
+                                        let norm = next / Math.max(1, root.reflect-time-divisions.length - 1);
+                                        root.reflect-time = norm;
+                                        root.reflect-time-changed(norm);
+                                    }
                                 }
                             }
                         }

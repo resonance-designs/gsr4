@@ -80,7 +80,7 @@ pub const FMMI_PAGE_SIZE: usize = 16;
 pub const FMMI_PAGES: usize = 8;
 pub const FMMI_STEPS: usize = FMMI_PAGE_SIZE * FMMI_PAGES;
 pub const MODUL8_LFOS: usize = 8;
-pub const MODUL8_TARGET_COUNT: u32 = 105;
+pub const MODUL8_TARGET_COUNT: u32 = 152;
 pub const SYNDRM_FILTER_TYPES: u32 = 4;
 pub const WAVEFORM_SUMMARY_SIZE: usize = 100;
 pub const RECORD_MAX_SECONDS: usize = 30;
@@ -591,6 +591,8 @@ struct Track {
     modul8_division: [AtomicU32; MODUL8_LFOS],
     /// Modul8 modulation amount (0..1).
     modul8_amount: [AtomicU32; MODUL8_LFOS],
+    /// Modul8 bias/center (0..1) within target range.
+    modul8_bias: [AtomicU32; MODUL8_LFOS],
     /// Modul8 destination index.
     modul8_target: [AtomicU32; MODUL8_LFOS],
     /// Modul8 oscillator phase.
@@ -883,6 +885,8 @@ struct Track {
     kick_cut_by: AtomicU32,
     /// SynDRM kick trigger probability (0..1).
     kick_prob: AtomicU32,
+    /// SynDRM kick lane enabled.
+    kick_lane_enabled: AtomicBool,
     /// SynDRM kick sequencer grid (128 steps).
     kick_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM kick sequencer current step.
@@ -922,6 +926,8 @@ struct Track {
     snare_cut_by: AtomicU32,
     /// SynDRM snare trigger probability (0..1).
     snare_prob: AtomicU32,
+    /// SynDRM snare lane enabled.
+    snare_lane_enabled: AtomicBool,
     /// SynDRM snare sequencer grid (128 steps).
     snare_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM snare sequencer current step.
@@ -962,6 +968,8 @@ struct Track {
     clap_cut_by: AtomicU32,
     /// SynDRM clap trigger probability (0..1).
     clap_prob: AtomicU32,
+    /// SynDRM clap lane enabled.
+    clap_lane_enabled: AtomicBool,
     /// SynDRM clap sequencer grid (128 steps).
     clap_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM clap sequencer current step.
@@ -996,6 +1004,8 @@ struct Track {
     hat_cut_by: AtomicU32,
     /// SynDRM hat trigger probability (0..1).
     hat_prob: AtomicU32,
+    /// SynDRM hat lane enabled.
+    hat_lane_enabled: AtomicBool,
     /// SynDRM hat sequencer grid (128 steps).
     hat_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM hat sequencer current step.
@@ -1040,6 +1050,8 @@ struct Track {
     perc1_cut_by: AtomicU32,
     /// SynDRM perc1 trigger probability (0..1).
     perc1_prob: AtomicU32,
+    /// SynDRM perc1 lane enabled.
+    perc1_lane_enabled: AtomicBool,
     /// SynDRM perc1 sequencer grid (128 steps).
     perc1_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM perc1 sequencer current step.
@@ -1072,6 +1084,8 @@ struct Track {
     perc2_cut_by: AtomicU32,
     /// SynDRM perc2 trigger probability (0..1).
     perc2_prob: AtomicU32,
+    /// SynDRM perc2 lane enabled.
+    perc2_lane_enabled: AtomicBool,
     /// SynDRM perc2 sequencer grid (128 steps).
     perc2_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM perc2 sequencer current step.
@@ -1108,6 +1122,8 @@ struct Track {
     crash_cut_by: AtomicU32,
     /// SynDRM crash trigger probability (0..1).
     crash_prob: AtomicU32,
+    /// SynDRM crash lane enabled.
+    crash_lane_enabled: AtomicBool,
     /// SynDRM crash sequencer grid (128 steps).
     crash_sequencer_grid: Arc<[AtomicBool; SYNDRM_STEPS]>,
     /// SynDRM crash sequencer current step.
@@ -1152,6 +1168,8 @@ struct Track {
     samp_cut_by: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
     /// SynDRM sample channel trigger probability (0..1).
     samp_prob: [AtomicU32; SYNDRM_SAMPLE_CHANNELS],
+    /// SynDRM sample channel lane enabled.
+    samp_lane_enabled: [AtomicBool; SYNDRM_SAMPLE_CHANNELS],
     /// SynDRM sample channel sequencer grid (128 steps).
     samp_sequencer_grid: [Arc<[AtomicBool; SYNDRM_STEPS]>; SYNDRM_SAMPLE_CHANNELS],
     /// SynDRM sample channel sequencer current step.
@@ -1736,6 +1754,7 @@ impl Default for Track {
             modul8_sync: std::array::from_fn(|_| AtomicBool::new(true)),
             modul8_division: std::array::from_fn(|_| AtomicU32::new(0)),
             modul8_amount: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            modul8_bias: std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits())),
             modul8_target: std::array::from_fn(|_| AtomicU32::new(0)),
             modul8_phase: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
             modul8_snh: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
@@ -1901,6 +1920,7 @@ impl Default for Track {
             kick_cut_group: AtomicU32::new(0),
             kick_cut_by: AtomicU32::new(0),
             kick_prob: AtomicU32::new(1.0f32.to_bits()),
+            kick_lane_enabled: AtomicBool::new(true),
             kick_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             kick_sequencer_step: AtomicI32::new(-1),
             kick_sequencer_phase: AtomicU32::new(0),
@@ -1921,6 +1941,7 @@ impl Default for Track {
             snare_cut_group: AtomicU32::new(0),
             snare_cut_by: AtomicU32::new(0),
             snare_prob: AtomicU32::new(1.0f32.to_bits()),
+            snare_lane_enabled: AtomicBool::new(true),
             snare_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             snare_sequencer_step: AtomicI32::new(-1),
             snare_sequencer_phase: AtomicU32::new(0),
@@ -1941,6 +1962,7 @@ impl Default for Track {
             clap_cut_group: AtomicU32::new(0),
             clap_cut_by: AtomicU32::new(0),
             clap_prob: AtomicU32::new(1.0f32.to_bits()),
+            clap_lane_enabled: AtomicBool::new(true),
             clap_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             clap_sequencer_step: AtomicI32::new(-1),
             clap_sequencer_phase: AtomicU32::new(0),
@@ -1958,6 +1980,7 @@ impl Default for Track {
             hat_cut_group: AtomicU32::new(0),
             hat_cut_by: AtomicU32::new(0),
             hat_prob: AtomicU32::new(1.0f32.to_bits()),
+            hat_lane_enabled: AtomicBool::new(true),
             hat_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             hat_sequencer_step: AtomicI32::new(-1),
             hat_sequencer_phase: AtomicU32::new(0),
@@ -1980,6 +2003,7 @@ impl Default for Track {
             perc1_cut_group: AtomicU32::new(0),
             perc1_cut_by: AtomicU32::new(0),
             perc1_prob: AtomicU32::new(1.0f32.to_bits()),
+            perc1_lane_enabled: AtomicBool::new(true),
             perc1_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             perc1_sequencer_step: AtomicI32::new(-1),
             perc1_sequencer_phase: AtomicU32::new(0),
@@ -1996,6 +2020,7 @@ impl Default for Track {
             perc2_cut_group: AtomicU32::new(0),
             perc2_cut_by: AtomicU32::new(0),
             perc2_prob: AtomicU32::new(1.0f32.to_bits()),
+            perc2_lane_enabled: AtomicBool::new(true),
             perc2_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             perc2_sequencer_step: AtomicI32::new(-1),
             perc2_sequencer_phase: AtomicU32::new(0),
@@ -2014,6 +2039,7 @@ impl Default for Track {
             crash_cut_group: AtomicU32::new(0),
             crash_cut_by: AtomicU32::new(0),
             crash_prob: AtomicU32::new(1.0f32.to_bits()),
+            crash_lane_enabled: AtomicBool::new(true),
             crash_sequencer_grid: Arc::new(std::array::from_fn(|_| AtomicBool::new(false))),
             crash_sequencer_step: AtomicI32::new(-1),
             crash_sequencer_phase: AtomicU32::new(0),
@@ -2036,6 +2062,7 @@ impl Default for Track {
             samp_cut_group: std::array::from_fn(|_| AtomicU32::new(0)),
             samp_cut_by: std::array::from_fn(|_| AtomicU32::new(0)),
             samp_prob: std::array::from_fn(|_| AtomicU32::new(1.0f32.to_bits())),
+            samp_lane_enabled: std::array::from_fn(|_| AtomicBool::new(true)),
             samp_sequencer_grid: std::array::from_fn(|_| {
                 Arc::new(std::array::from_fn(|_| AtomicBool::new(false)))
             }),
@@ -2755,14 +2782,13 @@ impl Default for TLBX1Params {
 
             master_filter: FloatParam::new(
                 "Master DJ Filter",
-                0.5,
+                1.0,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )
             .with_value_to_string(Arc::new(|v| {
+                let v = (v * 0.5).clamp(0.0, 0.5);
                 if v < 0.49 {
                     format!("HP {:.0} Hz", 20.0 + (1.0 - v / 0.5) * 2000.0)
-                } else if v > 0.51 {
-                    format!("LP {:.0} Hz", 20000.0 - ((v - 0.5) / 0.5) * 19000.0)
                 } else {
                     "Neutral".to_string()
                 }
@@ -3006,6 +3032,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
         track.modul8_sync[i].store(true, Ordering::Relaxed);
         track.modul8_division[i].store(0, Ordering::Relaxed);
         track.modul8_amount[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_bias[i].store(0.5f32.to_bits(), Ordering::Relaxed);
         track.modul8_target[i].store(0, Ordering::Relaxed);
         track.modul8_phase[i].store(0.0f32.to_bits(), Ordering::Relaxed);
         track.modul8_snh[i].store(0.0f32.to_bits(), Ordering::Relaxed);
@@ -3320,6 +3347,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.kick_cut_group.store(0, Ordering::Relaxed);
     track.kick_cut_by.store(0, Ordering::Relaxed);
     track.kick_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.kick_lane_enabled.store(true, Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.kick_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -3342,6 +3370,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.snare_cut_group.store(0, Ordering::Relaxed);
     track.snare_cut_by.store(0, Ordering::Relaxed);
     track.snare_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.snare_lane_enabled.store(true, Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.snare_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -3364,6 +3393,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.clap_cut_group.store(0, Ordering::Relaxed);
     track.clap_cut_by.store(0, Ordering::Relaxed);
     track.clap_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.clap_lane_enabled.store(true, Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.clap_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -3383,6 +3413,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.hat_cut_group.store(0, Ordering::Relaxed);
     track.hat_cut_by.store(0, Ordering::Relaxed);
     track.hat_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.hat_lane_enabled.store(true, Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.hat_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -3409,6 +3440,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.perc1_cut_group.store(0, Ordering::Relaxed);
     track.perc1_cut_by.store(0, Ordering::Relaxed);
     track.perc1_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.perc1_lane_enabled.store(true, Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.perc1_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -3427,6 +3459,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.perc2_cut_group.store(0, Ordering::Relaxed);
     track.perc2_cut_by.store(0, Ordering::Relaxed);
     track.perc2_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.perc2_lane_enabled.store(true, Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.perc2_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -3449,6 +3482,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.crash_cut_group.store(0, Ordering::Relaxed);
     track.crash_cut_by.store(0, Ordering::Relaxed);
     track.crash_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.crash_lane_enabled.store(true, Ordering::Relaxed);
     for i in 0..SYNDRM_STEPS {
         track.crash_sequencer_grid[i].store(false, Ordering::Relaxed);
     }
@@ -3469,6 +3503,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
         track.samp_cut_group[samp_idx].store(0, Ordering::Relaxed);
         track.samp_cut_by[samp_idx].store(0, Ordering::Relaxed);
         track.samp_prob[samp_idx].store(1.0f32.to_bits(), Ordering::Relaxed);
+        track.samp_lane_enabled[samp_idx].store(true, Ordering::Relaxed);
     }
     track.syndrm_page.store(0, Ordering::Relaxed);
     track.syndrm_edit_lane.store(0, Ordering::Relaxed);
@@ -7081,38 +7116,46 @@ impl TLBX1 {
                         };
 
                         let kick_trigger = should_trigger(
-                            track.kick_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            track.kick_lane_enabled.load(Ordering::Relaxed)
+                                && track.kick_sequencer_grid[step_idx].load(Ordering::Relaxed),
                             kick_prob,
                         );
                         let snare_trigger = should_trigger(
-                            track.snare_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            track.snare_lane_enabled.load(Ordering::Relaxed)
+                                && track.snare_sequencer_grid[step_idx].load(Ordering::Relaxed),
                             snare_prob,
                         );
                         let clap_trigger = should_trigger(
-                            track.clap_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            track.clap_lane_enabled.load(Ordering::Relaxed)
+                                && track.clap_sequencer_grid[step_idx].load(Ordering::Relaxed),
                             clap_prob,
                         );
                         let hat_trigger = should_trigger(
-                            track.hat_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            track.hat_lane_enabled.load(Ordering::Relaxed)
+                                && track.hat_sequencer_grid[step_idx].load(Ordering::Relaxed),
                             hat_prob,
                         );
                         let perc1_trigger = should_trigger(
-                            track.perc1_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            track.perc1_lane_enabled.load(Ordering::Relaxed)
+                                && track.perc1_sequencer_grid[step_idx].load(Ordering::Relaxed),
                             perc1_prob,
                         );
                         let perc2_trigger = should_trigger(
-                            track.perc2_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            track.perc2_lane_enabled.load(Ordering::Relaxed)
+                                && track.perc2_sequencer_grid[step_idx].load(Ordering::Relaxed),
                             perc2_prob,
                         );
                         let crash_trigger = should_trigger(
-                            track.crash_sequencer_grid[step_idx].load(Ordering::Relaxed),
+                            track.crash_lane_enabled.load(Ordering::Relaxed)
+                                && track.crash_sequencer_grid[step_idx].load(Ordering::Relaxed),
                             crash_prob,
                         );
                         let mut samp_triggers = [false; SYNDRM_SAMPLE_CHANNELS];
                         for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
                             samp_triggers[samp_idx] = should_trigger(
-                                track.samp_sequencer_grid[samp_idx][step_idx]
-                                    .load(Ordering::Relaxed),
+                                track.samp_lane_enabled[samp_idx].load(Ordering::Relaxed)
+                                    && track.samp_sequencer_grid[samp_idx][step_idx]
+                                        .load(Ordering::Relaxed),
                                 samp_prob[samp_idx],
                             );
                         }
@@ -9712,8 +9755,27 @@ impl TLBX1 {
         }
     }
 
-    fn process_track_modul8(track: &Track, num_buffer_samples: usize, tempo: f32, sample_rate: f32) {
+    fn process_track_modul8(
+        track: &Track,
+        num_buffer_samples: usize,
+        tempo: f32,
+        sample_rate: f32,
+        transport_running: bool,
+    ) {
         if num_buffer_samples == 0 || sample_rate <= 0.0 {
+            return;
+        }
+        if !transport_running {
+            for i in 0..MODUL8_LFOS {
+                let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
+                if prev_target != u32::MAX {
+                    let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+                    if modul8_target_range(prev_target).is_some() {
+                        modul8_target_set(track, prev_target, base);
+                    }
+                    track.modul8_base_target[i].store(u32::MAX, Ordering::Relaxed);
+                }
+            }
             return;
         }
         if !track.modul8_enabled.load(Ordering::Relaxed) {
@@ -9750,8 +9812,17 @@ impl TLBX1 {
                 continue;
             }
             let target_index = track.modul8_target[i].load(Ordering::Relaxed) as usize;
+            let target_index = target_index.min(target_ids.len().saturating_sub(1));
             let target = *target_ids.get(target_index).unwrap_or(&0);
             if target == 0 || target >= MODUL8_TARGET_COUNT {
+                let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
+                if prev_target != u32::MAX {
+                    let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+                    if modul8_target_range(prev_target).is_some() {
+                        modul8_target_set(track, prev_target, base);
+                    }
+                    track.modul8_base_target[i].store(u32::MAX, Ordering::Relaxed);
+                }
                 continue;
             }
             let Some((min_v, max_v)) = modul8_target_range(target) else {
@@ -9774,13 +9845,13 @@ impl TLBX1 {
                 }
             }
 
-            let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
             let wave = track.modul8_wave[i].load(Ordering::Relaxed).min(4);
             let rate = f32::from_bits(track.modul8_rate[i].load(Ordering::Relaxed));
             let sync = track.modul8_sync[i].load(Ordering::Relaxed);
             let div = track.modul8_division[i].load(Ordering::Relaxed);
             let mut phase = f32::from_bits(track.modul8_phase[i].load(Ordering::Relaxed)).fract();
             let mut snh = f32::from_bits(track.modul8_snh[i].load(Ordering::Relaxed));
+            let bias = f32::from_bits(track.modul8_bias[i].load(Ordering::Relaxed)).clamp(0.0, 1.0);
             let freq_hz = modul8_rate_hz(rate, sync, div, tempo);
             let phase_advance = (freq_hz * num_buffer_samples as f32 / sample_rate).max(0.0);
             let wrapped = phase + phase_advance;
@@ -9791,9 +9862,9 @@ impl TLBX1 {
             }
             let lfo = lfo_waveform_value(wave, phase, snh);
             let range = max_v - min_v;
-            let lfo_unipolar = 0.5 * (lfo + 1.0);
-            let lfo_value = min_v + lfo_unipolar * range;
-            let value = (base + (lfo_value - base) * amount).clamp(min_v, max_v);
+            let center = min_v + bias * range;
+            let amplitude = (center - min_v).min(max_v - center);
+            let value = (center + lfo * amplitude * amount).clamp(min_v, max_v);
             modul8_target_set(track, target, value);
             track.modul8_phase[i].store(phase.to_bits(), Ordering::Relaxed);
             track.modul8_snh[i].store(snh.to_bits(), Ordering::Relaxed);
@@ -10927,6 +10998,15 @@ impl Plugin for TLBX1 {
 
             let engine_type = track.engine_type.load(Ordering::Relaxed);
             let track_muted = track.is_muted.load(Ordering::Relaxed);
+            if engine_type != 0 {
+                Self::process_track_modul8(
+                    track,
+                    buffer.samples(),
+                    global_tempo,
+                    master_sr,
+                    transport_running,
+                );
+            }
             let should_process =
                 transport_running || matches!(engine_type, 2 | 3 | 4 | 5);
             if !should_process {
@@ -10961,8 +11041,6 @@ impl Plugin for TLBX1 {
             }
 
             keep_alive = true;
-
-            Self::process_track_modul8(track, buffer.samples(), global_tempo, master_sr);
 
             // Clear track buffer
             for channel in self.track_buffer.iter_mut() {
@@ -11793,7 +11871,7 @@ impl Plugin for TLBX1 {
         let num_samples = buffer.samples();
 
         for sample_idx in 0..num_samples {
-            let master_filter = self.params.master_filter.smoothed.next();
+            let master_filter = (self.params.master_filter.smoothed.next() * 0.5).clamp(0.0, 0.5);
             let master_comp = self.params.master_comp.smoothed.next();
 
             // Calculate DJ Filter coefficients
@@ -11804,10 +11882,6 @@ impl Plugin for TLBX1 {
             if master_filter < 0.49 {
                 filter_type = 1; // HP
                 let cutoff_hz = 20.0 + (1.0 - master_filter / 0.5) * 2000.0;
-                f = (PI * cutoff_hz / sr).tan();
-            } else if master_filter > 0.51 {
-                filter_type = 2; // LP
-                let cutoff_hz = 20000.0 - ((master_filter - 0.5) / 0.5) * 19000.0;
                 f = (PI * cutoff_hz / sr).tan();
             }
 
@@ -12116,21 +12190,24 @@ const MODUL8_TARGET_IDS_DEFAULT: [u32; 46] = [
     81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
     102, 103, 104,
 ];
-const MODUL8_TARGET_IDS_TAPE: [u32; 50] = [
-    0, 1, 2, 3, 4, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,
-    78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99,
-    100, 101, 102, 103, 104,
+const MODUL8_TARGET_IDS_TAPE: [u32; 54] = [
+    0, 1, 2, 3, 4, 148, 149, 150, 151, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73,
+    74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
+    96, 97, 98, 99, 100, 101, 102, 103, 104,
 ];
 const MODUL8_TARGET_IDS_ANIMATE: [u32; 48] = [
     0, 5, 6, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
     80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
     102, 103, 104,
 ];
-const MODUL8_TARGET_IDS_SYNDRM: [u32; 82] = [
-    0, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
-    46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
-    68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
-    90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+const MODUL8_TARGET_IDS_SYNDRM: [u32; 125] = [
+    0, 24, 105, 25, 26, 27, 28, 106, 107, 29, 30, 31, 32, 33, 34, 108, 109, 35, 36, 37, 38, 39,
+    110, 111, 40, 41, 42, 43, 44, 112, 113, 45, 46, 47, 48, 49, 114, 115, 50, 51, 52, 53, 54,
+    116, 117, 55, 56, 57, 58, 59, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 60, 61, 62,
+    128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145,
+    146, 147, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82,
+    83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103,
+    104,
 ];
 const MODUL8_TARGET_IDS_VOID: [u32; 55] = [
     0, 7, 8, 9, 10, 11, 12, 13, 14, 15, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
@@ -12162,6 +12239,10 @@ macro_rules! modul8_targets {
             2, "Tape: Rotate", 0.0, 1.0, tape_rotate;
             3, "Tape: Glide", 0.0, 1.0, tape_glide;
             4, "Tape: SOS", 0.0, 1.0, tape_sos;
+            148, "Tape: T. Start", 0.0, 1.0, trigger_start;
+            149, "Tape: L. Start", 0.0, 1.0, loop_start;
+            150, "Tape: Length", 0.0, 1.0, loop_length;
+            151, "Tape: XFade", 0.0, 0.5, loop_xfade;
             5, "Animate: Vector X", 0.0, 1.0, animate_vector_x;
             6, "Animate: Vector Y", 0.0, 1.0, animate_vector_y;
             7, "Void: Base Freq", 20.0, 200.0, void_base_freq;
@@ -12186,37 +12267,51 @@ macro_rules! modul8_targets {
             26, "SynDRM Kick: Attack", 0.0, 1.0, kick_attack;
             27, "SynDRM Kick: Drive", 0.0, 1.0, kick_drive;
             28, "SynDRM Kick: Level", 0.0, 1.0, kick_level;
+            106, "SynDRM Kick: Cut", 0.0, 1.0, kick_filter_cutoff;
+            107, "SynDRM Kick: Res", 0.0, 1.0, kick_filter_resonance;
             29, "SynDRM Snare: Tone", 0.0, 1.0, snare_tone;
             30, "SynDRM Snare: Decay", 0.0, 1.0, snare_decay;
             31, "SynDRM Snare: Snappy", 0.0, 1.0, snare_snappy;
             32, "SynDRM Snare: Attack", 0.0, 1.0, snare_attack;
             33, "SynDRM Snare: Drive", 0.0, 1.0, snare_drive;
             34, "SynDRM Snare: Level", 0.0, 1.0, snare_level;
+            108, "SynDRM Snare: Cut", 0.0, 1.0, snare_filter_cutoff;
+            109, "SynDRM Snare: Res", 0.0, 1.0, snare_filter_resonance;
             35, "SynDRM Clap: Pitch", 0.0, 1.0, clap_pitch;
             36, "SynDRM Clap: Decay", 0.0, 1.0, clap_decay;
             37, "SynDRM Clap: Tone", 0.0, 1.0, clap_tone;
             38, "SynDRM Clap: Drive", 0.0, 1.0, clap_drive;
             39, "SynDRM Clap: Level", 0.0, 1.0, clap_level;
+            110, "SynDRM Clap: Cut", 0.0, 1.0, clap_filter_cutoff;
+            111, "SynDRM Clap: Res", 0.0, 1.0, clap_filter_resonance;
             40, "SynDRM Hat: Pitch", 0.0, 1.0, hat_pitch;
             41, "SynDRM Hat: Decay", 0.0, 1.0, hat_decay;
             42, "SynDRM Hat: Tone", 0.0, 1.0, hat_tone;
             43, "SynDRM Hat: Drive", 0.0, 1.0, hat_drive;
             44, "SynDRM Hat: Level", 0.0, 1.0, hat_level;
+            112, "SynDRM Hat: Cut", 0.0, 1.0, hat_filter_cutoff;
+            113, "SynDRM Hat: Res", 0.0, 1.0, hat_filter_resonance;
             45, "SynDRM Perc1: Pitch", 0.0, 1.0, perc1_pitch;
             46, "SynDRM Perc1: Decay", 0.0, 1.0, perc1_decay;
             47, "SynDRM Perc1: Tone", 0.0, 1.0, perc1_tone;
             48, "SynDRM Perc1: Drive", 0.0, 1.0, perc1_drive;
             49, "SynDRM Perc1: Level", 0.0, 1.0, perc1_level;
+            114, "SynDRM Perc1: Cut", 0.0, 1.0, perc1_filter_cutoff;
+            115, "SynDRM Perc1: Res", 0.0, 1.0, perc1_filter_resonance;
             50, "SynDRM Perc2: Pitch", 0.0, 1.0, perc2_pitch;
             51, "SynDRM Perc2: Decay", 0.0, 1.0, perc2_decay;
             52, "SynDRM Perc2: Tone", 0.0, 1.0, perc2_tone;
             53, "SynDRM Perc2: Drive", 0.0, 1.0, perc2_drive;
             54, "SynDRM Perc2: Level", 0.0, 1.0, perc2_level;
+            116, "SynDRM Perc2: Cut", 0.0, 1.0, perc2_filter_cutoff;
+            117, "SynDRM Perc2: Res", 0.0, 1.0, perc2_filter_resonance;
             55, "SynDRM Crash: Tone", 0.0, 1.0, crash_tone;
             56, "SynDRM Crash: Decay", 0.0, 1.0, crash_decay;
             57, "SynDRM Crash: Pitch", 0.0, 1.0, crash_pitch;
             58, "SynDRM Crash: Drive", 0.0, 1.0, crash_drive;
             59, "SynDRM Crash: Level", 0.0, 1.0, crash_level;
+            118, "SynDRM Crash: Cut", 0.0, 1.0, crash_filter_cutoff;
+            119, "SynDRM Crash: Res", 0.0, 1.0, crash_filter_resonance;
             60, "Granulator: Pitch", 0.0, 1.0, mosaic_pitch;
             61, "Granulator: Rate", 0.0, 1.0, mosaic_rate;
             62, "Granulator: Size", 0.0, 1.0, mosaic_size;
@@ -12262,6 +12357,7 @@ macro_rules! modul8_targets {
             102, "Reflect: Damp", 0.0, 1.0, reflect_damp;
             103, "Reflect: Decay", 0.0, 1.0, reflect_decay;
             104, "Reflect: Post Gain", 0.0, 1.0, reflect_post_gain;
+            105, "SynDRM Kick: P Env", 0.0, 1.0, kick_pitch_env_amount;
         )
     };
 }
@@ -12277,7 +12373,37 @@ macro_rules! modul8_target_label_match {
 }
 
 fn modul8_target_label(target: u32) -> &'static str {
-    modul8_targets!(modul8_target_label_match, target)
+    match target {
+        120 => "SynDRM Samp 1: Cut",
+        121 => "SynDRM Samp 1: Res",
+        122 => "SynDRM Samp 2: Cut",
+        123 => "SynDRM Samp 2: Res",
+        124 => "SynDRM Samp 3: Cut",
+        125 => "SynDRM Samp 3: Res",
+        126 => "SynDRM Samp 4: Cut",
+        127 => "SynDRM Samp 4: Res",
+        128 => "SynDRM Samp 1: Pitch",
+        129 => "SynDRM Samp 1: Attack",
+        130 => "SynDRM Samp 1: Decay",
+        131 => "SynDRM Samp 1: Drive",
+        132 => "SynDRM Samp 1: Level",
+        133 => "SynDRM Samp 2: Pitch",
+        134 => "SynDRM Samp 2: Attack",
+        135 => "SynDRM Samp 2: Decay",
+        136 => "SynDRM Samp 2: Drive",
+        137 => "SynDRM Samp 2: Level",
+        138 => "SynDRM Samp 3: Pitch",
+        139 => "SynDRM Samp 3: Attack",
+        140 => "SynDRM Samp 3: Decay",
+        141 => "SynDRM Samp 3: Drive",
+        142 => "SynDRM Samp 3: Level",
+        143 => "SynDRM Samp 4: Pitch",
+        144 => "SynDRM Samp 4: Attack",
+        145 => "SynDRM Samp 4: Decay",
+        146 => "SynDRM Samp 4: Drive",
+        147 => "SynDRM Samp 4: Level",
+        _ => modul8_targets!(modul8_target_label_match, target),
+    }
 }
 
 macro_rules! modul8_target_range_match {
@@ -12290,7 +12416,10 @@ macro_rules! modul8_target_range_match {
 }
 
 fn modul8_target_range(target: u32) -> Option<(f32, f32)> {
-    modul8_targets!(modul8_target_range_match, target)
+    match target {
+        120..=147 => Some((0.0, 1.0)),
+        _ => modul8_targets!(modul8_target_range_match, target),
+    }
 }
 
 macro_rules! modul8_target_get_match {
@@ -12303,7 +12432,37 @@ macro_rules! modul8_target_get_match {
 }
 
 fn modul8_target_get(track: &Track, target: u32) -> Option<f32> {
-    modul8_targets!(modul8_target_get_match, track, target)
+    match target {
+        120 => Some(f32::from_bits(track.samp_filter_cutoff[0].load(Ordering::Relaxed))),
+        121 => Some(f32::from_bits(track.samp_filter_resonance[0].load(Ordering::Relaxed))),
+        122 => Some(f32::from_bits(track.samp_filter_cutoff[1].load(Ordering::Relaxed))),
+        123 => Some(f32::from_bits(track.samp_filter_resonance[1].load(Ordering::Relaxed))),
+        124 => Some(f32::from_bits(track.samp_filter_cutoff[2].load(Ordering::Relaxed))),
+        125 => Some(f32::from_bits(track.samp_filter_resonance[2].load(Ordering::Relaxed))),
+        126 => Some(f32::from_bits(track.samp_filter_cutoff[3].load(Ordering::Relaxed))),
+        127 => Some(f32::from_bits(track.samp_filter_resonance[3].load(Ordering::Relaxed))),
+        128 => Some(f32::from_bits(track.samp_pitch[0].load(Ordering::Relaxed))),
+        129 => Some(f32::from_bits(track.samp_attack[0].load(Ordering::Relaxed))),
+        130 => Some(f32::from_bits(track.samp_decay[0].load(Ordering::Relaxed))),
+        131 => Some(f32::from_bits(track.samp_drive[0].load(Ordering::Relaxed))),
+        132 => Some(f32::from_bits(track.samp_level[0].load(Ordering::Relaxed))),
+        133 => Some(f32::from_bits(track.samp_pitch[1].load(Ordering::Relaxed))),
+        134 => Some(f32::from_bits(track.samp_attack[1].load(Ordering::Relaxed))),
+        135 => Some(f32::from_bits(track.samp_decay[1].load(Ordering::Relaxed))),
+        136 => Some(f32::from_bits(track.samp_drive[1].load(Ordering::Relaxed))),
+        137 => Some(f32::from_bits(track.samp_level[1].load(Ordering::Relaxed))),
+        138 => Some(f32::from_bits(track.samp_pitch[2].load(Ordering::Relaxed))),
+        139 => Some(f32::from_bits(track.samp_attack[2].load(Ordering::Relaxed))),
+        140 => Some(f32::from_bits(track.samp_decay[2].load(Ordering::Relaxed))),
+        141 => Some(f32::from_bits(track.samp_drive[2].load(Ordering::Relaxed))),
+        142 => Some(f32::from_bits(track.samp_level[2].load(Ordering::Relaxed))),
+        143 => Some(f32::from_bits(track.samp_pitch[3].load(Ordering::Relaxed))),
+        144 => Some(f32::from_bits(track.samp_attack[3].load(Ordering::Relaxed))),
+        145 => Some(f32::from_bits(track.samp_decay[3].load(Ordering::Relaxed))),
+        146 => Some(f32::from_bits(track.samp_drive[3].load(Ordering::Relaxed))),
+        147 => Some(f32::from_bits(track.samp_level[3].load(Ordering::Relaxed))),
+        _ => modul8_targets!(modul8_target_get_match, track, target),
+    }
 }
 
 macro_rules! modul8_target_set_match {
@@ -12317,7 +12476,37 @@ macro_rules! modul8_target_set_match {
 
 fn modul8_target_set(track: &Track, target: u32, value: f32) {
     let bits = value.to_bits();
-    modul8_targets!(modul8_target_set_match, track, target, bits)
+    match target {
+        120 => track.samp_filter_cutoff[0].store(bits, Ordering::Relaxed),
+        121 => track.samp_filter_resonance[0].store(bits, Ordering::Relaxed),
+        122 => track.samp_filter_cutoff[1].store(bits, Ordering::Relaxed),
+        123 => track.samp_filter_resonance[1].store(bits, Ordering::Relaxed),
+        124 => track.samp_filter_cutoff[2].store(bits, Ordering::Relaxed),
+        125 => track.samp_filter_resonance[2].store(bits, Ordering::Relaxed),
+        126 => track.samp_filter_cutoff[3].store(bits, Ordering::Relaxed),
+        127 => track.samp_filter_resonance[3].store(bits, Ordering::Relaxed),
+        128 => track.samp_pitch[0].store(bits, Ordering::Relaxed),
+        129 => track.samp_attack[0].store(bits, Ordering::Relaxed),
+        130 => track.samp_decay[0].store(bits, Ordering::Relaxed),
+        131 => track.samp_drive[0].store(bits, Ordering::Relaxed),
+        132 => track.samp_level[0].store(bits, Ordering::Relaxed),
+        133 => track.samp_pitch[1].store(bits, Ordering::Relaxed),
+        134 => track.samp_attack[1].store(bits, Ordering::Relaxed),
+        135 => track.samp_decay[1].store(bits, Ordering::Relaxed),
+        136 => track.samp_drive[1].store(bits, Ordering::Relaxed),
+        137 => track.samp_level[1].store(bits, Ordering::Relaxed),
+        138 => track.samp_pitch[2].store(bits, Ordering::Relaxed),
+        139 => track.samp_attack[2].store(bits, Ordering::Relaxed),
+        140 => track.samp_decay[2].store(bits, Ordering::Relaxed),
+        141 => track.samp_drive[2].store(bits, Ordering::Relaxed),
+        142 => track.samp_level[2].store(bits, Ordering::Relaxed),
+        143 => track.samp_pitch[3].store(bits, Ordering::Relaxed),
+        144 => track.samp_attack[3].store(bits, Ordering::Relaxed),
+        145 => track.samp_decay[3].store(bits, Ordering::Relaxed),
+        146 => track.samp_drive[3].store(bits, Ordering::Relaxed),
+        147 => track.samp_level[3].store(bits, Ordering::Relaxed),
+        _ => modul8_targets!(modul8_target_set_match, track, target, bits),
+    }
 }
 
 fn fmmi_rand_next(state: &mut u32) -> u32 {
@@ -14999,6 +15188,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
         params.insert(format!("modul8_sync_{}", i), b(&track.modul8_sync[i]));
         params.insert(format!("modul8_division_{}", i), u(&track.modul8_division[i]));
         params.insert(format!("modul8_amount_{}", i), f(&track.modul8_amount[i]));
+        params.insert(format!("modul8_bias_{}", i), f(&track.modul8_bias[i]));
         params.insert(format!("modul8_target_{}", i), u(&track.modul8_target[i]));
     }
     params.insert("texture_enabled".to_string(), b(&track.texture_enabled));
@@ -15186,6 +15376,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("kick_cut_group".to_string(), u(&track.kick_cut_group));
     params.insert("kick_cut_by".to_string(), u(&track.kick_cut_by));
     params.insert("kick_prob".to_string(), f(&track.kick_prob));
+    params.insert("kick_lane_enabled".to_string(), b(&track.kick_lane_enabled));
     params.insert("snare_tone".to_string(), f(&track.snare_tone));
     params.insert("snare_decay".to_string(), f(&track.snare_decay));
     params.insert("snare_snappy".to_string(), f(&track.snare_snappy));
@@ -15199,6 +15390,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("snare_cut_group".to_string(), u(&track.snare_cut_group));
     params.insert("snare_cut_by".to_string(), u(&track.snare_cut_by));
     params.insert("snare_prob".to_string(), f(&track.snare_prob));
+    params.insert("snare_lane_enabled".to_string(), b(&track.snare_lane_enabled));
     params.insert("clap_pitch".to_string(), f(&track.clap_pitch));
     params.insert("clap_decay".to_string(), f(&track.clap_decay));
     params.insert("clap_tone".to_string(), f(&track.clap_tone));
@@ -15217,6 +15409,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("clap_cut_group".to_string(), u(&track.clap_cut_group));
     params.insert("clap_cut_by".to_string(), u(&track.clap_cut_by));
     params.insert("clap_prob".to_string(), f(&track.clap_prob));
+    params.insert("clap_lane_enabled".to_string(), b(&track.clap_lane_enabled));
     params.insert("hat_pitch".to_string(), f(&track.hat_pitch));
     params.insert("hat_decay".to_string(), f(&track.hat_decay));
     params.insert("hat_tone".to_string(), f(&track.hat_tone));
@@ -15229,6 +15422,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("hat_cut_group".to_string(), u(&track.hat_cut_group));
     params.insert("hat_cut_by".to_string(), u(&track.hat_cut_by));
     params.insert("hat_prob".to_string(), f(&track.hat_prob));
+    params.insert("hat_lane_enabled".to_string(), b(&track.hat_lane_enabled));
     params.insert("perc1_pitch".to_string(), f(&track.perc1_pitch));
     params.insert("perc1_decay".to_string(), f(&track.perc1_decay));
     params.insert("perc1_tone".to_string(), f(&track.perc1_tone));
@@ -15247,6 +15441,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("perc1_cut_group".to_string(), u(&track.perc1_cut_group));
     params.insert("perc1_cut_by".to_string(), u(&track.perc1_cut_by));
     params.insert("perc1_prob".to_string(), f(&track.perc1_prob));
+    params.insert("perc1_lane_enabled".to_string(), b(&track.perc1_lane_enabled));
     params.insert("perc2_pitch".to_string(), f(&track.perc2_pitch));
     params.insert("perc2_decay".to_string(), f(&track.perc2_decay));
     params.insert("perc2_tone".to_string(), f(&track.perc2_tone));
@@ -15265,6 +15460,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("perc2_cut_group".to_string(), u(&track.perc2_cut_group));
     params.insert("perc2_cut_by".to_string(), u(&track.perc2_cut_by));
     params.insert("perc2_prob".to_string(), f(&track.perc2_prob));
+    params.insert("perc2_lane_enabled".to_string(), b(&track.perc2_lane_enabled));
     params.insert("crash_pitch".to_string(), f(&track.crash_pitch));
     params.insert("crash_decay".to_string(), f(&track.crash_decay));
     params.insert("crash_tone".to_string(), f(&track.crash_tone));
@@ -15283,6 +15479,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("crash_cut_group".to_string(), u(&track.crash_cut_group));
     params.insert("crash_cut_by".to_string(), u(&track.crash_cut_by));
     params.insert("crash_prob".to_string(), f(&track.crash_prob));
+    params.insert("crash_lane_enabled".to_string(), b(&track.crash_lane_enabled));
     for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
         params.insert(
             format!("samp_cut_group_{}", samp_idx),
@@ -15295,6 +15492,10 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
         params.insert(
             format!("samp_prob_{}", samp_idx),
             f(&track.samp_prob[samp_idx]),
+        );
+        params.insert(
+            format!("samp_lane_enabled_{}", samp_idx),
+            b(&track.samp_lane_enabled[samp_idx]),
         );
     }
     params.insert("syndrm_page".to_string(), u(&track.syndrm_page));
@@ -15858,6 +16059,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         track.modul8_sync[i].store(true, Ordering::Relaxed);
         track.modul8_division[i].store(0, Ordering::Relaxed);
         track.modul8_amount[i].store(0.0f32.to_bits(), Ordering::Relaxed);
+        track.modul8_bias[i].store(0.5f32.to_bits(), Ordering::Relaxed);
         track.modul8_target[i].store(0, Ordering::Relaxed);
         track.modul8_phase[i].store(0.0f32.to_bits(), Ordering::Relaxed);
         track.modul8_snh[i].store(0.0f32.to_bits(), Ordering::Relaxed);
@@ -15876,6 +16078,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         sb(&track.modul8_sync[i], &format!("modul8_sync_{}", i));
         su(&track.modul8_division[i], &format!("modul8_division_{}", i));
         sf(&track.modul8_amount[i], &format!("modul8_amount_{}", i));
+        sf(&track.modul8_bias[i], &format!("modul8_bias_{}", i));
         su(&track.modul8_target[i], &format!("modul8_target_{}", i));
     }
     track
@@ -16093,6 +16296,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su_clamp_0_14(&track.kick_cut_group, "kick_cut_group");
     su_clamp_0_14(&track.kick_cut_by, "kick_cut_by");
     sf_clamp_0_1(&track.kick_prob, "kick_prob");
+    sb(&track.kick_lane_enabled, "kick_lane_enabled");
     sf(&track.snare_tone, "snare_tone");
     sf(&track.snare_decay, "snare_decay");
     sf(&track.snare_snappy, "snare_snappy");
@@ -16106,6 +16310,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su_clamp_0_14(&track.snare_cut_group, "snare_cut_group");
     su_clamp_0_14(&track.snare_cut_by, "snare_cut_by");
     sf_clamp_0_1(&track.snare_prob, "snare_prob");
+    sb(&track.snare_lane_enabled, "snare_lane_enabled");
     sf(&track.clap_pitch, "clap_pitch");
     sf(&track.clap_decay, "clap_decay");
     sf(&track.clap_tone, "clap_tone");
@@ -16118,6 +16323,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su_clamp_0_14(&track.clap_cut_group, "clap_cut_group");
     su_clamp_0_14(&track.clap_cut_by, "clap_cut_by");
     sf_clamp_0_1(&track.clap_prob, "clap_prob");
+    sb(&track.clap_lane_enabled, "clap_lane_enabled");
     sf(&track.hat_pitch, "hat_pitch");
     sf(&track.hat_decay, "hat_decay");
     sf(&track.hat_tone, "hat_tone");
@@ -16130,6 +16336,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su_clamp_0_14(&track.hat_cut_group, "hat_cut_group");
     su_clamp_0_14(&track.hat_cut_by, "hat_cut_by");
     sf_clamp_0_1(&track.hat_prob, "hat_prob");
+    sb(&track.hat_lane_enabled, "hat_lane_enabled");
     sf(&track.perc1_pitch, "perc1_pitch");
     sf(&track.perc1_decay, "perc1_decay");
     sf(&track.perc1_tone, "perc1_tone");
@@ -16142,6 +16349,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su_clamp_0_14(&track.perc1_cut_group, "perc1_cut_group");
     su_clamp_0_14(&track.perc1_cut_by, "perc1_cut_by");
     sf_clamp_0_1(&track.perc1_prob, "perc1_prob");
+    sb(&track.perc1_lane_enabled, "perc1_lane_enabled");
     sf(&track.perc2_pitch, "perc2_pitch");
     sf(&track.perc2_decay, "perc2_decay");
     sf(&track.perc2_tone, "perc2_tone");
@@ -16154,6 +16362,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su_clamp_0_14(&track.perc2_cut_group, "perc2_cut_group");
     su_clamp_0_14(&track.perc2_cut_by, "perc2_cut_by");
     sf_clamp_0_1(&track.perc2_prob, "perc2_prob");
+    sb(&track.perc2_lane_enabled, "perc2_lane_enabled");
     sf(&track.crash_pitch, "crash_pitch");
     sf(&track.crash_decay, "crash_decay");
     sf(&track.crash_tone, "crash_tone");
@@ -16166,6 +16375,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     su_clamp_0_14(&track.crash_cut_group, "crash_cut_group");
     su_clamp_0_14(&track.crash_cut_by, "crash_cut_by");
     sf_clamp_0_1(&track.crash_prob, "crash_prob");
+    sb(&track.crash_lane_enabled, "crash_lane_enabled");
     for samp_idx in 0..SYNDRM_SAMPLE_CHANNELS {
         su_clamp_0_14(
             &track.samp_cut_group[samp_idx],
@@ -16178,6 +16388,10 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         sf_clamp_0_1(
             &track.samp_prob[samp_idx],
             &format!("samp_prob_{}", samp_idx),
+        );
+        sb(
+            &track.samp_lane_enabled[samp_idx],
+            &format!("samp_lane_enabled_{}", samp_idx),
         );
     }
     su(&track.syndrm_page, "syndrm_page");
@@ -16941,6 +17155,8 @@ struct SlintWindow {
     _library_folders_model: std::rc::Rc<VecModel<SharedString>>,
     current_folder_content_model: std::rc::Rc<VecModel<BrowserEntry>>,
     _animate_library: Arc<AnimateLibrary>,
+    last_modul8_engine_type: Option<u32>,
+    last_modul8_track_idx: Option<usize>,
 }
 
 impl SlintWindow {
@@ -17108,6 +17324,8 @@ impl SlintWindow {
             _library_folders_model: library_folders_model,
             current_folder_content_model,
             _animate_library: animate_library,
+            last_modul8_engine_type: None,
+            last_modul8_track_idx: None,
         }
     }
 
@@ -17349,6 +17567,9 @@ impl SlintWindow {
             .collect();
         let modul8_amount: Vec<f32> = (0..MODUL8_LFOS)
             .map(|i| f32::from_bits(self.tracks[track_idx].modul8_amount[i].load(Ordering::Relaxed)))
+            .collect();
+        let modul8_bias: Vec<f32> = (0..MODUL8_LFOS)
+            .map(|i| f32::from_bits(self.tracks[track_idx].modul8_bias[i].load(Ordering::Relaxed)))
             .collect();
         let active_engine_type = self.tracks[track_idx].engine_type.load(Ordering::Relaxed);
         let modul8_target_len = modul8_target_ids_for_engine(active_engine_type).len() as i32;
@@ -17635,6 +17856,7 @@ impl SlintWindow {
         let kick_cut_by = self.tracks[track_idx].kick_cut_by.load(Ordering::Relaxed) as f32;
         let kick_prob = f32::from_bits(self.tracks[track_idx].kick_prob.load(Ordering::Relaxed))
             .clamp(0.0, 1.0);
+        let kick_lane_enabled = self.tracks[track_idx].kick_lane_enabled.load(Ordering::Relaxed);
         let kick_sequencer_current_step =
             self.tracks[track_idx].kick_sequencer_step.load(Ordering::Relaxed);
         let mut kick_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
@@ -17666,6 +17888,7 @@ impl SlintWindow {
         let snare_cut_by = self.tracks[track_idx].snare_cut_by.load(Ordering::Relaxed) as f32;
         let snare_prob = f32::from_bits(self.tracks[track_idx].snare_prob.load(Ordering::Relaxed))
             .clamp(0.0, 1.0);
+        let snare_lane_enabled = self.tracks[track_idx].snare_lane_enabled.load(Ordering::Relaxed);
         let snare_sequencer_current_step =
             self.tracks[track_idx].snare_sequencer_step.load(Ordering::Relaxed);
         let mut snare_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
@@ -17695,6 +17918,7 @@ impl SlintWindow {
         let clap_cut_by = self.tracks[track_idx].clap_cut_by.load(Ordering::Relaxed) as f32;
         let clap_prob = f32::from_bits(self.tracks[track_idx].clap_prob.load(Ordering::Relaxed))
             .clamp(0.0, 1.0);
+        let clap_lane_enabled = self.tracks[track_idx].clap_lane_enabled.load(Ordering::Relaxed);
         let clap_sequencer_current_step =
             self.tracks[track_idx].clap_sequencer_step.load(Ordering::Relaxed);
         let mut clap_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
@@ -17718,6 +17942,7 @@ impl SlintWindow {
         let hat_cut_by = self.tracks[track_idx].hat_cut_by.load(Ordering::Relaxed) as f32;
         let hat_prob = f32::from_bits(self.tracks[track_idx].hat_prob.load(Ordering::Relaxed))
             .clamp(0.0, 1.0);
+        let hat_lane_enabled = self.tracks[track_idx].hat_lane_enabled.load(Ordering::Relaxed);
         let hat_sequencer_current_step =
             self.tracks[track_idx].hat_sequencer_step.load(Ordering::Relaxed);
         let mut hat_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
@@ -17741,6 +17966,7 @@ impl SlintWindow {
         let perc1_cut_by = self.tracks[track_idx].perc1_cut_by.load(Ordering::Relaxed) as f32;
         let perc1_prob = f32::from_bits(self.tracks[track_idx].perc1_prob.load(Ordering::Relaxed))
             .clamp(0.0, 1.0);
+        let perc1_lane_enabled = self.tracks[track_idx].perc1_lane_enabled.load(Ordering::Relaxed);
         let perc1_sequencer_current_step =
             self.tracks[track_idx].perc1_sequencer_step.load(Ordering::Relaxed);
         let mut perc1_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
@@ -17764,6 +17990,7 @@ impl SlintWindow {
         let perc2_cut_by = self.tracks[track_idx].perc2_cut_by.load(Ordering::Relaxed) as f32;
         let perc2_prob = f32::from_bits(self.tracks[track_idx].perc2_prob.load(Ordering::Relaxed))
             .clamp(0.0, 1.0);
+        let perc2_lane_enabled = self.tracks[track_idx].perc2_lane_enabled.load(Ordering::Relaxed);
         let perc2_sequencer_current_step =
             self.tracks[track_idx].perc2_sequencer_step.load(Ordering::Relaxed);
         let mut perc2_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
@@ -17793,6 +18020,7 @@ impl SlintWindow {
         let crash_cut_by = self.tracks[track_idx].crash_cut_by.load(Ordering::Relaxed) as f32;
         let crash_prob = f32::from_bits(self.tracks[track_idx].crash_prob.load(Ordering::Relaxed))
             .clamp(0.0, 1.0);
+        let crash_lane_enabled = self.tracks[track_idx].crash_lane_enabled.load(Ordering::Relaxed);
         let crash_sequencer_current_step =
             self.tracks[track_idx].crash_sequencer_step.load(Ordering::Relaxed);
         let mut crash_sequencer_grid = Vec::with_capacity(SYNDRM_STEPS);
@@ -17946,6 +18174,7 @@ impl SlintWindow {
         let mut samp_cut_group = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
         let mut samp_cut_by = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
         let mut samp_prob = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
+        let mut samp_lane_enabled = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
         let mut samp_sequencer_current_step = Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS);
         let mut samp_sequencer_grid =
             Vec::with_capacity(SYNDRM_SAMPLE_CHANNELS * SYNDRM_STEPS);
@@ -18001,6 +18230,9 @@ impl SlintWindow {
             samp_prob.push(
                 f32::from_bits(self.tracks[track_idx].samp_prob[samp_idx].load(Ordering::Relaxed))
                     .clamp(0.0, 1.0),
+            );
+            samp_lane_enabled.push(
+                self.tracks[track_idx].samp_lane_enabled[samp_idx].load(Ordering::Relaxed),
             );
             samp_sequencer_current_step.push(
                 self.tracks[track_idx].samp_sequencer_step[samp_idx].load(Ordering::Relaxed),
@@ -18652,10 +18884,20 @@ impl SlintWindow {
         self.ui
             .set_modul8_amount(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_amount))));
         self.ui
+            .set_modul8_bias(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_bias))));
+        self.ui
             .set_modul8_target(ModelRc::from(std::rc::Rc::new(VecModel::from(modul8_target))));
         self.ui.set_engine_loaded(engine_loaded);
         self.ui.set_active_engine_type(active_engine_type as i32);
-        self.ui.set_modul8_target_options(ModelRc::new(std::rc::Rc::new(VecModel::from(modul8_target_options_for_engine(active_engine_type)))));
+        if self.last_modul8_engine_type != Some(active_engine_type)
+            || self.last_modul8_track_idx != Some(track_idx)
+        {
+            self.ui.set_modul8_target_options(ModelRc::new(std::rc::Rc::new(
+                VecModel::from(modul8_target_options_for_engine(active_engine_type)),
+            )));
+            self.last_modul8_engine_type = Some(active_engine_type);
+            self.last_modul8_track_idx = Some(track_idx);
+        }
 
         self.ui.set_animate_slot_a_type(animate_slot_types[0] as i32);
         self.ui.set_animate_slot_b_type(animate_slot_types[1] as i32);
@@ -18802,6 +19044,7 @@ impl SlintWindow {
         self.ui.set_kick_cut_group(kick_cut_group);
         self.ui.set_kick_cut_by(kick_cut_by);
         self.ui.set_kick_prob(kick_prob);
+        self.ui.set_kick_lane_enabled(kick_lane_enabled);
         self.ui
             .set_kick_sequencer_current_step(kick_sequencer_current_step);
         self.ui
@@ -18821,6 +19064,7 @@ impl SlintWindow {
         self.ui.set_snare_cut_group(snare_cut_group);
         self.ui.set_snare_cut_by(snare_cut_by);
         self.ui.set_snare_prob(snare_prob);
+        self.ui.set_snare_lane_enabled(snare_lane_enabled);
         self.ui
             .set_snare_sequencer_current_step(snare_sequencer_current_step);
         self.ui
@@ -18839,6 +19083,7 @@ impl SlintWindow {
         self.ui.set_clap_cut_group(clap_cut_group);
         self.ui.set_clap_cut_by(clap_cut_by);
         self.ui.set_clap_prob(clap_prob);
+        self.ui.set_clap_lane_enabled(clap_lane_enabled);
         self.ui
             .set_clap_sequencer_current_step(clap_sequencer_current_step);
         self.ui
@@ -18857,6 +19102,7 @@ impl SlintWindow {
         self.ui.set_hat_cut_group(hat_cut_group);
         self.ui.set_hat_cut_by(hat_cut_by);
         self.ui.set_hat_prob(hat_prob);
+        self.ui.set_hat_lane_enabled(hat_lane_enabled);
         self.ui
             .set_hat_sequencer_current_step(hat_sequencer_current_step);
         self.ui
@@ -18875,6 +19121,7 @@ impl SlintWindow {
         self.ui.set_perc1_cut_group(perc1_cut_group);
         self.ui.set_perc1_cut_by(perc1_cut_by);
         self.ui.set_perc1_prob(perc1_prob);
+        self.ui.set_perc1_lane_enabled(perc1_lane_enabled);
         self.ui
             .set_perc1_sequencer_current_step(perc1_sequencer_current_step);
         self.ui
@@ -18893,6 +19140,7 @@ impl SlintWindow {
         self.ui.set_perc2_cut_group(perc2_cut_group);
         self.ui.set_perc2_cut_by(perc2_cut_by);
         self.ui.set_perc2_prob(perc2_prob);
+        self.ui.set_perc2_lane_enabled(perc2_lane_enabled);
         self.ui
             .set_perc2_sequencer_current_step(perc2_sequencer_current_step);
         self.ui
@@ -18911,6 +19159,7 @@ impl SlintWindow {
         self.ui.set_crash_cut_group(crash_cut_group);
         self.ui.set_crash_cut_by(crash_cut_by);
         self.ui.set_crash_prob(crash_prob);
+        self.ui.set_crash_lane_enabled(crash_lane_enabled);
         self.ui
             .set_crash_sequencer_current_step(crash_sequencer_current_step);
         self.ui
@@ -18958,6 +19207,10 @@ impl SlintWindow {
         self.ui
             .set_samp_prob(ModelRc::from(std::rc::Rc::new(VecModel::from(
                 samp_prob,
+            ))));
+        self.ui
+            .set_samp_lane_enabled(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                samp_lane_enabled,
             ))));
         self.ui
             .set_samp_sequencer_current_step(ModelRc::from(std::rc::Rc::new(VecModel::from(
@@ -22432,6 +22685,28 @@ fn initialize_ui(
         }
     });
 
+    let tracks_modul8 = Arc::clone(tracks);
+    let params_modul8 = Arc::clone(params);
+    ui.on_modul8_bias_changed(move |index, value| {
+        let track_idx = params_modul8.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let lfo_idx = index.clamp(0, (MODUL8_LFOS - 1) as i32) as usize;
+            tracks_modul8[track_idx].modul8_bias[lfo_idx]
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_kick = Arc::clone(tracks);
+    let params_kick = Arc::clone(params);
+    ui.on_kick_lane_enabled_changed(move |value| {
+        let track_idx = params_kick.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_kick[track_idx]
+                .kick_lane_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
     let tracks_kick = Arc::clone(tracks);
     let params_kick = Arc::clone(params);
     ui.on_kick_sequencer_grid_toggled(move |step| {
@@ -22592,6 +22867,17 @@ fn initialize_ui(
 
     let tracks_snare = Arc::clone(tracks);
     let params_snare = Arc::clone(params);
+    ui.on_snare_lane_enabled_changed(move |value| {
+        let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_snare[track_idx]
+                .snare_lane_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_snare = Arc::clone(tracks);
+    let params_snare = Arc::clone(params);
     ui.on_snare_sequencer_grid_toggled(move |step| {
         let track_idx = params_snare.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -22734,6 +23020,17 @@ fn initialize_ui(
             tracks_clap[track_idx]
                 .clap_prob
                 .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_clap = Arc::clone(tracks);
+    let params_clap = Arc::clone(params);
+    ui.on_clap_lane_enabled_changed(move |value| {
+        let track_idx = params_clap.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_clap[track_idx]
+                .clap_lane_enabled
+                .store(value, Ordering::Relaxed);
         }
     });
 
@@ -22886,6 +23183,17 @@ fn initialize_ui(
 
     let tracks_hat = Arc::clone(tracks);
     let params_hat = Arc::clone(params);
+    ui.on_hat_lane_enabled_changed(move |value| {
+        let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_hat[track_idx]
+                .hat_lane_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_hat = Arc::clone(tracks);
+    let params_hat = Arc::clone(params);
     ui.on_hat_sequencer_grid_toggled(move |step| {
         let track_idx = params_hat.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -23028,6 +23336,17 @@ fn initialize_ui(
             tracks_perc1[track_idx]
                 .perc1_prob
                 .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc1 = Arc::clone(tracks);
+    let params_perc1 = Arc::clone(params);
+    ui.on_perc1_lane_enabled_changed(move |value| {
+        let track_idx = params_perc1.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc1[track_idx]
+                .perc1_lane_enabled
+                .store(value, Ordering::Relaxed);
         }
     });
 
@@ -23183,6 +23502,17 @@ fn initialize_ui(
 
     let tracks_perc2 = Arc::clone(tracks);
     let params_perc2 = Arc::clone(params);
+    ui.on_perc2_lane_enabled_changed(move |value| {
+        let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_perc2[track_idx]
+                .perc2_lane_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_perc2 = Arc::clone(tracks);
+    let params_perc2 = Arc::clone(params);
     ui.on_perc2_sequencer_grid_toggled(move |step| {
         let track_idx = params_perc2.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -23333,6 +23663,17 @@ fn initialize_ui(
 
     let tracks_crash = Arc::clone(tracks);
     let params_crash = Arc::clone(params);
+    ui.on_crash_lane_enabled_changed(move |value| {
+        let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_crash[track_idx]
+                .crash_lane_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_crash = Arc::clone(tracks);
+    let params_crash = Arc::clone(params);
     ui.on_crash_sequencer_grid_toggled(move |step| {
         let track_idx = params_crash.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -23478,6 +23819,17 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
             tracks_samp[track_idx].samp_prob[channel_idx]
                 .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_samp = Arc::clone(tracks);
+    let params_samp = Arc::clone(params);
+    ui.on_samp_lane_enabled_changed(move |index, value| {
+        let track_idx = params_samp.selected_track.value().saturating_sub(1) as usize;
+        let channel_idx = index as usize;
+        if track_idx < NUM_TRACKS && channel_idx < SYNDRM_SAMPLE_CHANNELS {
+            tracks_samp[track_idx].samp_lane_enabled[channel_idx]
+                .store(value, Ordering::Relaxed);
         }
     });
 
