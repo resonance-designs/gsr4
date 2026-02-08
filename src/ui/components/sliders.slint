@@ -19,8 +19,8 @@ export component RDSSlider inherits Rectangle {
     in-out property <float> max-value: 127;
     in-out property <string> size: "large"; // "small", "medium", or "large"
     in-out property <string> orientation: "vertical"; // "vertical" or "horizontal"
-    in-out property <length> drag-start-pos: 0px;
-    in-out property <float> drag-start-value: 0;
+    private property <length> drag-start-pos: 0px;
+    private property <float> drag-start-value: 0;
     in-out property <float> drag-sensitivity: 1.0; // Adjust drag sensitivity
     in-out property <float> scroll-sensitivity: 1.0; // Adjust scroll sensitivity
 

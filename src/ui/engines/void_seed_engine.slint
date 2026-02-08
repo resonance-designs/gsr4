@@ -237,7 +237,7 @@ export component VoidSeedEngine inherits Rectangle {
             background: Theme.active.ui_device_panel_bg;
             border-width: 2px;
             border-radius: 6px;
-            border-color: Theme.active.border-strong;
+            border-color: Theme.active.border_strong;
 
             // Void Seed Layout
             VerticalLayout {
@@ -254,8 +254,8 @@ export component VoidSeedEngine inherits Rectangle {
                         width: 60px;
                         RDSHeaderLabel {
                             text: "Gain";
-                            bg-color: Theme.active.accent-secondary;
-                            txt-color: Theme.active.text-primary;
+                            bg-color: Theme.active.accent_secondary;
+                            txt-color: Theme.active.text_primary;
                             letter-spacing: 1px;
                         }
                         RDSSlider {
@@ -276,8 +276,8 @@ export component VoidSeedEngine inherits Rectangle {
                         spacing: 8px;
                         RDSHeaderLabel {
                             text: "Chaos / Entropy Map";
-                            bg-color: Theme.active.accent-secondary;
-                            txt-color: Theme.active.text-primary;
+                            bg-color: Theme.active.accent_secondary;
+                            txt-color: Theme.active.text_primary;
                             letter-spacing: 1px;
                         }
                         RDSXYPad {
@@ -302,8 +302,8 @@ export component VoidSeedEngine inherits Rectangle {
                         spacing: 8px;
                         RDSHeaderLabel {
                             text: "Pan / Width";
-                            bg-color: Theme.active.accent-secondary;
-                            txt-color: Theme.active.text-primary;
+                            bg-color: Theme.active.accent_secondary;
+                            txt-color: Theme.active.text_primary;
                             letter-spacing: 1px;
                         }
                         RDSXYPad {
@@ -328,8 +328,8 @@ export component VoidSeedEngine inherits Rectangle {
                         spacing: 16px;
                         RDSHeaderLabel {
                             text: "Void Parameters";
-                            bg-color: Theme.active.accent-secondary;
-                            txt-color: Theme.active.text-primary;
+                            bg-color: Theme.active.accent_secondary;
+                            txt-color: Theme.active.text_primary;
                             letter-spacing: 1px;
                             width: 586px;
                         }
@@ -339,7 +339,7 @@ export component VoidSeedEngine inherits Rectangle {
                             Row {
                                 VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: "Base Freq"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    Text { text: "Base Freq"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text_secondary;}
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.void-base-freq;
@@ -351,7 +351,7 @@ export component VoidSeedEngine inherits Rectangle {
                                 }
                                 VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: "Mod Rate"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    Text { text: "Mod Rate"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text_secondary;}
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.void-mod-rate;
@@ -363,7 +363,7 @@ export component VoidSeedEngine inherits Rectangle {
                                 }
                                 VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: "Feedback"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    Text { text: "Feedback"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text_secondary;}
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.void-feedback;
@@ -375,7 +375,7 @@ export component VoidSeedEngine inherits Rectangle {
                                 }
                                 VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: "Diffusion"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    Text { text: "Diffusion"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text_secondary;}
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.void-diffusion;
@@ -404,7 +404,7 @@ export component VoidSeedEngine inherits Rectangle {
                                 }
                                 VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: "Cut"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    Text { text: "Cut"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text_secondary;}
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.void-filter-cutoff;
@@ -419,7 +419,7 @@ export component VoidSeedEngine inherits Rectangle {
                                 }
                                 VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: "Res"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    Text { text: "Res"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text_secondary;}
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.void-filter-resonance;
@@ -434,7 +434,7 @@ export component VoidSeedEngine inherits Rectangle {
                                 }
                                 VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: "Drive"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    Text { text: "Drive"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text_secondary;}
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.void-drive;
@@ -446,7 +446,7 @@ export component VoidSeedEngine inherits Rectangle {
                                 }
                                 VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: "Close Decay"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    Text { text: "Close Decay"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text_secondary;}
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.void-close-decay;

@@ -1,13 +1,22 @@
 # Changelog
 
+## [0.1.26] - 2026-02-08
+
+- FMMI: Added ADSR amp envelope with per-step controls and Modul8 param targets.
+- FMMI: Added per-step gate/note-length controls and Modul8 param targets.
+- FMMI: Added control for adjusting the amount of randomness applied to params when a user initiates a randomization.
+- FMMI: Added control for adjusting the amount of randomness applied to note/step-trigger when a user initiates a randomization.
+- FMMI: Added a scale picker that drives the note randomization and keybed highlighting. Scales can be added to scales.json.
+- FMMI: Added a switchable mono/poly mode to switch between note/gate-cutting mono mode and a new mode with 8 voices with it's own phases/envelopes per voice.
+
 ## [0.1.25] - 2026-02-08
 
-- Increased the number of steps for G8 device to 64 and made it full-width in all the engine UI's.
+- Increased the number of steps for G8 device to 64 and made it full-width in all the engine UIs.
 - Fixed issue with G8 and Modul8 devices not working in SynDRM engine.
 - Fixed issue with Modul8 targets not being selectable from the combobox.
 - Added additional targets for Tape-Deck and SynDRM engines in Modul8 device.
 - Updated the Resonance Designs Slint UI Component Kit to version 0.1.13.
-- Added bias/center control to LFO's of the Modul8 device.
+- Added bias/center control to LFOs of the Modul8 device.
 - Updated documentation.
 
 ## [0.1.24] - 2026-02-07

@@ -1,6 +1,6 @@
 # TLBX-1
 
-![Static Badge](https://img.shields.io/badge/Version-0.1.25-orange)
+![Static Badge](https://img.shields.io/badge/Version-0.1.26-orange)
 
 TLBX-1 is a 4-track audio toolbox built in Rust. It features different audio engines, one of which is inspired by the Torso S-4 workflow. It runs as a standalone app and as a plugin via nih-plug, with a Slint-based UI.
 The UI is built with Slint in combination with the [Resonance Designs Slint UI Component Kit](https://github.com/resonance-designs/rds-slint-ui-kit).
@@ -15,7 +15,7 @@ The UI is built with Slint in combination with the [Resonance Designs Slint UI C
 - Engine 2: Animate (based on Korg Wavestation)
 - Engine 3: SynDRM (multi-channel drum synth + sampler with step sequencing)
 - Engine 4: Void Seed (generative drone engine)
-- Engine 5: FMMI (two-operator FM synth with sequencer + per-step parameter locks)
+- Engine 5: FMMI (two-operator FM synth with ADSR amp envelope, scale-based randomization, mono/poly toggle, and per-step parameter locks)
 - Void Seed Moog filter + drive with pre/post toggle, Close Decay, and stereo width control
 - RDS Slint UI Component Kit for shared UI controls and theming
 - Post-tape granular buffer with bypass toggle (Granulator device)
@@ -124,6 +124,7 @@ Installers include the built documentation site under `documentation/` in the in
 - Tape parameters are organized in a 4x3 grid for efficient control
 - Animate includes a chromatic keybed for note triggering
 - FMMI includes utility modes for Randomize, Clear, and Copy/Paste across step/parameter scopes
+- FMMI includes ADSR amp envelope, scale-based note randomization with keybed highlighting, and mono/poly mode
 - Keyboard shortcuts (standalone): Space toggles Play/Stop, Escape closes modals
 - Visualizer modes: oscilloscope, spectrum, vectorscope
 
