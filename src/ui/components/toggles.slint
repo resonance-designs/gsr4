@@ -10,6 +10,9 @@ Public members:
 
 export component RDSCircleToggle {
     in property <bool> active;
+    in property <color> active-color: Theme.active.accent_primary;
+    in property <color> active-hover: Theme.active.accent_highlight;
+    in property <color> active-pressed: Theme.active.accent_secondary;
     in property <string> label: "";
     in property <string> label-active: "";
     in property <color> label-color: Theme.active.text_secondary;
@@ -94,11 +97,11 @@ export component RDSCircleToggle {
                     ? 0px
                     : ((parent.height - root.circle-size) / 2));
             background: root.active
-                ? (ta.pressed ? Theme.active.accent_secondary : (ta.has-hover ? Theme.active.accent_highlight : Theme.active.accent_primary))
+                ? (ta.pressed ? root.active-pressed : (ta.has-hover ? root.active-hover : root.active-color))
                 : (ta.pressed ? Theme.active.border_strong : Theme.active.border_subtle);
             border-radius: 999px;
             border-color: root.active
-                ? (ta.pressed ? Theme.active.accent_primary : Theme.active.accent_highlight)
+                ? (ta.pressed ? Theme.active.accent_primary : root.active-hover)
                 : (ta.has-hover ? Theme.active.border_subtle : Theme.active.border_strong);
             border-width: 1px;
         }

@@ -1,0 +1,210 @@
+import { Theme } from "../theme/index.slint";
+import { RDSHeaderLabel, RDSCircleToggle, RDSComboBox, RDSKnob } from "../components/index.slint";
+
+/*
+Device: Modul8
+Description: Eight assignable LFO modulators for engine and downstream parameters.
+*/
+export component Modul8Device {
+    in-out property <bool> modul8-enabled: false;
+    in property <[string]> modul8-target-options;
+    in property <[string]> modul8-division-options: ["1", "1/2", "1/4", "1/8", "1/16", "1/32"];
+    in property <[string]> modul8-wave-options: ["Sine", "Triangle", "Saw", "Square", "S&H"];
+
+    in-out property <[int]> modul8-wave: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-rate: [1, 1, 1, 1, 1, 1, 1, 1];
+    in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
+    in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-bias: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
+    in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
+
+    callback toggle-modul8-enabled();
+    callback modul8-wave-changed(index: int, value: int);
+    callback modul8-rate-changed(index: int, value: float);
+    callback modul8-sync-changed(index: int, value: bool);
+    callback modul8-division-changed(index: int, value: int);
+    callback modul8-amount-changed(index: int, value: float);
+    callback modul8-bias-changed(index: int, value: float);
+    callback modul8-target-changed(index: int, value: int);
+
+    VerticalLayout {
+        spacing: 8px;
+
+        RDSHeaderLabel {
+            text: "Modul8";
+            horizontal-alignment: left;
+            padding-horizontal: 12px;
+            padding-vertical: 6px;
+            right-padding: 12px;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: center;
+                RDSCircleToggle {
+                    active: root.modul8-enabled;
+                    label: "Bypass";
+                    label-active: "On";
+                    label-pos: "left";
+                    label-color: Theme.active.text_secondary;
+                    label-active-color: Theme.active.text_primary;
+                    label-font-size: 11px;
+                    label-font-weight: 500;
+                    clicked => root.toggle-modul8-enabled();
+                }
+            }
+        }
+
+        Rectangle {
+            background: Theme.active.ui_device_panel_bg;
+            border-width: 2px;
+            border-radius: 6px;
+            border-color: Theme.active.border-strong;
+            clip: true;
+
+            VerticalLayout {
+                padding: 10px;
+                spacing: 8px;
+
+                for row in 4 : HorizontalLayout {
+                    spacing: 16px;
+
+                    for col in 2 : HorizontalLayout {
+                        spacing: 8px;
+                        property <int> idx: row * 2 + col;
+
+                        VerticalLayout {
+                            y: 10px;
+                            Text {
+                                width: 34px;
+                                text: "LFO " + (idx + 1);
+                                color: Theme.active.text_secondary;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        VerticalLayout {
+                            y: 28px;
+                            RDSComboBox {
+                                width: 76px;
+                                model: root.modul8-wave-options;
+                                current-index: root.modul8-wave[idx];
+                                selected => {
+                                    root.modul8-wave[idx] = self.current-index;
+                                    root.modul8-wave-changed(idx, self.current-index);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            padding-top: 22px;
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.modul8-rate[idx];
+                                min-value: 0.01;
+                                max-value: 20;
+                                size: 44px;
+                                indicator-position: 12px;
+                                label: "Rate";
+                                label-pos: "top-center";
+                                label-font-size: 10px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                enabled: !root.modul8-sync[idx];
+                                opacity: root.modul8-sync[idx] ? 0.4 : 1.0;
+                                value-changed(v) => {
+                                    root.modul8-rate[idx] = v;
+                                    root.modul8-rate-changed(idx, v);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            y: 36px;
+                            RDSCircleToggle {
+                                active: root.modul8-sync[idx];
+                                label: "Sync";
+                                label-pos: "left";
+                                label-font-size: 11px;
+                                clicked => {
+                                    root.modul8-sync[idx] = !root.modul8-sync[idx];
+                                    root.modul8-sync-changed(idx, root.modul8-sync[idx]);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            y: 28px;
+                            RDSComboBox {
+                                width: 66px;
+                                model: root.modul8-division-options;
+                                current-index: root.modul8-division[idx];
+                                enabled: root.modul8-sync[idx];
+                                opacity: root.modul8-sync[idx] ? 1.0 : 0.4;
+                                selected => {
+                                    root.modul8-division[idx] = self.current-index;
+                                    root.modul8-division-changed(idx, self.current-index);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            padding-top: 22px;
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.modul8-amount[idx];
+                                min-value: 0;
+                                max-value: 1;
+                                size: 44px;
+                                indicator-position: 12px;
+                                label: "Amt";
+                                label-pos: "top-center";
+                                label-font-size: 10px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.modul8-amount[idx] = v;
+                                    root.modul8-amount-changed(idx, v);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            padding-top: 22px;
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.modul8-bias[idx];
+                                min-value: 0;
+                                max-value: 1;
+                                size: 44px;
+                                indicator-position: 12px;
+                                label: "Bias";
+                                label-pos: "top-center";
+                                label-font-size: 10px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.modul8-bias[idx] = v;
+                                    root.modul8-bias-changed(idx, v);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            y: 28px;
+                            RDSComboBox {
+                                width: 180px;
+                                model: root.modul8-target-options;
+                                current-index: root.modul8-target[idx];
+                                selected => {
+                                    root.modul8-target[idx] = self.current-index;
+                                    root.modul8-target-changed(idx, self.current-index);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

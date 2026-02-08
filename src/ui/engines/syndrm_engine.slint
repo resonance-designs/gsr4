@@ -13,6 +13,7 @@ import {
 import { GranulatorDevice } from "../devices/granulator_device.slint";
 import { SilkDevice } from "../devices/silk_device.slint";
 import { G8Device } from "../devices/g8_device.slint";
+import { Modul8Device } from "../devices/modul8_device.slint";
 import { TextureDevice } from "../devices/texture_device.slint";
 import { ReflectDevice } from "../devices/reflect_device.slint";
 
@@ -34,6 +35,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> kick-cut-group: 0;
     in-out property <float> kick-cut-by: 0;
     in-out property <float> kick-prob: 1.0;
+    in-out property <bool> kick-lane-enabled: true;
     in-out property <[bool]> kick-sequencer-grid;
     in property <int> kick-sequencer-current-step: -1;
     in-out property <float> snare-tone: 0.5;
@@ -49,6 +51,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> snare-cut-group: 0;
     in-out property <float> snare-cut-by: 0;
     in-out property <float> snare-prob: 1.0;
+    in-out property <bool> snare-lane-enabled: true;
     in-out property <[bool]> snare-sequencer-grid;
     in property <int> snare-sequencer-current-step: -1;
     in-out property <float> clap-pitch: 0.5;
@@ -63,6 +66,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> clap-cut-group: 0;
     in-out property <float> clap-cut-by: 0;
     in-out property <float> clap-prob: 1.0;
+    in-out property <bool> clap-lane-enabled: true;
     in-out property <[bool]> clap-sequencer-grid;
     in property <int> clap-sequencer-current-step: -1;
     in-out property <float> hat-pitch: 0.5;
@@ -77,6 +81,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> hat-cut-group: 0;
     in-out property <float> hat-cut-by: 0;
     in-out property <float> hat-prob: 1.0;
+    in-out property <bool> hat-lane-enabled: true;
     in-out property <[bool]> hat-sequencer-grid;
     in property <int> hat-sequencer-current-step: -1;
     in-out property <float> perc1-pitch: 0.5;
@@ -91,6 +96,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> perc1-cut-group: 0;
     in-out property <float> perc1-cut-by: 0;
     in-out property <float> perc1-prob: 1.0;
+    in-out property <bool> perc1-lane-enabled: true;
     in-out property <[bool]> perc1-sequencer-grid;
     in property <int> perc1-sequencer-current-step: -1;
     in-out property <float> perc2-pitch: 0.5;
@@ -105,6 +111,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> perc2-cut-group: 0;
     in-out property <float> perc2-cut-by: 0;
     in-out property <float> perc2-prob: 1.0;
+    in-out property <bool> perc2-lane-enabled: true;
     in-out property <[bool]> perc2-sequencer-grid;
     in property <int> perc2-sequencer-current-step: -1;
     in-out property <float> crash-pitch: 0.7;
@@ -119,6 +126,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <float> crash-cut-group: 0;
     in-out property <float> crash-cut-by: 0;
     in-out property <float> crash-prob: 1.0;
+    in-out property <bool> crash-lane-enabled: true;
     in-out property <[bool]> crash-sequencer-grid;
     in property <int> crash-sequencer-current-step: -1;
     in property <[string]> samp-labels;
@@ -135,6 +143,7 @@ export component SynDRMEngine inherits Rectangle {
     in-out property <[float]> samp-cut-group;
     in-out property <[float]> samp-cut-by;
     in-out property <[float]> samp-prob;
+    in-out property <[bool]> samp-lane-enabled;
     in-out property <[bool]> samp-sequencer-grid;
     in property <[int]> samp-sequencer-current-step;
     in-out property <int> syndrm-page: 0;
@@ -297,10 +306,24 @@ export component SynDRMEngine inherits Rectangle {
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
     ];
 
     // Engine Callbacks
+    in property <[string]> modul8-target-options;
+    in-out property <bool> modul8-enabled: false;
+    in-out property <[int]> modul8-wave: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-rate: [1, 1, 1, 1, 1, 1, 1, 1];
+    in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
+    in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-bias: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
+    in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
+
     callback toggle-track-mute();
     callback kick-pitch-changed(value: float);
     callback kick-decay-changed(value: float);
@@ -315,6 +338,7 @@ export component SynDRMEngine inherits Rectangle {
     callback kick-cut-group-changed(value: float);
     callback kick-cut-by-changed(value: float);
     callback kick-prob-changed(value: float);
+    callback kick-lane-enabled-changed(value: bool);
     callback kick-sequencer-grid-toggled(step: int);
     callback snare-tone-changed(value: float);
     callback snare-decay-changed(value: float);
@@ -329,6 +353,7 @@ export component SynDRMEngine inherits Rectangle {
     callback snare-cut-group-changed(value: float);
     callback snare-cut-by-changed(value: float);
     callback snare-prob-changed(value: float);
+    callback snare-lane-enabled-changed(value: bool);
     callback snare-sequencer-grid-toggled(step: int);
     callback clap-pitch-changed(value: float);
     callback clap-decay-changed(value: float);
@@ -342,6 +367,7 @@ export component SynDRMEngine inherits Rectangle {
     callback clap-cut-group-changed(value: float);
     callback clap-cut-by-changed(value: float);
     callback clap-prob-changed(value: float);
+    callback clap-lane-enabled-changed(value: bool);
     callback clap-sequencer-grid-toggled(step: int);
     callback hat-pitch-changed(value: float);
     callback hat-decay-changed(value: float);
@@ -355,6 +381,7 @@ export component SynDRMEngine inherits Rectangle {
     callback hat-cut-group-changed(value: float);
     callback hat-cut-by-changed(value: float);
     callback hat-prob-changed(value: float);
+    callback hat-lane-enabled-changed(value: bool);
     callback hat-sequencer-grid-toggled(step: int);
     callback perc1-pitch-changed(value: float);
     callback perc1-decay-changed(value: float);
@@ -368,6 +395,7 @@ export component SynDRMEngine inherits Rectangle {
     callback perc1-cut-group-changed(value: float);
     callback perc1-cut-by-changed(value: float);
     callback perc1-prob-changed(value: float);
+    callback perc1-lane-enabled-changed(value: bool);
     callback perc1-sequencer-grid-toggled(step: int);
     callback perc2-pitch-changed(value: float);
     callback perc2-decay-changed(value: float);
@@ -381,6 +409,7 @@ export component SynDRMEngine inherits Rectangle {
     callback perc2-cut-group-changed(value: float);
     callback perc2-cut-by-changed(value: float);
     callback perc2-prob-changed(value: float);
+    callback perc2-lane-enabled-changed(value: bool);
     callback perc2-sequencer-grid-toggled(step: int);
     callback crash-pitch-changed(value: float);
     callback crash-decay-changed(value: float);
@@ -394,6 +423,7 @@ export component SynDRMEngine inherits Rectangle {
     callback crash-cut-group-changed(value: float);
     callback crash-cut-by-changed(value: float);
     callback crash-prob-changed(value: float);
+    callback crash-lane-enabled-changed(value: bool);
     callback crash-sequencer-grid-toggled(step: int);
     callback syndrm-page-changed(page: int);
     callback syndrm-edit-lane-changed(lane: int);
@@ -485,6 +515,7 @@ export component SynDRMEngine inherits Rectangle {
     callback samp-cut-group-changed(index: int, value: float);
     callback samp-cut-by-changed(index: int, value: float);
     callback samp-prob-changed(index: int, value: float);
+    callback samp-lane-enabled-changed(index: int, value: bool);
     callback samp-sequencer-grid-toggled(index: int, step: int);
     callback syndrm-step-samp-pitch-changed(value: float);
     callback syndrm-step-samp-attack-changed(value: float);
@@ -602,6 +633,14 @@ export component SynDRMEngine inherits Rectangle {
     callback toggle-g8-enabled();
     callback g8-rate-selected(index: int);
     callback g8-step-changed(index: int, value: float);
+    callback toggle-modul8-enabled();
+    callback modul8-wave-changed(index: int, value: int);
+    callback modul8-rate-changed(index: int, value: float);
+    callback modul8-sync-changed(index: int, value: bool);
+    callback modul8-division-changed(index: int, value: int);
+    callback modul8-amount-changed(index: int, value: float);
+    callback modul8-bias-changed(index: int, value: float);
+    callback modul8-target-changed(index: int, value: int);
 
     width: 1242px;
     background: transparent;
@@ -627,7 +666,7 @@ export component SynDRMEngine inherits Rectangle {
                     label: "Mute";
                     label-active: "Live";
                     label-pos: "left";
-                    label-color: #b9b9bf;
+                    label-color: Theme.active.text_secondary;
                     label-active-color: Theme.active.text_primary;
                     label-font-size: 11px;
                     label-font-weight: 500;
@@ -638,12 +677,12 @@ export component SynDRMEngine inherits Rectangle {
 
         // Engine Controls
         Rectangle {
-            background: #1e3a5f33;
+            background: Theme.active.ui_device_panel_bg;
             border-width: 2px;
             border-radius: 6px;
             border-color: Theme.active.border-strong;
 
-            // Drums
+            // SynDRM Layout
             VerticalLayout {
                 HorizontalLayout {
                     spacing: 8px;
@@ -800,7 +839,7 @@ export component SynDRMEngine inherits Rectangle {
                                                         label: "Post";
                                                         label-active: "Pre";
                                                         label-pos: "left";
-                                                        label-color: #b9b9bf;
+                                                        label-color: Theme.active.text_secondary;
                                                         label-active-color: Theme.active.text_primary;
                                                         label-font-size: 11px;
                                                         label-font-weight: 500;
@@ -815,7 +854,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut G"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut G"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.kick-cut-group;
                                                         min-value: 0;
@@ -834,7 +873,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut B"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut B"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.kick-cut-by;
                                                         min-value: 0;
@@ -989,7 +1028,7 @@ export component SynDRMEngine inherits Rectangle {
                                                         label: "Post";
                                                         label-active: "Pre";
                                                         label-pos: "left";
-                                                        label-color: #b9b9bf;
+                                                        label-color: Theme.active.text_secondary;
                                                         label-active-color: Theme.active.text_primary;
                                                         label-font-size: 11px;
                                                         label-font-weight: 500;
@@ -1004,7 +1043,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut G"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut G"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.snare-cut-group;
                                                         min-value: 0;
@@ -1023,7 +1062,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut B"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut B"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.snare-cut-by;
                                                         min-value: 0;
@@ -1173,7 +1212,7 @@ export component SynDRMEngine inherits Rectangle {
                                                         label: "Post";
                                                         label-active: "Pre";
                                                         label-pos: "left";
-                                                        label-color: #b9b9bf;
+                                                        label-color: Theme.active.text_secondary;
                                                         label-active-color: Theme.active.text_primary;
                                                         label-font-size: 11px;
                                                         label-font-weight: 500;
@@ -1188,7 +1227,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut G"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut G"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.clap-cut-group;
                                                         min-value: 0;
@@ -1207,7 +1246,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut B"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut B"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.clap-cut-by;
                                                         min-value: 0;
@@ -1353,7 +1392,7 @@ export component SynDRMEngine inherits Rectangle {
                                                         label: "Post";
                                                         label-active: "Pre";
                                                         label-pos: "left";
-                                                        label-color: #b9b9bf;
+                                                        label-color: Theme.active.text_secondary;
                                                         label-active-color: Theme.active.text_primary;
                                                         label-font-size: 11px;
                                                         label-font-weight: 500;
@@ -1368,7 +1407,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut G"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut G"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.hat-cut-group;
                                                         min-value: 0;
@@ -1387,7 +1426,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut B"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut B"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.hat-cut-by;
                                                         min-value: 0;
@@ -1533,7 +1572,7 @@ export component SynDRMEngine inherits Rectangle {
                                                         label: "Post";
                                                         label-active: "Pre";
                                                         label-pos: "left";
-                                                        label-color: #b9b9bf;
+                                                        label-color: Theme.active.text_secondary;
                                                         label-active-color: Theme.active.text_primary;
                                                         label-font-size: 11px;
                                                         label-font-weight: 500;
@@ -1548,7 +1587,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut G"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut G"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.perc1-cut-group;
                                                         min-value: 0;
@@ -1567,7 +1606,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut B"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut B"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.perc1-cut-by;
                                                         min-value: 0;
@@ -1713,7 +1752,7 @@ export component SynDRMEngine inherits Rectangle {
                                                         label: "Post";
                                                         label-active: "Pre";
                                                         label-pos: "left";
-                                                        label-color: #b9b9bf;
+                                                        label-color: Theme.active.text_secondary;
                                                         label-active-color: Theme.active.text_primary;
                                                         label-font-size: 11px;
                                                         label-font-weight: 500;
@@ -1728,7 +1767,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut G"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut G"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.perc2-cut-group;
                                                         min-value: 0;
@@ -1747,7 +1786,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut B"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut B"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.perc2-cut-by;
                                                         min-value: 0;
@@ -1893,7 +1932,7 @@ export component SynDRMEngine inherits Rectangle {
                                                         label: "Post";
                                                         label-active: "Pre";
                                                         label-pos: "left";
-                                                        label-color: #b9b9bf;
+                                                        label-color: Theme.active.text_secondary;
                                                         label-active-color: Theme.active.text_primary;
                                                         label-font-size: 11px;
                                                         label-font-weight: 500;
@@ -1908,7 +1947,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut G"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut G"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.crash-cut-group;
                                                         min-value: 0;
@@ -1927,7 +1966,7 @@ export component SynDRMEngine inherits Rectangle {
                                                 VerticalLayout {
                                                     spacing: 4px;
                                                     width: 40px;
-                                                    Text { text: "Cut B"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                                    Text { text: "Cut B"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                                     RDSNumStepper {
                                                         value: root.crash-cut-by;
                                                         min-value: 0;
@@ -2094,7 +2133,7 @@ export component SynDRMEngine inherits Rectangle {
                                             label: "Post";
                                             label-active: "Pre";
                                             label-pos: "left";
-                                            label-color: #b9b9bf;
+                                            label-color: Theme.active.text_secondary;
                                             label-active-color: Theme.active.text_primary;
                                             label-font-size: 11px;
                                             label-font-weight: 500;
@@ -2109,7 +2148,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 40px;
-                                        Text { text: "Cut G"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Cut G"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSNumStepper {
                                             value: root.samp-cut-group[samp_idx];
                                             min-value: 0;
@@ -2128,7 +2167,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 40px;
-                                        Text { text: "Cut B"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Cut B"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSNumStepper {
                                             value: root.samp-cut-by[samp_idx];
                                             min-value: 0;
@@ -2153,8 +2192,6 @@ export component SynDRMEngine inherits Rectangle {
             }
         }
 
-        
-
         // Sequencer
         RDSHeaderLabel {
             text: "Sequencer";
@@ -2167,7 +2204,7 @@ export component SynDRMEngine inherits Rectangle {
         HorizontalLayout {
             spacing: 12px;
             Rectangle {
-                background: #1e3a5f33;
+                background: Theme.active.ui_device_panel_bg;
                 border-width: 2px;
                 border-radius: 6px;
                 border-color: Theme.active.border-strong;
@@ -2186,9 +2223,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Kick"; width: 34px; color: #b9b9bf; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Kick"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.kick-lane-enabled;
+                                        clicked => {
+                                            root.kick-lane-enabled = !root.kick-lane-enabled;
+                                            root.kick-lane-enabled-changed(root.kick-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.kick-prob;
@@ -2214,9 +2258,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Snare"; width: 34px; color: #b9b9bf; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Snare"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.snare-lane-enabled;
+                                        clicked => {
+                                            root.snare-lane-enabled = !root.snare-lane-enabled;
+                                            root.snare-lane-enabled-changed(root.snare-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.snare-prob;
@@ -2242,9 +2293,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Clap"; width: 34px; color: #b9b9bf; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Clap"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.clap-lane-enabled;
+                                        clicked => {
+                                            root.clap-lane-enabled = !root.clap-lane-enabled;
+                                            root.clap-lane-enabled-changed(root.clap-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.clap-prob;
@@ -2270,9 +2328,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Hat"; width: 34px; color: #b9b9bf; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Hat"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.hat-lane-enabled;
+                                        clicked => {
+                                            root.hat-lane-enabled = !root.hat-lane-enabled;
+                                            root.hat-lane-enabled-changed(root.hat-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.hat-prob;
@@ -2298,9 +2363,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Perc 1"; width: 34px; color: #b9b9bf; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Perc 1"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.perc1-lane-enabled;
+                                        clicked => {
+                                            root.perc1-lane-enabled = !root.perc1-lane-enabled;
+                                            root.perc1-lane-enabled-changed(root.perc1-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.perc1-prob;
@@ -2326,9 +2398,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Perc 2"; width: 34px; color: #b9b9bf; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Perc 2"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.perc2-lane-enabled;
+                                        clicked => {
+                                            root.perc2-lane-enabled = !root.perc2-lane-enabled;
+                                            root.perc2-lane-enabled-changed(root.perc2-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.perc2-prob;
@@ -2354,9 +2433,16 @@ export component SynDRMEngine inherits Rectangle {
                             HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: "Crash"; width: 34px; color: #b9b9bf; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: "Crash"; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.crash-lane-enabled;
+                                        clicked => {
+                                            root.crash-lane-enabled = !root.crash-lane-enabled;
+                                            root.crash-lane-enabled-changed(root.crash-lane-enabled);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.crash-prob;
@@ -2381,9 +2467,16 @@ export component SynDRMEngine inherits Rectangle {
                             for samp_idx in 7 : HorizontalLayout {
                                 spacing: 4px;
                                 HorizontalLayout {
-                                    spacing: 4px;
-                                    width: 60px;
-                                    Text { vertical-alignment: center; text: root.samp-labels[samp_idx]; width: 34px; color: #b9b9bf; font-size: 11px; horizontal-alignment: left; }
+                                    spacing: 2px;
+                                    width: 72px;
+                                    Text { vertical-alignment: center; text: root.samp-labels[samp_idx]; width: 32px; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: left; }
+                                    RDSCircleToggle {
+                                        active: root.samp-lane-enabled[samp_idx];
+                                        clicked => {
+                                            root.samp-lane-enabled[samp_idx] = !root.samp-lane-enabled[samp_idx];
+                                            root.samp-lane-enabled-changed(samp_idx, root.samp-lane-enabled[samp_idx]);
+                                        }
+                                    }
                                     RDSKnob {
                                         renderer: "lo-fi";
                                         value: root.samp-prob[samp_idx];
@@ -2410,7 +2503,7 @@ export component SynDRMEngine inherits Rectangle {
                 }
             }
             Rectangle {
-                background: #1e3a5f33;
+                background: Theme.active.ui_device_panel_bg;
                 border-width: 2px;
                 border-radius: 6px;
                 border-color: Theme.active.border-strong;
@@ -2436,7 +2529,7 @@ export component SynDRMEngine inherits Rectangle {
                                 HorizontalLayout {
                                     // Page Nav
                                     VerticalLayout {
-                                        Text { horizontal-alignment: center; text: "Page"; color: #b9b9bf; font-size: 11px; }
+                                        Text { horizontal-alignment: center; text: "Page"; color: Theme.active.text_secondary; font-size: 11px; }
                                     RDSNumStepper {
                                             value: root.syndrm-page + 1;
                                             min-value: 1;
@@ -2460,7 +2553,7 @@ export component SynDRMEngine inherits Rectangle {
                                     // Step Nav
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { horizontal-alignment: center; text: "Step"; color: #b9b9bf; font-size: 11px; }
+                                        Text { horizontal-alignment: center; text: "Step"; color: Theme.active.text_secondary; font-size: 11px; }
                                     RDSNumStepper {
                                             value: root.syndrm-edit-step + 1;
                                             min-value: 1;
@@ -2483,7 +2576,7 @@ export component SynDRMEngine inherits Rectangle {
 
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { horizontal-alignment: center; text: "Lane"; color: #b9b9bf; font-size: 11px; }
+                                        Text { horizontal-alignment: center; text: "Lane"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSTextStepper {
                                             options: [
                                                 "Kick",
@@ -2534,7 +2627,7 @@ export component SynDRMEngine inherits Rectangle {
                                     // Param Mod On/Off
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Step Mod"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Step Mod"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -2544,14 +2637,14 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-override-changed(root.syndrm-step-override);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-override ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-override ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
 
                                     // Param Hold On/Off
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Hold"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Hold"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -2561,7 +2654,7 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-hold-changed(root.syndrm-step-hold);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-hold ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-hold ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
                                 }
@@ -2581,7 +2674,7 @@ export component SynDRMEngine inherits Rectangle {
                                     padding-top: 8px;
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Retrig"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Retrig"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -2591,12 +2684,12 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-kick-retrig-changed(root.syndrm-step-kick-retrig);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-kick-retrig ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-kick-retrig ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rate"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 60px;
                                             model: ["1/2", "1/4"];
@@ -2702,7 +2795,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 100px;
-                                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 100px;
                                             model: root.filter-types;
@@ -2716,7 +2809,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Cut"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Cut"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-kick-filter-cutoff;
@@ -2729,7 +2822,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Res"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-kick-filter-resonance;
@@ -2756,7 +2849,7 @@ export component SynDRMEngine inherits Rectangle {
                                     padding-top: 8px;
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Retrig"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Retrig"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -2766,12 +2859,12 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-snare-retrig-changed(root.syndrm-step-snare-retrig);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-snare-retrig ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-snare-retrig ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rate"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 60px;
                                             model: ["1/2", "1/4"];
@@ -2788,7 +2881,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Tone"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Tone"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-snare-tone;
@@ -2801,7 +2894,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Decay"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Decay"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-snare-decay;
@@ -2814,7 +2907,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Attack"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Attack"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-snare-attack;
@@ -2827,7 +2920,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Snap"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Snap"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-snare-snappy;
@@ -2840,7 +2933,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Drive"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-snare-drive;
@@ -2853,7 +2946,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Level"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-snare-level;
@@ -2869,7 +2962,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 100px;
-                                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 100px;
                                             model: root.filter-types;
@@ -2883,7 +2976,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Cut"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Cut"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-snare-filter-cutoff;
@@ -2896,7 +2989,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Res"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-snare-filter-resonance;
@@ -2923,7 +3016,7 @@ export component SynDRMEngine inherits Rectangle {
                                     padding-top: 8px;
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Retrig"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Retrig"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -2933,12 +3026,12 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-clap-retrig-changed(root.syndrm-step-clap-retrig);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-clap-retrig ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-clap-retrig ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rate"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 60px;
                                             model: ["1/2", "1/4"];
@@ -2955,7 +3048,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Pitch"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Pitch"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-clap-pitch;
@@ -2968,7 +3061,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Decay"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Decay"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-clap-decay;
@@ -2981,7 +3074,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Tone"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Tone"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-clap-tone;
@@ -2994,7 +3087,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Drive"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-clap-drive;
@@ -3007,7 +3100,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Level"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-clap-level;
@@ -3023,7 +3116,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 100px;
-                                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 100px;
                                             model: root.filter-types;
@@ -3037,7 +3130,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Cut"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Cut"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-clap-filter-cutoff;
@@ -3050,7 +3143,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Res"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-clap-filter-resonance;
@@ -3076,7 +3169,7 @@ export component SynDRMEngine inherits Rectangle {
                                     padding-top: 8px;
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Retrig"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Retrig"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -3086,12 +3179,12 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-hat-retrig-changed(root.syndrm-step-hat-retrig);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-hat-retrig ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-hat-retrig ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rate"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 60px;
                                             model: ["1/2", "1/4"];
@@ -3108,7 +3201,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Pitch"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Pitch"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-hat-pitch;
@@ -3121,7 +3214,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Decay"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Decay"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-hat-decay;
@@ -3134,7 +3227,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Tone"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Tone"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-hat-tone;
@@ -3147,7 +3240,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Drive"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-hat-drive;
@@ -3160,7 +3253,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Level"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-hat-level;
@@ -3176,7 +3269,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 100px;
-                                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 100px;
                                             model: root.filter-types;
@@ -3190,7 +3283,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Cut"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Cut"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-hat-filter-cutoff;
@@ -3203,7 +3296,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Res"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-hat-filter-resonance;
@@ -3230,7 +3323,7 @@ export component SynDRMEngine inherits Rectangle {
                                     padding-top: 8px;
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Retrig"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Retrig"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -3240,12 +3333,12 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-perc1-retrig-changed(root.syndrm-step-perc1-retrig);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-perc1-retrig ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-perc1-retrig ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rate"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 60px;
                                             model: ["1/2", "1/4"];
@@ -3262,7 +3355,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Pitch"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Pitch"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc1-pitch;
@@ -3275,7 +3368,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Decay"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Decay"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc1-decay;
@@ -3288,7 +3381,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Tone"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Tone"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc1-tone;
@@ -3301,7 +3394,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Drive"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc1-drive;
@@ -3314,7 +3407,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Level"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc1-level;
@@ -3330,7 +3423,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 100px;
-                                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 100px;
                                             model: root.filter-types;
@@ -3344,7 +3437,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Cut"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Cut"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc1-filter-cutoff;
@@ -3357,7 +3450,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Res"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc1-filter-resonance;
@@ -3383,7 +3476,7 @@ export component SynDRMEngine inherits Rectangle {
                                     padding-top: 8px;
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Retrig"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Retrig"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -3393,12 +3486,12 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-perc2-retrig-changed(root.syndrm-step-perc2-retrig);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-perc2-retrig ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-perc2-retrig ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rate"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 60px;
                                             model: ["1/2", "1/4"];
@@ -3415,7 +3508,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Pitch"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Pitch"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc2-pitch;
@@ -3428,7 +3521,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Decay"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Decay"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc2-decay;
@@ -3441,7 +3534,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Tone"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Tone"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc2-tone;
@@ -3454,7 +3547,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Drive"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc2-drive;
@@ -3467,7 +3560,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Level"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc2-level;
@@ -3483,7 +3576,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 100px;
-                                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 100px;
                                             model: root.filter-types;
@@ -3497,7 +3590,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Cut"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Cut"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc2-filter-cutoff;
@@ -3510,7 +3603,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Res"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-perc2-filter-resonance;
@@ -3536,7 +3629,7 @@ export component SynDRMEngine inherits Rectangle {
                                     padding-top: 8px;
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Retrig"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Retrig"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -3546,12 +3639,12 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-crash-retrig-changed(root.syndrm-step-crash-retrig);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-crash-retrig ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-crash-retrig ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rate"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 60px;
                                             model: ["1/2", "1/4"];
@@ -3568,7 +3661,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Pitch"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Pitch"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-crash-pitch;
@@ -3581,7 +3674,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Decay"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Decay"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-crash-decay;
@@ -3594,7 +3687,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Tone"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Tone"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-crash-tone;
@@ -3607,7 +3700,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Drive"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-crash-drive;
@@ -3620,7 +3713,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Level"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-crash-level;
@@ -3636,7 +3729,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 100px;
-                                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 100px;
                                             model: root.filter-types;
@@ -3650,7 +3743,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Cut"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Cut"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-crash-filter-cutoff;
@@ -3663,7 +3756,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Res"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-crash-filter-resonance;
@@ -3689,7 +3782,7 @@ export component SynDRMEngine inherits Rectangle {
                                     padding-top: 8px;
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Retrig"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Retrig"; color: Theme.active.text_secondary; font-size: 11px; }
                                         HorizontalLayout {
                                             spacing: 6px;
                                             RDSCircleToggle {
@@ -3699,12 +3792,12 @@ export component SynDRMEngine inherits Rectangle {
                                                     root.syndrm-step-samp-retrig-changed(root.syndrm-step-samp-retrig);
                                                 }
                                             }
-                                            Text { text: root.syndrm-step-samp-retrig ? "On" : "Off"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: root.syndrm-step-samp-retrig ? "On" : "Off"; color: Theme.active.text_secondary; font-size: 11px; }
                                         }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rate"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Rate"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 60px;
                                             model: ["1/2", "1/4"];
@@ -3721,7 +3814,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Pitch"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Pitch"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-samp-pitch;
@@ -3734,7 +3827,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Atk"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Atk"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-samp-attack;
@@ -3747,7 +3840,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Decay"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Decay"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-samp-decay;
@@ -3760,7 +3853,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Drive"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-samp-drive;
@@ -3773,7 +3866,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Level"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Level"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-samp-level;
@@ -3789,7 +3882,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 100px;
-                                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
+                                        Text { text: "Filter"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
                                             width: 100px;
                                             model: root.filter-types;
@@ -3803,7 +3896,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Cut"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Cut"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-samp-filter-cutoff;
@@ -3816,7 +3909,7 @@ export component SynDRMEngine inherits Rectangle {
                                     VerticalLayout {
                                         spacing: 4px;
                                         width: 50px;
-                                        Text { text: "Res"; color: #b9b9bf; font-size: 11px; horizontal-alignment: center; }
+                                        Text { text: "Res"; color: Theme.active.text_secondary; font-size: 11px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.syndrm-step-samp-filter-resonance;
@@ -3841,7 +3934,7 @@ export component SynDRMEngine inherits Rectangle {
                                 HorizontalLayout {
                                     spacing: 12px;
                                     padding-top: 8px;
-                                    Text { text: "Mode"; color: #b9b9bf; font-size: 11px; vertical-alignment: center; }
+                                    Text { text: "Mode"; color: Theme.active.text_secondary; font-size: 11px; vertical-alignment: center; }
                                     RDSTextStepper {
                                         options: ["Randomize", "Clear", "Copy/Paste"];
                                         index: root.syndrm-utility-mode;
@@ -3864,7 +3957,7 @@ export component SynDRMEngine inherits Rectangle {
                                         padding-top: 6px;
                                         VerticalLayout {
                                             spacing: 10px;
-                                            Text { text: "Steps"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Steps"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSSelectButton { label: "Lane+Page"; width: 108px; active: false; clicked => { root.syndrm-randomize-steps-lane-page(); } }
                                             RDSSelectButton { label: "Lane+All"; width: 108px; active: false; clicked => { root.syndrm-randomize-steps-lane-all(); } }
                                             RDSSelectButton { label: "All+Page"; width: 108px; active: false; clicked => { root.syndrm-randomize-steps-all-page(); } }
@@ -3872,7 +3965,7 @@ export component SynDRMEngine inherits Rectangle {
                                         }
                                         VerticalLayout {
                                             spacing: 10px;
-                                            Text { text: "Params"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Params"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSSelectButton { label: "Lane+Page"; width: 108px; active: false; clicked => { root.syndrm-randomize-params-lane-page(); } }
                                             RDSSelectButton { label: "Lane+All"; width: 108px; active: false; clicked => { root.syndrm-randomize-params-lane-all(); } }
                                             RDSSelectButton { label: "All+Page"; width: 108px; active: false; clicked => { root.syndrm-randomize-params-all-page(); } }
@@ -3880,7 +3973,7 @@ export component SynDRMEngine inherits Rectangle {
                                         }
                                         VerticalLayout {
                                             spacing: 10px;
-                                            Text { text: "Both"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Both"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSSelectButton { label: "Lane+Page"; width: 108px; active: false; clicked => { root.syndrm-randomize-both-lane-page(); } }
                                             RDSSelectButton { label: "Lane+All"; width: 108px; active: false; clicked => { root.syndrm-randomize-both-lane-all(); } }
                                             RDSSelectButton { label: "All+Page"; width: 108px; active: false; clicked => { root.syndrm-randomize-both-all-page(); } }
@@ -3913,7 +4006,7 @@ export component SynDRMEngine inherits Rectangle {
                                         padding-top: 6px;
                                         VerticalLayout {
                                             spacing: 4px;
-                                            Text { text: "Steps"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Steps"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSSelectButton { label: "Lane+Page"; active: false; clicked => { root.syndrm-clear-steps-lane-page(); } }
                                             RDSSelectButton { label: "Lane+All"; active: false; clicked => { root.syndrm-clear-steps-lane-all(); } }
                                             RDSSelectButton { label: "All+Page"; active: false; clicked => { root.syndrm-clear-steps-all-page(); } }
@@ -3921,7 +4014,7 @@ export component SynDRMEngine inherits Rectangle {
                                         }
                                         VerticalLayout {
                                             spacing: 4px;
-                                            Text { text: "Params"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Params"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSSelectButton { label: "Lane+Page"; active: false; clicked => { root.syndrm-clear-params-lane-page(); } }
                                             RDSSelectButton { label: "Lane+All"; active: false; clicked => { root.syndrm-clear-params-lane-all(); } }
                                             RDSSelectButton { label: "All+Page"; active: false; clicked => { root.syndrm-clear-params-all-page(); } }
@@ -3929,7 +4022,7 @@ export component SynDRMEngine inherits Rectangle {
                                         }
                                         VerticalLayout {
                                             spacing: 4px;
-                                            Text { text: "Both"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Both"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSSelectButton { label: "Lane+Page"; active: false; clicked => { root.syndrm-clear-both-lane-page(); } }
                                             RDSSelectButton { label: "Lane+All"; active: false; clicked => { root.syndrm-clear-both-lane-all(); } }
                                             RDSSelectButton { label: "All+Page"; active: false; clicked => { root.syndrm-clear-both-all-page(); } }
@@ -3946,7 +4039,7 @@ export component SynDRMEngine inherits Rectangle {
                                         padding-top: 6px;
                                         VerticalLayout {
                                             spacing: 10px;
-                                            Text { text: "Steps"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Steps"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSSelectButton { label: "Lane+Page"; width: 108px; active: false; clicked => { root.syndrm-copy-steps-lane-page(); } }
                                             RDSSelectButton { label: "Lane+All"; width: 108px; active: false; clicked => { root.syndrm-copy-steps-lane-all(); } }
                                             RDSSelectButton { label: "All+Page"; width: 108px; active: false; clicked => { root.syndrm-copy-steps-all-page(); } }
@@ -3954,7 +4047,7 @@ export component SynDRMEngine inherits Rectangle {
                                         }
                                         VerticalLayout {
                                             spacing: 10px;
-                                            Text { text: "Params"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Params"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSSelectButton { label: "Lane+Page"; width: 108px; active: false; clicked => { root.syndrm-copy-params-lane-page(); } }
                                             RDSSelectButton { label: "Lane+All"; width: 108px; active: false; clicked => { root.syndrm-copy-params-lane-all(); } }
                                             RDSSelectButton { label: "All+Page"; width: 108px; active: false; clicked => { root.syndrm-copy-params-all-page(); } }
@@ -3962,7 +4055,7 @@ export component SynDRMEngine inherits Rectangle {
                                         }
                                         VerticalLayout {
                                             spacing: 10px;
-                                            Text { text: "Both"; color: #b9b9bf; font-size: 11px; }
+                                            Text { text: "Both"; color: Theme.active.text_secondary; font-size: 11px; }
                                             RDSSelectButton { label: "Lane+Page"; width: 108px; active: false; clicked => { root.syndrm-copy-both-lane-page(); } }
                                             RDSSelectButton { label: "Lane+All"; width: 108px; active: false; clicked => { root.syndrm-copy-both-lane-all(); } }
                                             RDSSelectButton { label: "All+Page"; width: 108px; active: false; clicked => { root.syndrm-copy-both-all-page(); } }
@@ -3989,12 +4082,13 @@ export component SynDRMEngine inherits Rectangle {
 
             // Granulator & Silk Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Granulator Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     GranulatorDevice {
                         mosaic-enabled <=> root.mosaic-enabled;
                         mosaic-loop-lock <=> root.mosaic-loop-lock;
@@ -4033,8 +4127,9 @@ export component SynDRMEngine inherits Rectangle {
 
                 // Silk Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     SilkDevice {
                         ring-enabled <=> root.ring-enabled;
                         ring-cutoff <=> root.ring-cutoff;
@@ -4075,12 +4170,12 @@ export component SynDRMEngine inherits Rectangle {
 
             // Texture & Reflect Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Texture Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 280px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
 
                     TextureDevice {
                         texture-enabled <=> root.texture-enabled;
@@ -4110,8 +4205,8 @@ export component SynDRMEngine inherits Rectangle {
 
                 // Reflect Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 280px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
 
                     ReflectDevice {
                         reflect-enabled <=> root.reflect-enabled;
@@ -4145,12 +4240,44 @@ export component SynDRMEngine inherits Rectangle {
 
             // G8 & Modul8 Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
+
+                // Modul8 Device
+                Rectangle {
+                    width: 1216px;
+                    height: 354px;
+
+                    Modul8Device {
+                        width: parent.width;
+                        modul8-enabled <=> root.modul8-enabled;
+                        modul8-target-options: root.modul8-target-options;
+                        modul8-wave <=> root.modul8-wave;
+                        modul8-rate <=> root.modul8-rate;
+                        modul8-sync <=> root.modul8-sync;
+                        modul8-division <=> root.modul8-division;
+                        modul8-amount <=> root.modul8-amount;
+                        modul8-bias <=> root.modul8-bias;
+                        modul8-target <=> root.modul8-target;
+                        toggle-modul8-enabled => root.toggle-modul8-enabled();
+                        modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                        modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                        modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                        modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                        modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                        modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
+                        modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
 
                 // G8 Device
                 Rectangle {
-                    width: parent.width;
-                    height: 200px;
+                    width: 1216px;
+                    height: 186px;
+
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
                         gate-rate-index <=> root.g8-rate-index;

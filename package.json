@@ -1,6 +1,6 @@
 {
   "name": "tlbx-1",
-  "version": "0.1.23",
+  "version": "0.1.25",
   "license": "Proprietary",
   "private": true,
   "description": "Project tooling for docs and scripting",

@@ -14,6 +14,7 @@ import {
 import { GranulatorDevice } from "../devices/granulator_device.slint";
 import { SilkDevice } from "../devices/silk_device.slint";
 import { G8Device } from "../devices/g8_device.slint";
+import { Modul8Device } from "../devices/modul8_device.slint";
 import { TextureDevice } from "../devices/texture_device.slint";
 import { ReflectDevice } from "../devices/reflect_device.slint";
 
@@ -204,6 +205,10 @@ export component TapeEngine inherits Rectangle {
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
     ];
 
@@ -224,6 +229,16 @@ export component TapeEngine inherits Rectangle {
     callback loop-xfade-changed(value: float);
     callback tape-rate-mode-selected(index: int);
     callback loop-mode-selected(index: int);
+    in property <[string]> modul8-target-options;
+    in-out property <bool> modul8-enabled: false;
+    in-out property <[int]> modul8-wave: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-rate: [1, 1, 1, 1, 1, 1, 1, 1];
+    in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
+    in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-bias: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
+    in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
+
 
     callback toggle-track-mute();
     callback toggle-loop-enabled();
@@ -293,6 +308,14 @@ export component TapeEngine inherits Rectangle {
     callback toggle-g8-enabled();
     callback g8-rate-selected(index: int);
     callback g8-step-changed(index: int, value: float);
+    callback toggle-modul8-enabled();
+    callback modul8-wave-changed(index: int, value: int);
+    callback modul8-rate-changed(index: int, value: float);
+    callback modul8-sync-changed(index: int, value: bool);
+    callback modul8-division-changed(index: int, value: int);
+    callback modul8-amount-changed(index: int, value: float);
+    callback modul8-bias-changed(index: int, value: float);
+    callback modul8-target-changed(index: int, value: int);
 
     width: 1242px;
     background: transparent;
@@ -318,7 +341,7 @@ export component TapeEngine inherits Rectangle {
                     label: "Mute";
                     label-active: "Live";
                     label-pos: "left";
-                    label-color: #b9b9bf;
+                    label-color: Theme.active.text_secondary;
                     label-active-color: Theme.active.text_primary;
                     label-font-size: 11px;
                     label-font-weight: 500;
@@ -329,7 +352,7 @@ export component TapeEngine inherits Rectangle {
 
         // Engine Controls
         Rectangle {
-            background: #1e3a5f33;
+            background: Theme.active.ui_device_panel_bg;
             border-width: 2px;
             border-radius: 6px;
             border-color: Theme.active.border-strong;
@@ -437,7 +460,7 @@ export component TapeEngine inherits Rectangle {
                                 Row {
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "T.Start"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "T.Start"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.trigger-start;
@@ -457,7 +480,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "L.Start"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "L.Start"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.loop-start;
@@ -477,7 +500,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Length"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Length"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.loop-length;
@@ -497,7 +520,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Rotate"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Rotate"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.tape-rotate;
@@ -518,7 +541,7 @@ export component TapeEngine inherits Rectangle {
                                 Row {
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Speed"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Speed"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.tape-speed;
@@ -537,7 +560,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Glide"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "Glide"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.tape-glide;
@@ -556,7 +579,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "SOS"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "SOS"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.tape-sos;
@@ -575,7 +598,7 @@ export component TapeEngine inherits Rectangle {
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "XFade"; color: #b9b9bf; font-size: 10px; horizontal-alignment: center; }
+                                        Text { text: "XFade"; color: Theme.active.text_secondary; font-size: 10px; horizontal-alignment: center; }
                                         RDSKnob {
                                             renderer: "lo-fi";
                                             value: root.loop-xfade;
@@ -601,7 +624,7 @@ export component TapeEngine inherits Rectangle {
                                         VerticalLayout {
                                             spacing: 2px;
                                             width: 126px;
-                                            Text { text: "Rate Mode"; color: #b9b9bf; font-size: 10px; }
+                                            Text { text: "Rate Mode"; color: Theme.active.text_secondary; font-size: 10px; }
                                             RDSComboBox {
                                                 width: 110px;
                                                 height: 24px;
@@ -616,7 +639,7 @@ export component TapeEngine inherits Rectangle {
                                         VerticalLayout {
                                             spacing: 2px;
                                             width: 120px;
-                                            Text { text: "Loop Mode"; color: #b9b9bf; font-size: 10px; }
+                                            Text { text: "Loop Mode"; color: Theme.active.text_secondary; font-size: 10px; }
                                             RDSComboBox {
                                                 width: 110px;
                                                 height: 24px;
@@ -663,12 +686,13 @@ export component TapeEngine inherits Rectangle {
             width: parent.width;
 
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Granulator Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     GranulatorDevice {
                         mosaic-enabled <=> root.mosaic-enabled;
                         mosaic-loop-lock <=> root.mosaic-loop-lock;
@@ -707,7 +731,9 @@ export component TapeEngine inherits Rectangle {
 
                 // Silk Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     SilkDevice {
                         ring-enabled <=> root.ring-enabled;
                         ring-cutoff <=> root.ring-cutoff;
@@ -747,12 +773,13 @@ export component TapeEngine inherits Rectangle {
             }
 
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Texture Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 280px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     TextureDevice {
                         texture-enabled <=> root.texture-enabled;
                         texture-gate <=> root.texture-gate;
@@ -781,8 +808,9 @@ export component TapeEngine inherits Rectangle {
 
                 // Reflect Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 280px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     ReflectDevice {
                         reflect-enabled <=> root.reflect-enabled;
                         reflect-freeze <=> root.reflect-freeze;
@@ -814,12 +842,44 @@ export component TapeEngine inherits Rectangle {
             }
 
             HorizontalLayout {
-                spacing: 22px;
-                Rectangle {
-                    width: parent.width;
-                    height: 200px;
+                spacing: 8px;
 
-                    // G8 Device
+                // Modul8 Device
+                Rectangle {
+                    width: 1216px;
+                    height: 354px;
+
+                    Modul8Device {
+                        width: parent.width;
+                        modul8-enabled <=> root.modul8-enabled;
+                        modul8-target-options: root.modul8-target-options;
+                        modul8-wave <=> root.modul8-wave;
+                        modul8-rate <=> root.modul8-rate;
+                        modul8-sync <=> root.modul8-sync;
+                        modul8-division <=> root.modul8-division;
+                        modul8-amount <=> root.modul8-amount;
+                        modul8-bias <=> root.modul8-bias;
+                        modul8-target <=> root.modul8-target;
+                        toggle-modul8-enabled => root.toggle-modul8-enabled();
+                        modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                        modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                        modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                        modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                        modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                        modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
+                        modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                // G8 Device
+                Rectangle {
+                    width: 1216px;
+                    height: 186px;
+
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
                         gate-rate-index <=> root.g8-rate-index;

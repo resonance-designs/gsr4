@@ -1,3 +1,4 @@
+import { Theme } from "../theme/index.slint";
 import {
     RDSHeaderLabel,
     RDSKnob,
@@ -10,6 +11,7 @@ import {
 import { GranulatorDevice } from "../devices/granulator_device.slint";
 import { SilkDevice } from "../devices/silk_device.slint";
 import { G8Device } from "../devices/g8_device.slint";
+import { Modul8Device } from "../devices/modul8_device.slint";
 import { TextureDevice } from "../devices/texture_device.slint";
 import { ReflectDevice } from "../devices/reflect_device.slint";
 
@@ -93,7 +95,16 @@ export component VoidSeedEngine inherits Rectangle {
 
     in-out property <bool> g8-enabled: true;
     in-out property <int> g8-rate-index: 0;
-    in-out property <[float]> g8-steps;
+    in-out property <[float]> g8-steps: [
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+    ];
 
     callback void-base-freq-changed(float);
     callback void-chaos-depth-changed(float);
@@ -110,6 +121,16 @@ export component VoidSeedEngine inherits Rectangle {
     callback void-mod-rate-changed(float);
     callback void-level-changed(float);
     callback toggle-void();
+    in property <[string]> modul8-target-options;
+    in-out property <bool> modul8-enabled: false;
+    in-out property <[int]> modul8-wave: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-rate: [1, 1, 1, 1, 1, 1, 1, 1];
+    in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
+    in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-bias: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
+    in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
+
     callback toggle-track-mute();
     callback toggle-mosaic-enabled();
     callback toggle-mosaic-loop-lock();
@@ -146,6 +167,14 @@ export component VoidSeedEngine inherits Rectangle {
     callback toggle-g8-enabled();
     callback g8-rate-selected(int);
     callback g8-step-changed(int, float);
+    callback toggle-modul8-enabled();
+    callback modul8-wave-changed(index: int, value: int);
+    callback modul8-rate-changed(index: int, value: float);
+    callback modul8-sync-changed(index: int, value: bool);
+    callback modul8-division-changed(index: int, value: int);
+    callback modul8-amount-changed(index: int, value: float);
+    callback modul8-bias-changed(index: int, value: float);
+    callback modul8-target-changed(index: int, value: int);
     callback toggle-texture-enabled();
     callback toggle-texture-gate();
     callback texture-drive-changed(float);
@@ -170,284 +199,303 @@ export component VoidSeedEngine inherits Rectangle {
     callback reflect-damp-changed(float);
     callback reflect-decay-changed(float);
     callback reflect-post-gain-changed(float);
-
     width: 1242px;
     background: transparent;
 
+    // Engine Container
     VerticalLayout {
-        spacing: 12px;
-        width: parent.width;
+        spacing: 8px;
+        padding: 12px;
 
-        HorizontalLayout {
-            spacing: 10px;
-            width: parent.width;
-
-            RDSHeaderLabel {
-                text: "Void Seed";
-                horizontal-alignment: left;
-                padding-horizontal: 12px;
-                padding-vertical: 6px;
-            }
-
+        // Engine Title & Mute
+        RDSHeaderLabel {
+            text: "Void Seed";
+            horizontal-alignment: left;
+            padding-horizontal: 12px;
+            padding-vertical: 6px;
+            right-padding: 12px;
             HorizontalLayout {
                 spacing: 6px;
-                Text { text: "Mute"; color: #b9b9bf; font-size: 11px; }
+                alignment: center;
                 RDSCircleToggle {
-                    active: root.track-muted;
+                    y: 2px;
+                    active: !root.track-muted;
+                    label: "Mute";
+                    label-active: "Live";
+                    label-pos: "left";
+                    label-color: Theme.active.text_secondary;
+                    label-active-color: Theme.active.text_primary;
+                    label-font-size: 11px;
+                    label-font-weight: 500;
                     clicked => root.toggle-track-mute();
                 }
             }
         }
 
-        HorizontalLayout {
-            spacing: 20px;
+        // Engine Controls
+        Rectangle {
+            background: Theme.active.ui_device_panel_bg;
+            border-width: 2px;
+            border-radius: 6px;
+            border-color: Theme.active.border-strong;
 
-        // Left Side: Gain Slider + Chaos Pad
-        VerticalLayout {
-            spacing: 8px;
-            HorizontalLayout {
-                spacing: 12px;
-                alignment: start;
-
-                // Gain Slider
-                VerticalLayout {
-                    spacing: 4px;
-                    alignment: end;
-                    Text {
-                        text: "GAIN";
-                        color: #f06292;
-                        font-size: 9px;
-                        font-weight: 700;
-                        horizontal-alignment: center;
-                    }
-                    RDSSlider {
-                        value: root.void-level;
-                        min-value: 0.0;
-                        max-value: 1.0;
-                        size: "small";
-                        height-override: 200px;
-                        value-changed(v) => { root.void-level = v; root.void-level-changed(v); }
-                    }
-                }
-
-                // Chaos Pad (XY Pad)
-                VerticalLayout {
-                    spacing: 8px;
-                    Text {
-                        text: "Chaos / Entropy Map";
-                        color: #f06292;
-                        font-size: 11px;
-                        font-weight: 700;
-                        letter-spacing: 0.5px;
-                    }
-
-                    RDSXYPad {
-                        width: 200px;
-                        height: 200px;
-                        value-x <=> root.void-chaos-depth;
-                        value-y <=> root.void-entropy;
-                        pad-background: #000000;
-                        pad-border-color: #f0629233;
-                        grid-color: #f0629211;
-                        handle-color: #f06292;
-                        glow-color: #f0629233;
-                        border-radius: 8px;
-                        handle-size: 14px;
-                        value-x-changed(v) => { root.void-chaos-depth-changed(v); }
-                        value-y-changed(v) => { root.void-entropy-changed(v); }
-                    }
-                }
-
-                // Pan / Width Pad
-                VerticalLayout {
-                    spacing: 8px;
-                    Text {
-                        text: "Pan / Width";
-                        color: #f06292;
-                        font-size: 11px;
-                        font-weight: 700;
-                        letter-spacing: 0.5px;
-                    }
-
-                    RDSXYPad {
-                        width: 200px;
-                        height: 200px;
-                        value-x <=> root.void-pan;
-                        value-y <=> root.void-width;
-                        pad-background: #000000;
-                        pad-border-color: #f0629233;
-                        grid-color: #f0629211;
-                        handle-color: #f06292;
-                        glow-color: #f0629233;
-                        border-radius: 8px;
-                        handle-size: 14px;
-                        value-x-changed(v) => { root.void-pan-changed(v); }
-                        value-y-changed(v) => { root.void-width-changed(v); }
-                    }
-                }
-            }
-
-            Rectangle {
-                height: 40px;
-                background: root.void-enabled ? #f06292 : #1e1e26;
-                border-radius: 4px;
-                border-color: #f0629266;
-                border-width: 1px;
-
-                Text {
-                    text: root.void-enabled ? "CLOSE_VOID" : "OPEN_VOID";
-                    color: root.void-enabled ? #ffffff : #f0629266;
-                    font-size: 12px;
-                    font-weight: 900;
-                    letter-spacing: 2px;
-                }
-
-                TouchArea {
-                    clicked => {
-                        root.toggle-void();
-                    }
-                }
-
-                animate background { duration: 250ms; }
-            }
-        }
-
-        // Parameters
-        VerticalLayout {
-            spacing: 16px;
-            Text {
-                text: "Void Parameters";
-                color: #00e5ff;
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 0.5px;
-            }
-
-            GridLayout {
+            // Void Seed Layout
+            VerticalLayout {
+                padding: 12px;
                 spacing: 20px;
-                Row {
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    // Gain Slider
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Base Freq"; color: #b9b9bf; font-size: 11px; }
-                        RDSKnob {
-                            value: root.void-base-freq;
-                            min-value: 20; max-value: 200;
-                            size: 50px;
-                            value-changed(v) => { root.void-base-freq = v; root.void-base-freq-changed(v); }
+                        alignment: end;
+                        width: 60px;
+                        RDSHeaderLabel {
+                            text: "Gain";
+                            bg-color: Theme.active.accent-secondary;
+                            txt-color: Theme.active.text-primary;
+                            letter-spacing: 1px;
+                        }
+                        RDSSlider {
+                            x: parent.width / 6;
+                            value: root.void-level;
+                            min-value: 0.0;
+                            max-value: 1.0;
+                            size: "small";
+                            height-override: 260px;
+                            drag-sensitivity: 0.75;
+                            scroll-sensitivity: 0.0001;
+                            value-changed(v) => { root.void-level = v; root.void-level-changed(v); }
                         }
                     }
+
+                    // Chaos Pad (XY Pad)
                     VerticalLayout {
-                        spacing: 4px;
-                        Text { text: "Mod Rate"; color: #b9b9bf; font-size: 11px; }
-                        RDSKnob {
-                            value: root.void-mod-rate;
-                            min-value: 0.01; max-value: 10.0;
-                            size: 50px;
-                            value-changed(v) => { root.void-mod-rate = v; root.void-mod-rate-changed(v); }
+                        spacing: 8px;
+                        RDSHeaderLabel {
+                            text: "Chaos / Entropy Map";
+                            bg-color: Theme.active.accent-secondary;
+                            txt-color: Theme.active.text-primary;
+                            letter-spacing: 1px;
+                        }
+                        RDSXYPad {
+                            width: 256px;
+                            height: 256px;
+                            value-x <=> root.void-chaos-depth;
+                            value-y <=> root.void-entropy;
+                            pad-background: #000000;
+                            pad-border-color: #f0629233;
+                            grid-color: #f0629211;
+                            handle-color: #f06292;
+                            glow-color: #f0629233;
+                            border-radius: 8px;
+                            handle-size: 14px;
+                            value-x-changed(v) => { root.void-chaos-depth-changed(v); }
+                            value-y-changed(v) => { root.void-entropy-changed(v); }
                         }
                     }
-                }
-                Row {
+
+                    // Pan / Width Pad
                     VerticalLayout {
-                        spacing: 4px;
-                        Text { text: "Feedback"; color: #b9b9bf; font-size: 11px; }
-                        RDSKnob {
-                            value: root.void-feedback;
-                            min-value: 0.0; max-value: 0.98;
-                            size: 50px;
-                            value-changed(v) => { root.void-feedback = v; root.void-feedback-changed(v); }
+                        spacing: 8px;
+                        RDSHeaderLabel {
+                            text: "Pan / Width";
+                            bg-color: Theme.active.accent-secondary;
+                            txt-color: Theme.active.text-primary;
+                            letter-spacing: 1px;
+                        }
+                        RDSXYPad {
+                            width: 256px;
+                            height: 256px;
+                            value-x <=> root.void-pan;
+                            value-y <=> root.void-width;
+                            pad-background: #000000;
+                            pad-border-color: #f0629233;
+                            grid-color: #f0629211;
+                            handle-color: #f06292;
+                            glow-color: #f0629233;
+                            border-radius: 8px;
+                            handle-size: 14px;
+                            value-x-changed(v) => { root.void-pan-changed(v); }
+                            value-y-changed(v) => { root.void-width-changed(v); }
                         }
                     }
+
+                    // Parameters
                     VerticalLayout {
-                        spacing: 4px;
-                        Text { text: "Diffusion"; color: #b9b9bf; font-size: 11px; }
-                        RDSKnob {
-                            value: root.void-diffusion;
-                            min-value: 0.0; max-value: 1.0;
-                            size: 50px;
-                            value-changed(v) => { root.void-diffusion = v; root.void-diffusion-changed(v); }
+                        spacing: 16px;
+                        RDSHeaderLabel {
+                            text: "Void Parameters";
+                            bg-color: Theme.active.accent-secondary;
+                            txt-color: Theme.active.text-primary;
+                            letter-spacing: 1px;
+                            width: 586px;
                         }
-                    }
-                }
-                Row {
-                    VerticalLayout {
-                        spacing: 4px;
-                        Text { text: "Close Decay"; color: #b9b9bf; font-size: 11px; }
-                        RDSKnob {
-                            value: root.void-close-decay;
-                            min-value: 1.0; max-value: 20.0;
-                            size: 50px;
-                            value-changed(v) => { root.void-close-decay = v; root.void-close-decay-changed(v); }
-                        }
-                    }
-                    Rectangle { }
-                }
-                Row {
-                    VerticalLayout {
-                        spacing: 4px;
-                        Text { text: "Moog Cut"; color: #b9b9bf; font-size: 11px; }
-                        RDSKnob {
-                            value: root.void-filter-cutoff;
-                            min-value: 0.0; max-value: 1.0;
-                            size: 50px;
-                            value-changed(v) => {
-                                root.void-filter-cutoff = v;
-                                root.void-filter-cutoff-changed(v);
+                        GridLayout {
+                            spacing-horizontal: 20px;
+                            spacing-vertical: 12px;
+                            Row {
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "Base Freq"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.void-base-freq;
+                                        min-value: 20; max-value: 200;
+                                        size: 100px; indicator-position: 34px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => { root.void-base-freq = v; root.void-base-freq-changed(v); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "Mod Rate"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.void-mod-rate;
+                                        min-value: 0.01; max-value: 10.0;
+                                        size: 100px; indicator-position: 34px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => { root.void-mod-rate = v; root.void-mod-rate-changed(v); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "Feedback"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.void-feedback;
+                                        min-value: 0.0; max-value: 0.98;
+                                        size: 100px; indicator-position: 34px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => { root.void-feedback = v; root.void-feedback-changed(v); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "Diffusion"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.void-diffusion;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 100px; indicator-position: 34px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => { root.void-diffusion = v; root.void-diffusion-changed(v); }
+                                    }
+                                }
+                            }
+                            Row {
+                                VerticalLayout {
+                                    spacing: 6px;
+                                    Text { text: "Filter"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 11px; }
+                                    HorizontalLayout {
+                                        x: parent.width / 4;
+                                        RDSCircleToggle {
+                                            y: parent.height / -0.4;
+                                            active: root.void-filter-pre-drive;
+                                            label: "POST";
+                                            label-active: "PRE";
+                                            label-pos: "right";
+                                            clicked => { root.void-filter-pre-drive = !root.void-filter-pre-drive; root.void-filter-pre-drive-changed(root.void-filter-pre-drive); }
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "Cut"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.void-filter-cutoff;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 100px; indicator-position: 34px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => {
+                                            root.void-filter-cutoff = v;
+                                            root.void-filter-cutoff-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "Res"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.void-filter-resonance;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 100px; indicator-position: 34px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => {
+                                            root.void-filter-resonance = v;
+                                            root.void-filter-resonance-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "Drive"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.void-drive;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 100px; indicator-position: 34px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => { root.void-drive = v; root.void-drive-changed(v); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "Close Decay"; horizontal-alignment: center; font-size: 11px; color: Theme.active.text-secondary;}
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.void-close-decay;
+                                        min-value: 1.0; max-value: 20.0;
+                                        size: 100px; indicator-position: 34px;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => { root.void-close-decay = v; root.void-close-decay-changed(v); }
+                                    }
+                                }
                             }
                         }
                     }
-                    VerticalLayout {
-                        spacing: 4px;
-                        Text { text: "Moog Res"; color: #b9b9bf; font-size: 11px; }
-                        RDSKnob {
-                            value: root.void-filter-resonance;
-                            min-value: 0.0; max-value: 1.0;
-                            size: 50px;
-                            value-changed(v) => {
-                                root.void-filter-resonance = v;
-                                root.void-filter-resonance-changed(v);
-                            }
-                        }
-                    }
                 }
-                Row {
-                    VerticalLayout {
-                        spacing: 4px;
-                        Text { text: "Drive"; color: #b9b9bf; font-size: 11px; }
-                        RDSKnob {
-                            value: root.void-drive;
-                            min-value: 0.0; max-value: 1.0;
-                            size: 50px;
-                            value-changed(v) => { root.void-drive = v; root.void-drive-changed(v); }
+                Rectangle {
+                    height: 40px;
+                    background: root.void-enabled ? #f06292 : #1e1e26;
+                    border-radius: 4px;
+                    border-color: #f0629266;
+                    border-width: 1px;
+                    Text {
+                        text: root.void-enabled ? "CLOSE_VOID" : "OPEN_VOID";
+                        color: root.void-enabled ? #ffffff : #f0629266;
+                        font-size: 12px;
+                        font-weight: 900;
+                        letter-spacing: 2px;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.toggle-void();
                         }
                     }
-                    VerticalLayout {
-                        spacing: 6px;
-                        Text { text: "Filter"; color: #b9b9bf; font-size: 11px; }
-                        RDSCircleToggle {
-                            active: root.void-filter-pre-drive;
-                            label: "POST";
-                            label-active: "PRE";
-                            label-pos: "right";
-                            clicked => { root.void-filter-pre-drive = !root.void-filter-pre-drive; root.void-filter-pre-drive-changed(root.void-filter-pre-drive); }
-                        }
-                    }
+                    animate background { duration: 250ms; }
                 }
             }
-
-        }
         }
 
         // Downstream Devices
         VerticalLayout {
             width: parent.width;
+
+            // Granulator & Silk Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
 
                 // Granulator Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     GranulatorDevice {
                         mosaic-enabled <=> root.mosaic-enabled;
                         mosaic-loop-lock <=> root.mosaic-loop-lock;
@@ -486,8 +534,9 @@ export component VoidSeedEngine inherits Rectangle {
 
                 // Silk Device
                 Rectangle {
-                    width: (parent.width - 16px) / 2 - 15px;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     SilkDevice {
                         ring-enabled <=> root.ring-enabled;
                         ring-cutoff <=> root.ring-cutoff;
@@ -526,14 +575,16 @@ export component VoidSeedEngine inherits Rectangle {
                 }
             }
 
+            // Texture & Reflect Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
+
+                // Texture Device
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     TextureDevice {
-                        width: parent.width;
-                        height: parent.height;
                         texture-enabled <=> root.texture-enabled;
                         texture-gate <=> root.texture-gate;
                         texture-drive <=> root.texture-drive;
@@ -558,12 +609,13 @@ export component VoidSeedEngine inherits Rectangle {
                         texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
                     }
                 }
+
+                // Reflect Device
                 Rectangle {
-                    width: (parent.width - 22px) / 2;
-                    height: 250px;
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+
                     ReflectDevice {
-                        width: parent.width;
-                        height: parent.height;
                         reflect-enabled <=> root.reflect-enabled;
                         reflect-freeze <=> root.reflect-freeze;
                         reflect-delay <=> root.reflect-delay;
@@ -593,11 +645,46 @@ export component VoidSeedEngine inherits Rectangle {
                 }
             }
 
+            // G8 & Modul8 Devices
             HorizontalLayout {
-                spacing: 22px;
+                spacing: 8px;
+
+                // Modul8 Device
                 Rectangle {
-                    width: parent.width;
-                    height: 200px;
+                    width: 1216px;
+                    height: 354px;
+
+                    Modul8Device {
+                        width: parent.width;
+                        modul8-enabled <=> root.modul8-enabled;
+                        modul8-target-options: root.modul8-target-options;
+                        modul8-wave <=> root.modul8-wave;
+                        modul8-rate <=> root.modul8-rate;
+                        modul8-sync <=> root.modul8-sync;
+                        modul8-division <=> root.modul8-division;
+                        modul8-amount <=> root.modul8-amount;
+                        modul8-bias <=> root.modul8-bias;
+                        modul8-target <=> root.modul8-target;
+                        toggle-modul8-enabled => root.toggle-modul8-enabled();
+                        modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                        modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                        modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                        modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                        modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                        modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
+                        modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                // G8 Device
+                Rectangle {
+                    width: 1216px;
+                    height: 186px;
+
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
                         gate-rate-index <=> root.g8-rate-index;

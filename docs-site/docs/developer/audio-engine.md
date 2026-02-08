@@ -33,7 +33,8 @@ Engines are responsible for generating or manipulating raw audio data.
 Each track can run a downstream chain of effect devices.
 - **Granulator**: A granular processor for texture, spray, and rhythmic slicing.
 - **Silk**: A resonator/filter-style shaping stage.
-- **G-8**: A performance-oriented gate and chopper.
+- **Modul8**: An 8‑LFO modulation device targeting engine + downstream parameters.
+- **G8**: A performance-oriented gate and chopper.
 - **Texture**: A multi-stage distortion and saturation module.
 - **Reflect**: A delay/reverb spatial processor.
 
