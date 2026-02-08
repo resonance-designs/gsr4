@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.24
+ * Version: 0.1.25
  * Component: UI Definitions
  */
 
@@ -47,7 +47,7 @@ export component TLBX1UI inherits Window {
     in-out property <bool> is-playing: false;
     in-out property <bool> is-recording: false;
     in-out property <float> gain: 0.5;
-    in-out property <float> master-filter: 0.5;
+    in-out property <float> master-filter: 1.0;
     in-out property <float> master-comp: 0.0;
     in-out property <float> track-level: 1.0;
     in-out property <bool> track-muted: false;
@@ -203,6 +203,10 @@ export component TLBX1UI inherits Window {
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
     ];
     in property <[string]> modul8-target-options;
@@ -212,6 +216,7 @@ export component TLBX1UI inherits Window {
     in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
     in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
     in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-bias: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
     in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
     in-out property <bool> metronome-enabled: false;
     in-out property <float> metronome-count-in: 0.0;
@@ -345,6 +350,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> kick-cut-group: 0;
     in-out property <float> kick-cut-by: 0;
     in-out property <float> kick-prob: 1.0;
+    in-out property <bool> kick-lane-enabled: true;
     in-out property <[bool]> kick-sequencer-grid;
     in property <int> kick-sequencer-current-step: -1;
     in-out property <float> snare-tone: 0.5;
@@ -360,6 +366,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> snare-cut-group: 0;
     in-out property <float> snare-cut-by: 0;
     in-out property <float> snare-prob: 1.0;
+    in-out property <bool> snare-lane-enabled: true;
     in-out property <[bool]> snare-sequencer-grid;
     in property <int> snare-sequencer-current-step: -1;
     in-out property <float> clap-pitch: 0.5;
@@ -374,6 +381,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> clap-cut-group: 0;
     in-out property <float> clap-cut-by: 0;
     in-out property <float> clap-prob: 1.0;
+    in-out property <bool> clap-lane-enabled: true;
     in-out property <[bool]> clap-sequencer-grid;
     in property <int> clap-sequencer-current-step: -1;
     in-out property <float> hat-pitch: 0.5;
@@ -388,6 +396,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> hat-cut-group: 0;
     in-out property <float> hat-cut-by: 0;
     in-out property <float> hat-prob: 1.0;
+    in-out property <bool> hat-lane-enabled: true;
     in-out property <[bool]> hat-sequencer-grid;
     in property <int> hat-sequencer-current-step: -1;
     in-out property <float> perc1-pitch: 0.5;
@@ -402,6 +411,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> perc1-cut-group: 0;
     in-out property <float> perc1-cut-by: 0;
     in-out property <float> perc1-prob: 1.0;
+    in-out property <bool> perc1-lane-enabled: true;
     in-out property <[bool]> perc1-sequencer-grid;
     in property <int> perc1-sequencer-current-step: -1;
     in-out property <float> perc2-pitch: 0.5;
@@ -416,6 +426,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> perc2-cut-group: 0;
     in-out property <float> perc2-cut-by: 0;
     in-out property <float> perc2-prob: 1.0;
+    in-out property <bool> perc2-lane-enabled: true;
     in-out property <[bool]> perc2-sequencer-grid;
     in property <int> perc2-sequencer-current-step: -1;
     in-out property <float> crash-pitch: 0.7;
@@ -430,6 +441,7 @@ export component TLBX1UI inherits Window {
     in-out property <float> crash-cut-group: 0;
     in-out property <float> crash-cut-by: 0;
     in-out property <float> crash-prob: 1.0;
+    in-out property <bool> crash-lane-enabled: true;
     in-out property <[bool]> crash-sequencer-grid;
     in property <int> crash-sequencer-current-step: -1;
     in property <[string]> samp-labels;
@@ -446,6 +458,7 @@ export component TLBX1UI inherits Window {
     in-out property <[float]> samp-cut-group;
     in-out property <[float]> samp-cut-by;
     in-out property <[float]> samp-prob;
+    in-out property <[bool]> samp-lane-enabled;
     in-out property <[bool]> samp-sequencer-grid;
     in property <[int]> samp-sequencer-current-step;
     in-out property <int> syndrm-page: 0;
@@ -657,6 +670,7 @@ export component TLBX1UI inherits Window {
     callback modul8-sync-changed(index: int, value: bool);
     callback modul8-division-changed(index: int, value: int);
     callback modul8-amount-changed(index: int, value: float);
+    callback modul8-bias-changed(index: int, value: float);
     callback modul8-target-changed(index: int, value: int);
     callback toggle-metronome();
     callback metronome-count-in-changed(value: float);
@@ -793,6 +807,7 @@ export component TLBX1UI inherits Window {
     callback kick-cut-group-changed(value: float);
     callback kick-cut-by-changed(value: float);
     callback kick-prob-changed(value: float);
+    callback kick-lane-enabled-changed(value: bool);
     callback kick-sequencer-grid-toggled(step: int);
     callback snare-tone-changed(value: float);
     callback snare-decay-changed(value: float);
@@ -807,6 +822,7 @@ export component TLBX1UI inherits Window {
     callback snare-cut-group-changed(value: float);
     callback snare-cut-by-changed(value: float);
     callback snare-prob-changed(value: float);
+    callback snare-lane-enabled-changed(value: bool);
     callback snare-sequencer-grid-toggled(step: int);
     callback clap-pitch-changed(value: float);
     callback clap-decay-changed(value: float);
@@ -820,6 +836,7 @@ export component TLBX1UI inherits Window {
     callback clap-cut-group-changed(value: float);
     callback clap-cut-by-changed(value: float);
     callback clap-prob-changed(value: float);
+    callback clap-lane-enabled-changed(value: bool);
     callback clap-sequencer-grid-toggled(step: int);
     callback hat-pitch-changed(value: float);
     callback hat-decay-changed(value: float);
@@ -833,6 +850,7 @@ export component TLBX1UI inherits Window {
     callback hat-cut-group-changed(value: float);
     callback hat-cut-by-changed(value: float);
     callback hat-prob-changed(value: float);
+    callback hat-lane-enabled-changed(value: bool);
     callback hat-sequencer-grid-toggled(step: int);
     callback perc1-pitch-changed(value: float);
     callback perc1-decay-changed(value: float);
@@ -846,6 +864,7 @@ export component TLBX1UI inherits Window {
     callback perc1-cut-group-changed(value: float);
     callback perc1-cut-by-changed(value: float);
     callback perc1-prob-changed(value: float);
+    callback perc1-lane-enabled-changed(value: bool);
     callback perc1-sequencer-grid-toggled(step: int);
     callback perc2-pitch-changed(value: float);
     callback perc2-decay-changed(value: float);
@@ -859,6 +878,7 @@ export component TLBX1UI inherits Window {
     callback perc2-cut-group-changed(value: float);
     callback perc2-cut-by-changed(value: float);
     callback perc2-prob-changed(value: float);
+    callback perc2-lane-enabled-changed(value: bool);
     callback perc2-sequencer-grid-toggled(step: int);
     callback crash-pitch-changed(value: float);
     callback crash-decay-changed(value: float);
@@ -872,6 +892,7 @@ export component TLBX1UI inherits Window {
     callback crash-cut-group-changed(value: float);
     callback crash-cut-by-changed(value: float);
     callback crash-prob-changed(value: float);
+    callback crash-lane-enabled-changed(value: bool);
     callback crash-sequencer-grid-toggled(step: int);
     callback syndrm-page-changed(page: int);
     callback syndrm-edit-lane-changed(lane: int);
@@ -963,6 +984,7 @@ export component TLBX1UI inherits Window {
     callback samp-cut-group-changed(index: int, value: float);
     callback samp-cut-by-changed(index: int, value: float);
     callback samp-prob-changed(index: int, value: float);
+    callback samp-lane-enabled-changed(index: int, value: bool);
     callback samp-sequencer-grid-toggled(index: int, step: int);
     callback syndrm-step-samp-pitch-changed(value: float);
     callback syndrm-step-samp-attack-changed(value: float);
@@ -1584,6 +1606,7 @@ export component TLBX1UI inherits Window {
                                             modul8-sync <=> root.modul8-sync;
                                             modul8-division <=> root.modul8-division;
                                             modul8-amount <=> root.modul8-amount;
+                                            modul8-bias <=> root.modul8-bias;
                                             modul8-target <=> root.modul8-target;
                                             texture-enabled <=> root.texture-enabled;
                                             texture-gate <=> root.texture-gate;
@@ -1672,6 +1695,7 @@ export component TLBX1UI inherits Window {
                                             modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
                                             modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
                                             modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
                                             modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                                             toggle-texture-enabled => root.toggle-texture-enabled();
                                             toggle-texture-gate => root.toggle-texture-gate();
@@ -1827,6 +1851,7 @@ export component TLBX1UI inherits Window {
                                             modul8-sync <=> root.modul8-sync;
                                             modul8-division <=> root.modul8-division;
                                             modul8-amount <=> root.modul8-amount;
+                                            modul8-bias <=> root.modul8-bias;
                                             modul8-target <=> root.modul8-target;
                                             ring-enabled <=> root.ring-enabled;
                                             ring-cutoff <=> root.ring-cutoff;
@@ -1973,6 +1998,7 @@ export component TLBX1UI inherits Window {
                                             modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
                                             modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
                                             modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
                                             modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                                             toggle-ring-enabled => root.toggle-ring-enabled();
                                             toggle-ring-pre-post => root.toggle-ring-pre-post();
@@ -2045,6 +2071,7 @@ export component TLBX1UI inherits Window {
                                             kick-cut-group <=> root.kick-cut-group;
                                             kick-cut-by <=> root.kick-cut-by;
                                             kick-prob <=> root.kick-prob;
+                                            kick-lane-enabled <=> root.kick-lane-enabled;
                                             kick-sequencer-grid <=> root.kick-sequencer-grid;
                                             kick-sequencer-current-step: root.kick-sequencer-current-step;
                                             snare-tone <=> root.snare-tone;
@@ -2060,6 +2087,7 @@ export component TLBX1UI inherits Window {
                                             snare-cut-group <=> root.snare-cut-group;
                                             snare-cut-by <=> root.snare-cut-by;
                                             snare-prob <=> root.snare-prob;
+                                            snare-lane-enabled <=> root.snare-lane-enabled;
                                             snare-sequencer-grid <=> root.snare-sequencer-grid;
                                             snare-sequencer-current-step: root.snare-sequencer-current-step;
                                             clap-pitch <=> root.clap-pitch;
@@ -2074,6 +2102,7 @@ export component TLBX1UI inherits Window {
                                             clap-cut-group <=> root.clap-cut-group;
                                             clap-cut-by <=> root.clap-cut-by;
                                             clap-prob <=> root.clap-prob;
+                                            clap-lane-enabled <=> root.clap-lane-enabled;
                                             clap-sequencer-grid <=> root.clap-sequencer-grid;
                                             clap-sequencer-current-step: root.clap-sequencer-current-step;
                                             hat-pitch <=> root.hat-pitch;
@@ -2088,6 +2117,7 @@ export component TLBX1UI inherits Window {
                                             hat-cut-group <=> root.hat-cut-group;
                                             hat-cut-by <=> root.hat-cut-by;
                                             hat-prob <=> root.hat-prob;
+                                            hat-lane-enabled <=> root.hat-lane-enabled;
                                             hat-sequencer-grid <=> root.hat-sequencer-grid;
                                             hat-sequencer-current-step: root.hat-sequencer-current-step;
                                             perc1-pitch <=> root.perc1-pitch;
@@ -2102,6 +2132,7 @@ export component TLBX1UI inherits Window {
                                             perc1-cut-group <=> root.perc1-cut-group;
                                             perc1-cut-by <=> root.perc1-cut-by;
                                             perc1-prob <=> root.perc1-prob;
+                                            perc1-lane-enabled <=> root.perc1-lane-enabled;
                                             perc1-sequencer-grid <=> root.perc1-sequencer-grid;
                                             perc1-sequencer-current-step: root.perc1-sequencer-current-step;
                                             perc2-pitch <=> root.perc2-pitch;
@@ -2116,6 +2147,7 @@ export component TLBX1UI inherits Window {
                                             perc2-cut-group <=> root.perc2-cut-group;
                                             perc2-cut-by <=> root.perc2-cut-by;
                                             perc2-prob <=> root.perc2-prob;
+                                            perc2-lane-enabled <=> root.perc2-lane-enabled;
                                             perc2-sequencer-grid <=> root.perc2-sequencer-grid;
                                             perc2-sequencer-current-step: root.perc2-sequencer-current-step;
                                             crash-pitch <=> root.crash-pitch;
@@ -2130,6 +2162,7 @@ export component TLBX1UI inherits Window {
                                             crash-cut-group <=> root.crash-cut-group;
                                             crash-cut-by <=> root.crash-cut-by;
                                             crash-prob <=> root.crash-prob;
+                                            crash-lane-enabled <=> root.crash-lane-enabled;
                                             crash-sequencer-grid <=> root.crash-sequencer-grid;
                                             crash-sequencer-current-step: root.crash-sequencer-current-step;
                                             samp-labels: root.samp-labels;
@@ -2146,6 +2179,7 @@ export component TLBX1UI inherits Window {
                                             samp-cut-group <=> root.samp-cut-group;
                                             samp-cut-by <=> root.samp-cut-by;
                                             samp-prob <=> root.samp-prob;
+                                            samp-lane-enabled <=> root.samp-lane-enabled;
                                             samp-sequencer-grid <=> root.samp-sequencer-grid;
                                             samp-sequencer-current-step: root.samp-sequencer-current-step;
                                             syndrm-page <=> root.syndrm-page;
@@ -2291,6 +2325,18 @@ export component TLBX1UI inherits Window {
                                             reflect-damp <=> root.reflect-damp;
                                             reflect-decay <=> root.reflect-decay;
                                             reflect-post-gain <=> root.reflect-post-gain;
+                                            g8-enabled <=> root.g8-enabled;
+                                            g8-rate-index <=> root.g8-rate-index;
+                                            g8-steps <=> root.g8-steps;
+                                            modul8-target-options: root.modul8-target-options;
+                                            modul8-enabled <=> root.modul8-enabled;
+                                            modul8-wave <=> root.modul8-wave;
+                                            modul8-rate <=> root.modul8-rate;
+                                            modul8-sync <=> root.modul8-sync;
+                                            modul8-division <=> root.modul8-division;
+                                            modul8-amount <=> root.modul8-amount;
+                                            modul8-bias <=> root.modul8-bias;
+                                            modul8-target <=> root.modul8-target;
                                             kick-pitch-changed(value) => { root.kick-pitch-changed(value); }
                                             kick-decay-changed(value) => { root.kick-decay-changed(value); }
                                             kick-attack-changed(value) => { root.kick-attack-changed(value); }
@@ -2304,6 +2350,7 @@ export component TLBX1UI inherits Window {
                                             kick-cut-group-changed(value) => { root.kick-cut-group-changed(value); }
                                             kick-cut-by-changed(value) => { root.kick-cut-by-changed(value); }
                                             kick-prob-changed(value) => { root.kick-prob-changed(value); }
+                                            kick-lane-enabled-changed(value) => { root.kick-lane-enabled-changed(value); }
                                             kick-sequencer-grid-toggled(step) => { root.kick-sequencer-grid-toggled(step); }
                                             snare-tone-changed(value) => { root.snare-tone-changed(value); }
                                             snare-decay-changed(value) => { root.snare-decay-changed(value); }
@@ -2318,6 +2365,7 @@ export component TLBX1UI inherits Window {
                                             snare-cut-group-changed(value) => { root.snare-cut-group-changed(value); }
                                             snare-cut-by-changed(value) => { root.snare-cut-by-changed(value); }
                                             snare-prob-changed(value) => { root.snare-prob-changed(value); }
+                                            snare-lane-enabled-changed(value) => { root.snare-lane-enabled-changed(value); }
                                             snare-sequencer-grid-toggled(step) => { root.snare-sequencer-grid-toggled(step); }
                                             clap-pitch-changed(value) => { root.clap-pitch-changed(value); }
                                             clap-decay-changed(value) => { root.clap-decay-changed(value); }
@@ -2331,6 +2379,7 @@ export component TLBX1UI inherits Window {
                                             clap-cut-group-changed(value) => { root.clap-cut-group-changed(value); }
                                             clap-cut-by-changed(value) => { root.clap-cut-by-changed(value); }
                                             clap-prob-changed(value) => { root.clap-prob-changed(value); }
+                                            clap-lane-enabled-changed(value) => { root.clap-lane-enabled-changed(value); }
                                             clap-sequencer-grid-toggled(step) => { root.clap-sequencer-grid-toggled(step); }
                                             hat-pitch-changed(value) => { root.hat-pitch-changed(value); }
                                             hat-decay-changed(value) => { root.hat-decay-changed(value); }
@@ -2344,6 +2393,7 @@ export component TLBX1UI inherits Window {
                                             hat-cut-group-changed(value) => { root.hat-cut-group-changed(value); }
                                             hat-cut-by-changed(value) => { root.hat-cut-by-changed(value); }
                                             hat-prob-changed(value) => { root.hat-prob-changed(value); }
+                                            hat-lane-enabled-changed(value) => { root.hat-lane-enabled-changed(value); }
                                             hat-sequencer-grid-toggled(step) => { root.hat-sequencer-grid-toggled(step); }
                                             perc1-pitch-changed(value) => { root.perc1-pitch-changed(value); }
                                             perc1-decay-changed(value) => { root.perc1-decay-changed(value); }
@@ -2357,6 +2407,7 @@ export component TLBX1UI inherits Window {
                                             perc1-cut-group-changed(value) => { root.perc1-cut-group-changed(value); }
                                             perc1-cut-by-changed(value) => { root.perc1-cut-by-changed(value); }
                                             perc1-prob-changed(value) => { root.perc1-prob-changed(value); }
+                                            perc1-lane-enabled-changed(value) => { root.perc1-lane-enabled-changed(value); }
                                             perc1-sequencer-grid-toggled(step) => { root.perc1-sequencer-grid-toggled(step); }
                                             perc2-pitch-changed(value) => { root.perc2-pitch-changed(value); }
                                             perc2-decay-changed(value) => { root.perc2-decay-changed(value); }
@@ -2370,6 +2421,7 @@ export component TLBX1UI inherits Window {
                                             perc2-cut-group-changed(value) => { root.perc2-cut-group-changed(value); }
                                             perc2-cut-by-changed(value) => { root.perc2-cut-by-changed(value); }
                                             perc2-prob-changed(value) => { root.perc2-prob-changed(value); }
+                                            perc2-lane-enabled-changed(value) => { root.perc2-lane-enabled-changed(value); }
                                             perc2-sequencer-grid-toggled(step) => { root.perc2-sequencer-grid-toggled(step); }
                                             crash-pitch-changed(value) => { root.crash-pitch-changed(value); }
                                             crash-decay-changed(value) => { root.crash-decay-changed(value); }
@@ -2383,6 +2435,7 @@ export component TLBX1UI inherits Window {
                                             crash-cut-by-changed(value) => { root.crash-cut-by-changed(value); }
                                             crash-prob-changed(value) => { root.crash-prob-changed(value); }
                                             crash-filter-pre-drive-changed(value) => { root.crash-filter-pre-drive-changed(value); }
+                                            crash-lane-enabled-changed(value) => { root.crash-lane-enabled-changed(value); }
                                             crash-sequencer-grid-toggled(step) => { root.crash-sequencer-grid-toggled(step); }
                                             samp-load(index) => { root.samp-load(index); }
                                             samp-pitch-changed(index, value) => { root.samp-pitch-changed(index, value); }
@@ -2397,6 +2450,7 @@ export component TLBX1UI inherits Window {
                                             samp-cut-group-changed(index, value) => { root.samp-cut-group-changed(index, value); }
                                             samp-cut-by-changed(index, value) => { root.samp-cut-by-changed(index, value); }
                                             samp-prob-changed(index, value) => { root.samp-prob-changed(index, value); }
+                                            samp-lane-enabled-changed(index, value) => { root.samp-lane-enabled-changed(index, value); }
                                             samp-sequencer-grid-toggled(index, step) => { root.samp-sequencer-grid-toggled(index, step); }
                                             syndrm-page-changed(page) => { root.syndrm-page-changed(page); }
                                             syndrm-edit-lane-changed(lane) => { root.syndrm-edit-lane-changed(lane); }
@@ -2517,6 +2571,17 @@ export component TLBX1UI inherits Window {
                                             ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
                                             ring-noise-changed(value) => { root.ring-noise-changed(value); }
                                             ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
+                                            toggle-g8-enabled => root.toggle-g8-enabled();
+                                            g8-rate-selected(index) => { root.g8-rate-selected(index); }
+                                            g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
+                                            toggle-modul8-enabled => root.toggle-modul8-enabled();
+                                            modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                                            modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                                            modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                                            modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                                            modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
+                                            modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                                             toggle-texture-enabled => root.toggle-texture-enabled();
                                             toggle-texture-gate => root.toggle-texture-gate();
                                             texture-drive-changed(value) => { root.texture-drive-changed(value); }
@@ -2706,6 +2771,7 @@ export component TLBX1UI inherits Window {
                                             modul8-sync <=> root.modul8-sync;
                                             modul8-division <=> root.modul8-division;
                                             modul8-amount <=> root.modul8-amount;
+                                            modul8-bias <=> root.modul8-bias;
                                             modul8-target <=> root.modul8-target;
 
                                             fmmi-car-wave-changed(index) => { root.fmmi-car-wave-changed(index); }
@@ -2815,6 +2881,7 @@ export component TLBX1UI inherits Window {
                                             modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
                                             modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
                                             modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
                                             modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                                             toggle-texture-enabled => root.toggle-texture-enabled();
                                             toggle-texture-gate => root.toggle-texture-gate();
@@ -2900,6 +2967,7 @@ export component TLBX1UI inherits Window {
                                             modul8-sync <=> root.modul8-sync;
                                             modul8-division <=> root.modul8-division;
                                             modul8-amount <=> root.modul8-amount;
+                                            modul8-bias <=> root.modul8-bias;
                                             modul8-target <=> root.modul8-target;
                                             ring-enabled <=> root.ring-enabled;
                                             ring-cutoff <=> root.ring-cutoff;
@@ -2993,6 +3061,7 @@ export component TLBX1UI inherits Window {
                                             modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
                                             modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
                                             modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
                                             modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
                                             toggle-ring-enabled => root.toggle-ring-enabled();
                                             ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }

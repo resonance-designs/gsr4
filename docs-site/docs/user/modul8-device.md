@@ -13,12 +13,18 @@ Modul8 is an 8‑LFO modulation device that can target engine parameters and the
 - **Sync**: Enable BPM sync
 - **Division**: Tempo division when synced
 - **Amount**: Modulation depth
+- **Bias (Center)**: Sets the center point of the LFO within the target’s range
 - **Destination**: Parameter to modulate (scoped to the loaded engine + downstream devices)
 
 ## Amount Behavior
 
 - **0%**: No modulation (parameter stays at its base value)
 - **100%**: Full sweep across the parameter’s allowed range
+
+## Runtime Behavior
+
+- LFOs run when transport is playing.
+- Changing a destination back to **None** restores the parameter’s base value.
 
 ## Routing Rules
 

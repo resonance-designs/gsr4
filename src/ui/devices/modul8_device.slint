@@ -16,6 +16,7 @@ export component Modul8Device {
     in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
     in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
     in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-bias: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
     in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
 
     callback toggle-modul8-enabled();
@@ -24,6 +25,7 @@ export component Modul8Device {
     callback modul8-sync-changed(index: int, value: bool);
     callback modul8-division-changed(index: int, value: int);
     callback modul8-amount-changed(index: int, value: float);
+    callback modul8-bias-changed(index: int, value: float);
     callback modul8-target-changed(index: int, value: int);
 
     VerticalLayout {
@@ -84,7 +86,7 @@ export component Modul8Device {
                         VerticalLayout {
                             y: 28px;
                             RDSComboBox {
-                                width: 100px;
+                                width: 76px;
                                 model: root.modul8-wave-options;
                                 current-index: root.modul8-wave[idx];
                                 selected => {
@@ -134,7 +136,7 @@ export component Modul8Device {
                         VerticalLayout {
                             y: 28px;
                             RDSComboBox {
-                                width: 86px;
+                                width: 66px;
                                 model: root.modul8-division-options;
                                 current-index: root.modul8-division[idx];
                                 enabled: root.modul8-sync[idx];
@@ -163,6 +165,27 @@ export component Modul8Device {
                                 value-changed(v) => {
                                     root.modul8-amount[idx] = v;
                                     root.modul8-amount-changed(idx, v);
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            padding-top: 22px;
+                            RDSKnob {
+                                renderer: "lo-fi";
+                                value: root.modul8-bias[idx];
+                                min-value: 0;
+                                max-value: 1;
+                                size: 44px;
+                                indicator-position: 12px;
+                                label: "Bias";
+                                label-pos: "top-center";
+                                label-font-size: 10px;
+                                sensitivity: 0.01;
+                                scroll-sensitivity: 0.01;
+                                value-changed(v) => {
+                                    root.modul8-bias[idx] = v;
+                                    root.modul8-bias-changed(idx, v);
                                 }
                             }
                         }
