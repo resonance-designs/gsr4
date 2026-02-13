@@ -85,10 +85,13 @@ pub const SYNDRM_LANES: usize = 7 + SYNDRM_SAMPLE_CHANNELS;
 pub const FMMI_PAGE_SIZE: usize = 16;
 pub const FMMI_PAGES: usize = 8;
 pub const FMMI_STEPS: usize = FMMI_PAGE_SIZE * FMMI_PAGES;
+pub const MONOMI_PAGE_SIZE: usize = 16;
+pub const MONOMI_PAGES: usize = 8;
+pub const MONOMI_STEPS: usize = MONOMI_PAGE_SIZE * MONOMI_PAGES;
 
 const FMMI_SCALES_PATH: &str = "src/ui/assets/scales.json";
 pub const MODUL8_LFOS: usize = 8;
-pub const MODUL8_TARGET_COUNT: u32 = 157;
+pub const MODUL8_TARGET_COUNT: u32 = 172;
 const FMMI_VOICES: usize = 8;
 
 fn fmmi_compute_env(
@@ -300,6 +303,32 @@ fn fmmi_random_note_in_scale(rng_state: &mut u32, scale_index: usize) -> i32 {
     }
     FMMI_NOTE_BASE
 }
+
+const MONOMI_LFO_TARGETS: [&str; 15] = [
+    "Filter Cutoff",
+    "Resonance",
+    "Filter Morph",
+    "Filter Env Intensity",
+    "Filter Env Polarity",
+    "Note Glide",
+    "Osc1 Detune",
+    "Osc2 Detune",
+    "Osc3 Detune",
+    "Osc1 Mix",
+    "Osc2 Mix",
+    "Osc3 Mix",
+    "Osc1 PWM",
+    "Osc2 PWM",
+    "Osc3 PWM",
+];
+
+fn monomi_scale_mask(scale_notes: &[i32]) -> i32 {
+    fmmi_scale_mask(scale_notes)
+}
+
+fn monomi_random_note_in_scale(rng_state: &mut u32, scale_index: usize) -> i32 {
+    fmmi_random_note_in_scale(rng_state, scale_index)
+}
 pub const SYNDRM_FILTER_TYPES: u32 = 4;
 pub const WAVEFORM_SUMMARY_SIZE: usize = 100;
 pub const RECORD_MAX_SECONDS: usize = 30;
@@ -353,6 +382,8 @@ const SYNDRM_SAMPLE_LABEL_MAX_CHARS: usize = 18;
 const SYNDRM_SAMPLE_LABEL_ELLIPSES: bool = true;
 const FMMI_NOTE_BASE: i32 = 24; // C1
 const FMMI_NOTE_MAX: i32 = 95; // B6
+const MONOMI_NOTE_BASE: i32 = 24; // C1
+const MONOMI_NOTE_MAX: i32 = 95; // B6
 
 fn default_window_size() -> baseview::Size {
     #[cfg(target_os = "windows")]
@@ -1783,6 +1814,129 @@ struct Track {
     fmmi_gate_hold: AtomicU32,
     /// FMMI last carrier sample (for feedback).
     fmmi_last_carrier: AtomicU32,
+    /// MonoMI oscillator waveforms (0 = sine, 1 = triangle, 2 = saw, 3 = square/PWM).
+    monomi_osc_wave: [AtomicU32; 3],
+    /// MonoMI oscillator octaves (0=8', 1=16', 2=32').
+    monomi_osc_octave: [AtomicU32; 3],
+    /// MonoMI oscillator detune (cents).
+    monomi_osc_detune: [AtomicU32; 3],
+    /// MonoMI oscillator mix (0..1).
+    monomi_osc_mix: [AtomicU32; 3],
+    /// MonoMI oscillator PWM (0.05..0.95).
+    monomi_osc_pwm: [AtomicU32; 3],
+    /// MonoMI filter cutoff (Hz).
+    monomi_cutoff: AtomicU32,
+    /// MonoMI filter resonance (Q).
+    monomi_resonance: AtomicU32,
+    /// MonoMI filter morph (0..1).
+    monomi_filter_morph: AtomicU32,
+    /// MonoMI filter mode (0=LP24,1=LP12,2=HP).
+    monomi_filter_mode: AtomicU32,
+    /// MonoMI output volume.
+    monomi_volume: AtomicU32,
+    /// MonoMI amp envelope attack (steps).
+    monomi_amp_attack: AtomicU32,
+    /// MonoMI amp envelope decay (steps).
+    monomi_amp_decay: AtomicU32,
+    /// MonoMI amp envelope sustain (steps 0..128).
+    monomi_amp_sustain: AtomicU32,
+    /// MonoMI amp envelope release (steps).
+    monomi_amp_release: AtomicU32,
+    /// MonoMI filter envelope attack (steps).
+    monomi_filter_attack: AtomicU32,
+    /// MonoMI filter envelope decay (steps).
+    monomi_filter_decay: AtomicU32,
+    /// MonoMI filter envelope sustain (steps).
+    monomi_filter_sustain: AtomicU32,
+    /// MonoMI filter envelope release (steps).
+    monomi_filter_release: AtomicU32,
+    /// MonoMI filter envelope intensity (octaves).
+    monomi_filter_intensity: AtomicU32,
+    /// MonoMI filter envelope polarity (-1 or 1).
+    monomi_filter_polarity: AtomicU32,
+    /// MonoMI filter saturation amount (0..1).
+    monomi_filter_saturation: AtomicU32,
+    /// MonoMI filter saturation env follower amount (0..1).
+    monomi_filter_sat_env: AtomicU32,
+    /// MonoMI filter saturation placement (true=pre-filter, false=post-filter).
+    monomi_filter_sat_pre: AtomicBool,
+    /// MonoMI mix compressor mode (0=gentle,1=hard,2=limiter).
+    monomi_mix_comp_mode: AtomicU32,
+    /// MonoMI glide (ms).
+    monomi_glide: AtomicU32,
+    /// MonoMI sequencer note trigger probability (0..1).
+    monomi_prob: AtomicU32,
+    /// MonoMI scale index for randomization/highlight.
+    monomi_scale_index: AtomicU32,
+    /// MonoMI keybed trigger note (MIDI).
+    monomi_keybed_note: AtomicI32,
+    /// MonoMI keybed trigger flag.
+    monomi_keybed_trigger: AtomicBool,
+    /// MonoMI LFO shapes.
+    monomi_lfo_shape: [AtomicU32; 3],
+    /// MonoMI LFO targets.
+    monomi_lfo_target: [AtomicU32; 3],
+    /// MonoMI LFO amounts (0..1).
+    monomi_lfo_amount: [AtomicU32; 3],
+    /// MonoMI LFO rate (Hz).
+    monomi_lfo_rate: [AtomicU32; 3],
+    /// MonoMI LFO sync to BPM.
+    monomi_lfo_sync: [AtomicBool; 3],
+    /// MonoMI LFO step divisions (1..128).
+    monomi_lfo_steps: [AtomicU32; 3],
+    /// MonoMI sequencer grid.
+    monomi_sequencer_grid: Arc<[AtomicBool; MONOMI_STEPS]>,
+    /// MonoMI sequencer current step.
+    monomi_sequencer_step: AtomicI32,
+    /// MonoMI sequencer phase in samples.
+    monomi_sequencer_phase: AtomicU32,
+    /// MonoMI sequencer page.
+    monomi_page: AtomicU32,
+    /// MonoMI step editor index.
+    monomi_edit_step: AtomicU32,
+    /// MonoMI RNG state.
+    monomi_rng_state: AtomicU32,
+    /// MonoMI per-step note (MIDI note, -1 = scale).
+    monomi_step_note: Arc<[AtomicI32; MONOMI_STEPS]>,
+    /// MonoMI per-step cutoff (-1 = global).
+    monomi_step_cutoff: Arc<[AtomicU32; MONOMI_STEPS]>,
+    /// MonoMI per-step resonance (-1 = global).
+    monomi_step_resonance: Arc<[AtomicU32; MONOMI_STEPS]>,
+    /// MonoMI per-step amp attack (-1 = global).
+    monomi_step_env_attack: Arc<[AtomicU32; MONOMI_STEPS]>,
+    /// MonoMI per-step amp decay (-1 = global).
+    monomi_step_env_decay: Arc<[AtomicU32; MONOMI_STEPS]>,
+    /// MonoMI per-step amp sustain (-1 = global).
+    monomi_step_env_sustain: Arc<[AtomicU32; MONOMI_STEPS]>,
+    /// MonoMI per-step amp release (-1 = global).
+    monomi_step_env_release: Arc<[AtomicU32; MONOMI_STEPS]>,
+    /// MonoMI per-step gate length in steps (-1 = global).
+    monomi_step_gate: Arc<[AtomicU32; MONOMI_STEPS]>,
+    /// MonoMI per-step filter morph (-1 = global).
+    monomi_step_filter_morph: Arc<[AtomicU32; MONOMI_STEPS]>,
+    /// MonoMI per-step glide (ms) (-1 = global).
+    monomi_step_glide: Arc<[AtomicU32; MONOMI_STEPS]>,
+    /// MonoMI per-step osc mixes (-1 = global).
+    monomi_step_osc_mix: [Arc<[AtomicU32; MONOMI_STEPS]>; 3],
+    /// MonoMI per-step osc detune (-1 = global).
+    monomi_step_osc_detune: [Arc<[AtomicU32; MONOMI_STEPS]>; 3],
+    /// MonoMI per-step osc PWM (-1 = global).
+    monomi_step_osc_pwm: [Arc<[AtomicU32; MONOMI_STEPS]>; 3],
+    /// MonoMI randomize toggles per step parameter.
+    monomi_rand_cutoff: AtomicBool,
+    monomi_rand_resonance: AtomicBool,
+    monomi_rand_env_attack: AtomicBool,
+    monomi_rand_env_decay: AtomicBool,
+    monomi_rand_env_sustain: AtomicBool,
+    monomi_rand_env_release: AtomicBool,
+    monomi_rand_gate: AtomicBool,
+    monomi_rand_filter_morph: AtomicBool,
+    monomi_rand_glide: AtomicBool,
+    monomi_rand_osc_mix: [AtomicBool; 3],
+    monomi_rand_osc_detune: [AtomicBool; 3],
+    monomi_rand_osc_pwm: [AtomicBool; 3],
+    /// MonoMI randomize amount (0..1).
+    monomi_randomize_amount: AtomicU32,
     /// Void Seed base frequency.
     void_base_freq: AtomicU32,
     /// Smoothed void base frequency.
@@ -2550,6 +2704,95 @@ impl Default for Track {
             fmmi_gate_pos: AtomicU32::new(0),
             fmmi_gate_hold: AtomicU32::new(0),
             fmmi_last_carrier: AtomicU32::new(0.0f32.to_bits()),
+            monomi_osc_wave: [
+                AtomicU32::new(2),
+                AtomicU32::new(3),
+                AtomicU32::new(1),
+            ],
+            monomi_osc_octave: [
+                AtomicU32::new(0),
+                AtomicU32::new(1),
+                AtomicU32::new(2),
+            ],
+            monomi_osc_detune: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            monomi_osc_mix: std::array::from_fn(|_| AtomicU32::new(0.33f32.to_bits())),
+            monomi_osc_pwm: std::array::from_fn(|_| AtomicU32::new(0.5f32.to_bits())),
+            monomi_cutoff: AtomicU32::new(1200.0f32.to_bits()),
+            monomi_resonance: AtomicU32::new(1.0f32.to_bits()),
+            monomi_filter_morph: AtomicU32::new(0.0f32.to_bits()),
+            monomi_filter_mode: AtomicU32::new(0),
+            monomi_volume: AtomicU32::new(0.75f32.to_bits()),
+            monomi_amp_attack: AtomicU32::new(4.0f32.to_bits()),
+            monomi_amp_decay: AtomicU32::new(8.0f32.to_bits()),
+            monomi_amp_sustain: AtomicU32::new(64.0f32.to_bits()),
+            monomi_amp_release: AtomicU32::new(12.0f32.to_bits()),
+            monomi_filter_attack: AtomicU32::new(4.0f32.to_bits()),
+            monomi_filter_decay: AtomicU32::new(8.0f32.to_bits()),
+            monomi_filter_sustain: AtomicU32::new(64.0f32.to_bits()),
+            monomi_filter_release: AtomicU32::new(12.0f32.to_bits()),
+            monomi_filter_intensity: AtomicU32::new(2.0f32.to_bits()),
+            monomi_filter_polarity: AtomicU32::new(1.0f32.to_bits()),
+            monomi_filter_saturation: AtomicU32::new(0.0f32.to_bits()),
+            monomi_filter_sat_env: AtomicU32::new(0.0f32.to_bits()),
+            monomi_filter_sat_pre: AtomicBool::new(false),
+            monomi_mix_comp_mode: AtomicU32::new(0),
+            monomi_glide: AtomicU32::new(0.0f32.to_bits()),
+            monomi_prob: AtomicU32::new(1.0f32.to_bits()),
+            monomi_scale_index: AtomicU32::new(0),
+            monomi_keybed_note: AtomicI32::new(60),
+            monomi_keybed_trigger: AtomicBool::new(false),
+            monomi_lfo_shape: [AtomicU32::new(0), AtomicU32::new(1), AtomicU32::new(4)],
+            monomi_lfo_target: [AtomicU32::new(0), AtomicU32::new(6), AtomicU32::new(5)],
+            monomi_lfo_amount: [
+                AtomicU32::new(0.0f32.to_bits()),
+                AtomicU32::new(0.0f32.to_bits()),
+                AtomicU32::new(0.0f32.to_bits()),
+            ],
+            monomi_lfo_rate: [
+                AtomicU32::new(0.5f32.to_bits()),
+                AtomicU32::new(0.25f32.to_bits()),
+                AtomicU32::new(1.0f32.to_bits()),
+            ],
+            monomi_lfo_sync: [AtomicBool::new(true), AtomicBool::new(true), AtomicBool::new(false)],
+            monomi_lfo_steps: [AtomicU32::new(4), AtomicU32::new(8), AtomicU32::new(4)],
+            monomi_sequencer_grid: Arc::new(std::array::from_fn(|i| AtomicBool::new(i < MONOMI_PAGE_SIZE))),
+            monomi_sequencer_step: AtomicI32::new(-1),
+            monomi_sequencer_phase: AtomicU32::new(0),
+            monomi_page: AtomicU32::new(0),
+            monomi_edit_step: AtomicU32::new(0),
+            monomi_rng_state: AtomicU32::new(0x91b5_4c3a),
+            monomi_step_note: Arc::new(std::array::from_fn(|_| AtomicI32::new(-1))),
+            monomi_step_cutoff: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            monomi_step_resonance: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            monomi_step_env_attack: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            monomi_step_env_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            monomi_step_env_sustain: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            monomi_step_env_release: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            monomi_step_gate: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            monomi_step_filter_morph: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            monomi_step_glide: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            monomi_step_osc_mix: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits())))
+            }),
+            monomi_step_osc_detune: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits())))
+            }),
+            monomi_step_osc_pwm: std::array::from_fn(|_| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits())))
+            }),
+            monomi_rand_cutoff: AtomicBool::new(true),
+            monomi_rand_resonance: AtomicBool::new(true),
+            monomi_rand_env_attack: AtomicBool::new(true),
+            monomi_rand_env_decay: AtomicBool::new(true),
+            monomi_rand_env_sustain: AtomicBool::new(true),
+            monomi_rand_env_release: AtomicBool::new(true),
+            monomi_rand_gate: AtomicBool::new(true),
+            monomi_rand_filter_morph: AtomicBool::new(true),
+            monomi_rand_glide: AtomicBool::new(true),
+            monomi_rand_osc_mix: [AtomicBool::new(true), AtomicBool::new(true), AtomicBool::new(true)],
+            monomi_rand_osc_detune: [AtomicBool::new(true), AtomicBool::new(true), AtomicBool::new(true)],
+            monomi_rand_osc_pwm: [AtomicBool::new(true), AtomicBool::new(true), AtomicBool::new(true)],
+            monomi_randomize_amount: AtomicU32::new(1.0f32.to_bits()),
             void_base_freq: AtomicU32::new(40.0f32.to_bits()),
             void_base_freq_smooth: AtomicU32::new(40.0f32.to_bits()),
             void_enabled: AtomicBool::new(false),
@@ -2631,6 +2874,7 @@ pub struct TLBX1 {
     animate_dsp: [AnimateDspState; NUM_TRACKS],
     void_dsp: [VoidSeedDspState; NUM_TRACKS],
     fmmi_dsp: [FmmiDspState; NUM_TRACKS],
+    monomi_dsp: [MonomiDspState; NUM_TRACKS],
     last_host_playing: bool,
 }
 
@@ -2715,6 +2959,106 @@ impl FmmiDspState {
         Self {
             voices: std::array::from_fn(|_| FmmiVoiceState::default()),
             voice_clock: 0,
+        }
+    }
+}
+
+struct MonomiDspState {
+    sample_rate: f32,
+    osc_phase: [f32; 3],
+    lfo_phase: [f32; 3],
+    lfo_sample_hold: [f32; 3],
+    filter_lp: [Box<dyn AudioUnit>; 2],
+    filter_hp: [Box<dyn AudioUnit>; 2],
+    filter_moog: [Box<dyn AudioUnit>; 2],
+    amp_stage: u32,
+    amp_pos: u32,
+    amp_hold: u32,
+    amp_level: f32,
+    amp_level_smooth: f32,
+    amp_attack: u32,
+    amp_decay: u32,
+    amp_release: u32,
+    amp_sustain: f32,
+    filter_stage: u32,
+    filter_pos: u32,
+    filter_hold: u32,
+    filter_level: f32,
+    filter_attack: u32,
+    filter_decay: u32,
+    filter_release: u32,
+    filter_sustain: f32,
+    current_freq: f32,
+    target_freq: f32,
+    current_cutoff: f32,
+    current_resonance: f32,
+    current_morph: f32,
+    current_filter_intensity: f32,
+    current_filter_polarity: f32,
+    current_glide: f32,
+    current_osc_detune: [f32; 3],
+    current_osc_mix: [f32; 3],
+    current_osc_pwm: [f32; 3],
+    current_amp_attack: f32,
+    current_amp_decay: f32,
+    current_amp_sustain: f32,
+    current_amp_release: f32,
+    current_filter_attack: f32,
+    current_filter_decay: f32,
+    current_filter_sustain: f32,
+    current_filter_release: f32,
+    current_gate_steps: f32,
+    filter_sat_env: [f32; 2],
+}
+
+impl MonomiDspState {
+    fn new() -> Self {
+        Self {
+            sample_rate: 0.0,
+            osc_phase: [0.0; 3],
+            lfo_phase: [0.0; 3],
+            lfo_sample_hold: [0.0; 3],
+            filter_lp: [Box::new(lowpass()), Box::new(lowpass())],
+            filter_hp: [Box::new(highpass()), Box::new(highpass())],
+            filter_moog: [Box::new(moog()), Box::new(moog())],
+            amp_stage: 0,
+            amp_pos: 0,
+            amp_hold: 0,
+            amp_level: 0.0,
+            amp_level_smooth: 0.0,
+            amp_attack: 1,
+            amp_decay: 1,
+            amp_release: 1,
+            amp_sustain: 1.0,
+            filter_stage: 0,
+            filter_pos: 0,
+            filter_hold: 0,
+            filter_level: 0.0,
+            filter_attack: 1,
+            filter_decay: 1,
+            filter_release: 1,
+            filter_sustain: 1.0,
+            current_freq: 220.0,
+            target_freq: 220.0,
+            current_cutoff: 1200.0,
+            current_resonance: 1.0,
+            current_morph: 0.0,
+            current_filter_intensity: 2.0,
+            current_filter_polarity: 1.0,
+            current_glide: 0.0,
+            current_osc_detune: [0.0; 3],
+            current_osc_mix: [0.33; 3],
+            current_osc_pwm: [0.5; 3],
+            current_amp_attack: 4.0,
+            current_amp_decay: 8.0,
+            current_amp_sustain: 64.0,
+            current_amp_release: 12.0,
+            current_filter_attack: 4.0,
+            current_filter_decay: 8.0,
+            current_filter_sustain: 64.0,
+            current_filter_release: 12.0,
+            current_gate_steps: 1.0,
+            filter_sat_env: [0.0; 2],
         }
     }
 }
@@ -3081,6 +3425,7 @@ impl Default for TLBX1 {
             animate_dsp: std::array::from_fn(|_| AnimateDspState::new()),
             void_dsp: std::array::from_fn(|_| VoidSeedDspState::new()),
             fmmi_dsp: std::array::from_fn(|_| FmmiDspState::new()),
+            monomi_dsp: std::array::from_fn(|_| MonomiDspState::new()),
             last_host_playing: false,
         }
     }
@@ -9592,6 +9937,687 @@ impl TLBX1 {
         track.fmmi_rng_state.store(rng_state, Ordering::Relaxed);
     }
 
+    fn process_monomi(
+        track: &Track,
+        track_output: &mut [Vec<f32>],
+        num_buffer_samples: usize,
+        global_tempo: &AtomicU32,
+        _master_step: i32,
+        master_phase: f32,
+        master_step_count: i64,
+        samples_per_step: f32,
+        sample_rate: f32,
+        transport_running: bool,
+        dsp_state: &mut MonomiDspState,
+    ) {
+        let sr = sample_rate.max(1.0);
+        if (dsp_state.sample_rate - sr).abs() > f32::EPSILON {
+            dsp_state.sample_rate = sr;
+            let sr_f64 = sr as f64;
+            for unit in dsp_state.filter_lp.iter_mut() {
+                unit.set_sample_rate(sr_f64);
+            }
+            for unit in dsp_state.filter_hp.iter_mut() {
+                unit.set_sample_rate(sr_f64);
+            }
+            for unit in dsp_state.filter_moog.iter_mut() {
+                unit.set_sample_rate(sr_f64);
+            }
+        }
+
+        let tempo_bits = global_tempo.load(Ordering::Relaxed);
+        let tempo_raw = f32::from_bits(tempo_bits);
+        let tempo = if tempo_raw.is_finite() {
+            tempo_raw.clamp(20.0, 240.0)
+        } else {
+            120.0
+        };
+        let step_sec = (samples_per_step / sr).max(0.0001);
+
+        let mut max_step: Option<usize> = None;
+        for i in 0..MONOMI_STEPS {
+            if track.monomi_sequencer_grid[i].load(Ordering::Relaxed) {
+                let gate_steps = f32::from_bits(track.monomi_step_gate[i].load(Ordering::Relaxed));
+                let gate_steps = if gate_steps >= 0.0 { gate_steps } else { 1.0 };
+                let gate_steps = gate_steps.clamp(1.0, 128.0);
+                let mut next_active = None;
+                for j in (i + 1)..MONOMI_STEPS {
+                    if track.monomi_sequencer_grid[j].load(Ordering::Relaxed) {
+                        next_active = Some(j);
+                        break;
+                    }
+                }
+                let tail = if let Some(next_idx) = next_active {
+                    gate_steps.min((next_idx - i) as f32)
+                } else {
+                    gate_steps
+                };
+                let end_idx = i + tail.max(1.0) as usize - 1;
+                max_step = Some(max_step.map(|m| m.max(end_idx)).unwrap_or(end_idx));
+            }
+        }
+        let loop_steps = if let Some(max_idx) = max_step {
+            ((max_idx / MONOMI_PAGE_SIZE) + 1) * MONOMI_PAGE_SIZE
+        } else {
+            MONOMI_PAGE_SIZE
+        };
+        let loop_steps_i32 = loop_steps.max(1) as i32;
+
+        let mut sequencer_phase = if transport_running {
+            master_phase
+        } else {
+            f32::from_bits(track.monomi_sequencer_phase.load(Ordering::Relaxed))
+        };
+        let mut current_step = if transport_running {
+            (master_step_count as i32).rem_euclid(loop_steps_i32)
+        } else {
+            let step = track.monomi_sequencer_step.load(Ordering::Relaxed);
+            if step < 0 { step } else { step.rem_euclid(loop_steps_i32) }
+        };
+        if transport_running {
+            track.monomi_sequencer_step.store(current_step, Ordering::Relaxed);
+        }
+
+        let cutoff = f32::from_bits(track.monomi_cutoff.load(Ordering::Relaxed))
+            .clamp(20.0, 12_000.0);
+        let filter_mode = track.monomi_filter_mode.load(Ordering::Relaxed);
+        let resonance_max = if filter_mode == 0 { 1.0 } else { 8.0 };
+        let resonance = f32::from_bits(track.monomi_resonance.load(Ordering::Relaxed))
+            .clamp(0.0, resonance_max);
+        let filter_morph = f32::from_bits(track.monomi_filter_morph.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
+        let volume = f32::from_bits(track.monomi_volume.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
+
+        let amp_attack = f32::from_bits(track.monomi_amp_attack.load(Ordering::Relaxed));
+        let amp_decay = f32::from_bits(track.monomi_amp_decay.load(Ordering::Relaxed));
+        let amp_sustain = f32::from_bits(track.monomi_amp_sustain.load(Ordering::Relaxed));
+        let amp_release = f32::from_bits(track.monomi_amp_release.load(Ordering::Relaxed));
+        let filter_attack = f32::from_bits(track.monomi_filter_attack.load(Ordering::Relaxed));
+        let filter_decay = f32::from_bits(track.monomi_filter_decay.load(Ordering::Relaxed));
+        let filter_sustain = f32::from_bits(track.monomi_filter_sustain.load(Ordering::Relaxed));
+        let filter_release = f32::from_bits(track.monomi_filter_release.load(Ordering::Relaxed));
+        let filter_intensity =
+            f32::from_bits(track.monomi_filter_intensity.load(Ordering::Relaxed));
+        let filter_polarity =
+            f32::from_bits(track.monomi_filter_polarity.load(Ordering::Relaxed));
+        let filter_saturation =
+            f32::from_bits(track.monomi_filter_saturation.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let filter_sat_env =
+            f32::from_bits(track.monomi_filter_sat_env.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let filter_sat_pre = track.monomi_filter_sat_pre.load(Ordering::Relaxed);
+        let glide = f32::from_bits(track.monomi_glide.load(Ordering::Relaxed))
+            .clamp(0.0, 1000.0);
+        let prob = f32::from_bits(track.monomi_prob.load(Ordering::Relaxed))
+            .clamp(0.0, 1.0);
+        let scale_index = track.monomi_scale_index.load(Ordering::Relaxed) as usize;
+
+        let mut rng_state = track.monomi_rng_state.load(Ordering::Relaxed);
+        let keybed_triggered = track.monomi_keybed_trigger.swap(false, Ordering::Relaxed);
+
+        let mut trigger_note = |dsp_state: &mut MonomiDspState,
+                                note: i32,
+                                step_cutoff: f32,
+                                step_resonance: f32,
+                                step_morph: f32,
+                                step_filter_intensity: f32,
+                                step_filter_polarity: f32,
+                                step_glide: f32,
+                                step_gate: f32,
+                                step_amp_attack: f32,
+                                step_amp_decay: f32,
+                                step_amp_sustain: f32,
+                                step_amp_release: f32,
+                                step_filter_attack: f32,
+                                step_filter_decay: f32,
+                                step_filter_sustain: f32,
+                                step_filter_release: f32,
+                                step_osc_mix: [f32; 3],
+                                step_osc_detune: [f32; 3],
+                                step_osc_pwm: [f32; 3]| {
+            let freq = monomi_midi_to_freq(note);
+            dsp_state.target_freq = freq;
+            if !dsp_state.current_freq.is_finite() {
+                dsp_state.current_freq = freq;
+            }
+            dsp_state.current_cutoff = step_cutoff;
+            dsp_state.current_resonance = step_resonance.clamp(0.0, resonance_max);
+            dsp_state.current_morph = step_morph;
+            dsp_state.current_filter_intensity = step_filter_intensity;
+            dsp_state.current_filter_polarity = step_filter_polarity;
+            dsp_state.current_glide = step_glide;
+            dsp_state.current_gate_steps = step_gate;
+            dsp_state.current_amp_attack = step_amp_attack;
+            dsp_state.current_amp_decay = step_amp_decay;
+            dsp_state.current_amp_sustain = step_amp_sustain;
+            dsp_state.current_amp_release = step_amp_release;
+            dsp_state.current_filter_attack = step_filter_attack;
+            dsp_state.current_filter_decay = step_filter_decay;
+            dsp_state.current_filter_sustain = step_filter_sustain;
+            dsp_state.current_filter_release = step_filter_release;
+            dsp_state.current_osc_mix = step_osc_mix;
+            dsp_state.current_osc_detune = step_osc_detune;
+            dsp_state.current_osc_pwm = step_osc_pwm;
+
+            let (a, d, r, s, h) = monomi_env_samples(
+                sr,
+                step_sec,
+                step_amp_attack,
+                step_amp_decay,
+                step_amp_sustain,
+                step_amp_release,
+                step_gate,
+            );
+            dsp_state.amp_attack = a;
+            dsp_state.amp_decay = d;
+            dsp_state.amp_release = r;
+            dsp_state.amp_sustain = s;
+            dsp_state.amp_hold = h;
+            dsp_state.amp_stage = 1;
+            dsp_state.amp_pos = 0;
+            dsp_state.amp_level = 0.0;
+
+            let (fa, fd, fr, fs, fh) = monomi_env_samples(
+                sr,
+                step_sec,
+                step_filter_attack,
+                step_filter_decay,
+                step_filter_sustain,
+                step_filter_release,
+                step_gate,
+            );
+            dsp_state.filter_attack = fa;
+            dsp_state.filter_decay = fd;
+            dsp_state.filter_release = fr;
+            dsp_state.filter_sustain = fs;
+            dsp_state.filter_hold = fh;
+            dsp_state.filter_stage = 1;
+            dsp_state.filter_pos = 0;
+            dsp_state.filter_level = 0.0;
+        };
+
+        if keybed_triggered {
+            let note = track.monomi_keybed_note.load(Ordering::Relaxed);
+            let step_gate = 1.0;
+            trigger_note(
+                dsp_state,
+                note,
+                cutoff,
+                resonance,
+                filter_morph,
+                filter_intensity,
+                filter_polarity,
+                glide,
+                step_gate,
+                amp_attack,
+                amp_decay,
+                amp_sustain,
+                amp_release,
+                filter_attack,
+                filter_decay,
+                filter_sustain,
+                filter_release,
+                [
+                    f32::from_bits(track.monomi_osc_mix[0].load(Ordering::Relaxed)),
+                    f32::from_bits(track.monomi_osc_mix[1].load(Ordering::Relaxed)),
+                    f32::from_bits(track.monomi_osc_mix[2].load(Ordering::Relaxed)),
+                ],
+                [
+                    f32::from_bits(track.monomi_osc_detune[0].load(Ordering::Relaxed)),
+                    f32::from_bits(track.monomi_osc_detune[1].load(Ordering::Relaxed)),
+                    f32::from_bits(track.monomi_osc_detune[2].load(Ordering::Relaxed)),
+                ],
+                [
+                    f32::from_bits(track.monomi_osc_pwm[0].load(Ordering::Relaxed)),
+                    f32::from_bits(track.monomi_osc_pwm[1].load(Ordering::Relaxed)),
+                    f32::from_bits(track.monomi_osc_pwm[2].load(Ordering::Relaxed)),
+                ],
+            );
+        }
+
+        let output = track_output;
+        let num_channels = output.len().max(1);
+
+        let amp_smooth_coeff = (-1.0 / (0.003 * sr)).exp();
+        // Hidden decay for saturation env follower to emphasize transients.
+        let sat_env_decay_coeff = (-1.0 / (0.020 * sr)).exp();
+        for sample_idx in 0..num_buffer_samples {
+            if transport_running {
+                sequencer_phase += 1.0;
+                if sequencer_phase >= samples_per_step {
+                    sequencer_phase -= samples_per_step;
+                    current_step = (current_step + 1).rem_euclid(loop_steps_i32);
+                    track
+                        .monomi_sequencer_step
+                        .store(current_step, Ordering::Relaxed);
+
+                    let step_idx = current_step.max(0) as usize;
+                    if step_idx < MONOMI_STEPS
+                        && track.monomi_sequencer_grid[step_idx].load(Ordering::Relaxed)
+                        && (prob >= 1.0 || fmmi_rand_unit(&mut rng_state) <= prob)
+                    {
+                        let step_note = track.monomi_step_note[step_idx].load(Ordering::Relaxed);
+                        let note = if (MONOMI_NOTE_BASE..=MONOMI_NOTE_MAX).contains(&step_note) {
+                            step_note
+                        } else {
+                            monomi_random_note_in_scale(&mut rng_state, scale_index)
+                        };
+                        let step_cutoff = {
+                            let v = f32::from_bits(
+                                track.monomi_step_cutoff[step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 { v } else { cutoff }
+                        };
+                        let step_resonance = {
+                            let v = f32::from_bits(
+                                track.monomi_step_resonance[step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 {
+                                v.clamp(0.0, resonance_max)
+                            } else {
+                                resonance
+                            }
+                        };
+                        let step_morph = {
+                            let v = f32::from_bits(
+                                track.monomi_step_filter_morph[step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 { v } else { filter_morph }
+                        };
+                        let step_glide = {
+                            let v = f32::from_bits(
+                                track.monomi_step_glide[step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 { v } else { glide }
+                        };
+                        let step_gate = {
+                            let v = f32::from_bits(
+                                track.monomi_step_gate[step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 { v } else { 1.0 }
+                        };
+                        let step_amp_attack = {
+                            let v = f32::from_bits(
+                                track.monomi_step_env_attack[step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 { v } else { amp_attack }
+                        };
+                        let step_amp_decay = {
+                            let v = f32::from_bits(
+                                track.monomi_step_env_decay[step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 { v } else { amp_decay }
+                        };
+                        let step_amp_sustain = {
+                            let v = f32::from_bits(
+                                track.monomi_step_env_sustain[step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 { v } else { amp_sustain }
+                        };
+                        let step_amp_release = {
+                            let v = f32::from_bits(
+                                track.monomi_step_env_release[step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 { v } else { amp_release }
+                        };
+                        let step_filter_attack = filter_attack;
+                        let step_filter_decay = filter_decay;
+                        let step_filter_sustain = filter_sustain;
+                        let step_filter_release = filter_release;
+                        let step_filter_intensity = filter_intensity;
+                        let step_filter_polarity = filter_polarity;
+
+                        let step_osc_mix = std::array::from_fn(|osc| {
+                            let v = f32::from_bits(
+                                track.monomi_step_osc_mix[osc][step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 {
+                                v
+                            } else {
+                                f32::from_bits(
+                                    track.monomi_osc_mix[osc].load(Ordering::Relaxed),
+                                )
+                            }
+                        });
+                        let step_osc_detune = std::array::from_fn(|osc| {
+                            let v = f32::from_bits(
+                                track.monomi_step_osc_detune[osc][step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 {
+                                v
+                            } else {
+                                f32::from_bits(
+                                    track.monomi_osc_detune[osc].load(Ordering::Relaxed),
+                                )
+                            }
+                        });
+                        let step_osc_pwm = std::array::from_fn(|osc| {
+                            let v = f32::from_bits(
+                                track.monomi_step_osc_pwm[osc][step_idx].load(Ordering::Relaxed),
+                            );
+                            if v >= 0.0 {
+                                v
+                            } else {
+                                f32::from_bits(
+                                    track.monomi_osc_pwm[osc].load(Ordering::Relaxed),
+                                )
+                            }
+                        });
+
+                        trigger_note(
+                            dsp_state,
+                            note,
+                            step_cutoff,
+                            step_resonance,
+                            step_morph,
+                            step_filter_intensity,
+                            step_filter_polarity,
+                            step_glide,
+                            step_gate,
+                            step_amp_attack,
+                            step_amp_decay,
+                            step_amp_sustain,
+                            step_amp_release,
+                            step_filter_attack,
+                            step_filter_decay,
+                            step_filter_sustain,
+                            step_filter_release,
+                            step_osc_mix,
+                            step_osc_detune,
+                            step_osc_pwm,
+                        );
+                    }
+                }
+            }
+
+            let mut lfo_cutoff_mod = 0.0f32;
+            let mut lfo_res_mod = 0.0f32;
+            let mut lfo_morph_mod = 0.0f32;
+            let mut lfo_filter_int_mod = 0.0f32;
+            let mut lfo_filter_pol_mod = 0.0f32;
+            let mut lfo_glide_mod = 0.0f32;
+            let mut lfo_detune_mod = [0.0f32; 3];
+            let mut lfo_mix_mod = [0.0f32; 3];
+            let mut lfo_pwm_mod = [0.0f32; 3];
+
+            for lfo_idx in 0..3 {
+                let wave = track.monomi_lfo_shape[lfo_idx].load(Ordering::Relaxed);
+                let target = track.monomi_lfo_target[lfo_idx].load(Ordering::Relaxed) as usize;
+                let amount =
+                    f32::from_bits(track.monomi_lfo_amount[lfo_idx].load(Ordering::Relaxed))
+                        .clamp(0.0, 1.0);
+                let rate =
+                    f32::from_bits(track.monomi_lfo_rate[lfo_idx].load(Ordering::Relaxed))
+                        .max(0.01);
+                let sync = track.monomi_lfo_sync[lfo_idx].load(Ordering::Relaxed);
+                let steps = track.monomi_lfo_steps[lfo_idx].load(Ordering::Relaxed).max(1);
+                let freq = if sync {
+                    (tempo / (15.0 * steps as f32)).max(0.01)
+                } else {
+                    rate
+                };
+                dsp_state.lfo_phase[lfo_idx] += freq / sr;
+                if dsp_state.lfo_phase[lfo_idx] >= 1.0 {
+                    dsp_state.lfo_phase[lfo_idx] -= 1.0;
+                    if wave == 4 {
+                        dsp_state.lfo_sample_hold[lfo_idx] =
+                            fmmi_rand_unit(&mut rng_state) * 2.0 - 1.0;
+                    }
+                }
+                let lfo_val = lfo_waveform_value(
+                    wave,
+                    dsp_state.lfo_phase[lfo_idx],
+                    dsp_state.lfo_sample_hold[lfo_idx],
+                );
+                let scaled = lfo_val * amount;
+                match target {
+                    0 => {
+                        let base = dsp_state.current_cutoff.max(20.0);
+                        let modded = (base * (1.0 + scaled)).clamp(50.0, 12000.0);
+                        lfo_cutoff_mod = modded - base;
+                    }
+                    1 => {
+                        let base = dsp_state.current_resonance;
+                        let modded = (base + scaled * 2.0).clamp(0.0, 1.0);
+                        lfo_res_mod = modded - base;
+                    }
+                    2 => {
+                        let base = dsp_state.current_morph;
+                        let modded = (base + scaled).clamp(0.0, 1.0);
+                        lfo_morph_mod = modded - base;
+                    }
+                    3 => {
+                        let base = dsp_state.current_filter_intensity;
+                        let modded = (base + scaled * 2.0).clamp(0.0, 8.0);
+                        lfo_filter_int_mod = modded - base;
+                    }
+                    4 => {
+                        let base = dsp_state.current_filter_polarity;
+                        let modded = (base + scaled).clamp(-1.0, 1.0);
+                        lfo_filter_pol_mod = modded - base;
+                    }
+                    5 => {
+                        let base = dsp_state.current_glide;
+                        let modded = (base + scaled * 500.0).clamp(0.0, 1000.0);
+                        lfo_glide_mod = modded - base;
+                    }
+                    6 => lfo_detune_mod[0] = scaled * 100.0,
+                    7 => lfo_detune_mod[1] = scaled * 100.0,
+                    8 => lfo_detune_mod[2] = scaled * 100.0,
+                    9 => lfo_mix_mod[0] = scaled,
+                    10 => lfo_mix_mod[1] = scaled,
+                    11 => lfo_mix_mod[2] = scaled,
+                    12 => lfo_pwm_mod[0] = scaled * 0.45,
+                    13 => lfo_pwm_mod[1] = scaled * 0.45,
+                    14 => lfo_pwm_mod[2] = scaled * 0.45,
+                    _ => {}
+                }
+            }
+
+            let glide_ms = (dsp_state.current_glide + lfo_glide_mod).clamp(0.0, 1000.0);
+            let glide_coeff = if glide_ms <= 0.0 {
+                1.0
+            } else {
+                1.0 - (-1.0 / (glide_ms * 0.001 * sr)).exp()
+            };
+            dsp_state.current_freq += (dsp_state.target_freq - dsp_state.current_freq) * glide_coeff;
+
+            let mut update_env = |stage: &mut u32,
+                                  pos: &mut u32,
+                                  hold: &mut u32,
+                                  level: &mut f32,
+                                  attack_samples: u32,
+                                  decay_samples: u32,
+                                  sustain_level: f32,
+                                  release_samples: u32| {
+                if *stage == 0 {
+                    *level = 0.0;
+                    return;
+                }
+                if *hold > 0 {
+                    *hold = hold.saturating_sub(1);
+                }
+                if *hold == 0 && *stage < 4 {
+                    *stage = 4;
+                    *pos = 0;
+                }
+                match *stage {
+                    1 => {
+                        *level = (*pos as f32 / attack_samples as f32).clamp(0.0, 1.0);
+                        *pos = pos.saturating_add(1);
+                        if *pos >= attack_samples {
+                            *stage = 2;
+                            *pos = 0;
+                            *level = 1.0;
+                        }
+                    }
+                    2 => {
+                        *level = (1.0
+                            - (1.0 - sustain_level) * (*pos as f32 / decay_samples as f32))
+                            .clamp(0.0, 1.0);
+                        *pos = pos.saturating_add(1);
+                        if *pos >= decay_samples {
+                            *stage = 3;
+                            *pos = 0;
+                            *level = sustain_level;
+                        }
+                    }
+                    3 => {
+                        *level = sustain_level;
+                    }
+                    4 => {
+                        *level = (*level * (1.0 - (1.0 / release_samples as f32))).max(0.0);
+                        *pos = pos.saturating_add(1);
+                        if *pos >= release_samples || *level <= 1.0e-4 {
+                            *stage = 0;
+                            *pos = 0;
+                            *level = 0.0;
+                        }
+                    }
+                    _ => {
+                        *level = 0.0;
+                        *stage = 0;
+                        *pos = 0;
+                    }
+                }
+            };
+
+            update_env(
+                &mut dsp_state.amp_stage,
+                &mut dsp_state.amp_pos,
+                &mut dsp_state.amp_hold,
+                &mut dsp_state.amp_level,
+                dsp_state.amp_attack,
+                dsp_state.amp_decay,
+                dsp_state.amp_sustain,
+                dsp_state.amp_release,
+            );
+            update_env(
+                &mut dsp_state.filter_stage,
+                &mut dsp_state.filter_pos,
+                &mut dsp_state.filter_hold,
+                &mut dsp_state.filter_level,
+                dsp_state.filter_attack,
+                dsp_state.filter_decay,
+                dsp_state.filter_sustain,
+                dsp_state.filter_release,
+            );
+
+            let mut sample = 0.0f32;
+            if dsp_state.amp_stage != 0 {
+                let base_freq = dsp_state.current_freq.max(1.0);
+                for osc_idx in 0..3 {
+                    let octave = track.monomi_osc_octave[osc_idx].load(Ordering::Relaxed);
+                    let octave_mul = match octave {
+                        0 => 1.0,
+                        1 => 0.5,
+                        2 => 0.25,
+                        _ => 1.0,
+                    };
+                    let detune = (dsp_state.current_osc_detune[osc_idx] + lfo_detune_mod[osc_idx])
+                        .clamp(-1200.0, 1200.0);
+                    let detune_ratio = 2.0f32.powf(detune / 1200.0);
+                    let freq = (base_freq * octave_mul * detune_ratio).clamp(0.1, 20_000.0);
+                    dsp_state.osc_phase[osc_idx] += freq / sr;
+                    if dsp_state.osc_phase[osc_idx] >= 1.0 {
+                        dsp_state.osc_phase[osc_idx] -= 1.0;
+                    }
+                    let wave = track.monomi_osc_wave[osc_idx].load(Ordering::Relaxed);
+                    let pwm = (dsp_state.current_osc_pwm[osc_idx] + lfo_pwm_mod[osc_idx])
+                        .clamp(0.05, 0.95);
+                    let osc = monomi_waveform_value(wave, dsp_state.osc_phase[osc_idx], pwm);
+                    let mix = (dsp_state.current_osc_mix[osc_idx] + lfo_mix_mod[osc_idx])
+                        .clamp(0.0, 1.0);
+                    sample += osc * mix;
+                }
+            }
+
+            let mix_sum = dsp_state.current_osc_mix.iter().sum::<f32>().max(1.0);
+            sample /= mix_sum;
+
+            let cutoff_base = (dsp_state.current_cutoff + lfo_cutoff_mod).clamp(20.0, 20_000.0);
+            let res_max = if filter_mode == 0 { 1.0 } else { 8.0 };
+            let res = (dsp_state.current_resonance + lfo_res_mod).clamp(0.0, res_max);
+            let morph = (dsp_state.current_morph + lfo_morph_mod).clamp(0.0, 1.0);
+            let env_octaves = (dsp_state.current_filter_intensity + lfo_filter_int_mod)
+                * (dsp_state.current_filter_polarity + lfo_filter_pol_mod);
+            let env_octaves = env_octaves.clamp(-8.0, 8.0);
+            let cutoff = (cutoff_base * 2.0f32.powf(env_octaves * dsp_state.filter_level))
+                .clamp(20.0, 20_000.0);
+
+            let mut channel_samples = [sample; 2];
+            if dsp_state.amp_stage != 0 {
+                for ch in 0..num_channels.min(2) {
+                    let mut lp_out = [0.0f32];
+                    let mut hp_out = [0.0f32];
+                    let q = if filter_mode == 0 {
+                        res.clamp(0.1, 1.0)
+                    } else {
+                        res.clamp(0.1, 8.0)
+                    };
+                    let env_input = channel_samples[ch].abs();
+                    let env_decay = dsp_state.filter_sat_env[ch] * sat_env_decay_coeff;
+                    dsp_state.filter_sat_env[ch] = env_input.max(env_decay);
+                    let sat_amt =
+                        (filter_saturation + filter_sat_env * dsp_state.filter_sat_env[ch])
+                            .clamp(0.0, 1.0);
+                    let sat_drive = 1.0 + sat_amt * 8.0;
+                    let sat_norm = sat_drive.tanh().max(1.0e-6);
+                    let sat = |x: f32| (x * sat_drive).tanh() / sat_norm;
+                    let filter_input = if filter_sat_pre {
+                        sat(channel_samples[ch])
+                    } else {
+                        channel_samples[ch]
+                    };
+                    match filter_mode {
+                        0 => {
+                            dsp_state.filter_moog[ch].tick(&[filter_input, cutoff, q], &mut lp_out);
+                            dsp_state.filter_hp[ch].tick(&[filter_input, cutoff, q], &mut hp_out);
+                            channel_samples[ch] = lp_out[0] * (1.0 - morph) + hp_out[0] * morph;
+                        }
+                        1 => {
+                            dsp_state.filter_lp[ch].tick(&[filter_input, cutoff, q], &mut lp_out);
+                            dsp_state.filter_hp[ch].tick(&[filter_input, cutoff, q], &mut hp_out);
+                            channel_samples[ch] = lp_out[0] * (1.0 - morph) + hp_out[0] * morph;
+                        }
+                        _ => {
+                            dsp_state.filter_hp[ch].tick(&[filter_input, cutoff, q], &mut hp_out);
+                            channel_samples[ch] = hp_out[0];
+                        }
+                    }
+                    if !filter_sat_pre {
+                        channel_samples[ch] = sat(channel_samples[ch]);
+                    }
+                }
+            } else {
+                channel_samples = [0.0; 2];
+            }
+            dsp_state.amp_level_smooth =
+                dsp_state.amp_level_smooth * amp_smooth_coeff
+                    + dsp_state.amp_level * (1.0 - amp_smooth_coeff);
+            let amp = dsp_state.amp_level_smooth;
+            channel_samples[0] *= amp;
+            channel_samples[1] *= amp;
+            let lim = 0.9f32;
+            if num_channels >= 2 {
+                let l = (channel_samples[0] * volume).clamp(-lim, lim);
+                let r = (channel_samples[1] * volume).clamp(-lim, lim);
+                output[0][sample_idx] += l;
+                output[1][sample_idx] += r;
+            } else {
+                let m = (channel_samples[0] * volume).clamp(-lim, lim);
+                output[0][sample_idx] += m;
+            }
+        }
+
+        track
+            .monomi_sequencer_phase
+            .store(sequencer_phase.to_bits(), Ordering::Relaxed);
+        track.monomi_rng_state.store(rng_state, Ordering::Relaxed);
+    }
+
     fn process_voidseed(
         track: &Track,
         track_output: &mut [Vec<f32>],
@@ -11945,7 +12971,10 @@ impl Plugin for TLBX1 {
             .iter()
             .any(|track| track.is_playing.load(Ordering::Relaxed));
         let any_engine_clock = self.tracks.iter().any(|track| {
-            matches!(track.engine_type.load(Ordering::Relaxed), 2 | 3 | 4 | 5)
+            matches!(
+                track.engine_type.load(Ordering::Relaxed),
+                2 | 3 | 4 | 5 | 6
+            )
         });
         let any_recording = self
             .tracks
@@ -11998,7 +13027,7 @@ impl Plugin for TLBX1 {
                 );
             }
             let should_process =
-                transport_running || matches!(engine_type, 2 | 3 | 4 | 5);
+                transport_running || matches!(engine_type, 2 | 3 | 4 | 5 | 6);
             if !should_process {
                 let prev_left =
                     f32::from_bits(track.meter_left.load(Ordering::Relaxed));
@@ -12127,6 +13156,66 @@ impl Plugin for TLBX1 {
                     master_sr,
                     transport_running,
                     &mut self.fmmi_dsp[track_idx],
+                );
+                let mosaic_active =
+                    track.granular_type.load(Ordering::Relaxed) == 1
+                        && track.mosaic_enabled.load(Ordering::Relaxed);
+                if mosaic_active {
+                    if let Some(mut mosaic) = track.mosaic_buffer.try_lock() {
+                        if !mosaic.is_empty() && !mosaic[0].is_empty() {
+                            let sr = master_sr.max(1.0) as usize;
+                            let mosaic_len = (sr * MOSAIC_BUFFER_SECONDS)
+                                .min(MOSAIC_BUFFER_SAMPLES)
+                                .max(1);
+                            let mut mosaic_write_pos =
+                                (track.mosaic_write_pos.load(Ordering::Relaxed) as usize)
+                                    % mosaic_len;
+                            let target_mosaic_sos = f32::from_bits(
+                                track.mosaic_sos.load(Ordering::Relaxed),
+                            )
+                            .clamp(0.0, 1.0);
+                            let smooth_mosaic_sos = smooth_param(
+                                f32::from_bits(
+                                    track.mosaic_sos_smooth.load(Ordering::Relaxed),
+                                ),
+                                target_mosaic_sos,
+                                buffer.samples(),
+                                master_sr,
+                            );
+                            track
+                                .mosaic_sos_smooth
+                                .store(smooth_mosaic_sos.to_bits(), Ordering::Relaxed);
+                            let num_buffer_samples = buffer.samples();
+                            let num_channels = self.track_buffer.len().min(mosaic.len());
+                            for sample_idx in 0..num_buffer_samples {
+                                for channel_idx in 0..num_channels {
+                                    let out_value = self.track_buffer[channel_idx][sample_idx];
+                                    let existing = mosaic[channel_idx][mosaic_write_pos];
+                                    mosaic[channel_idx][mosaic_write_pos] =
+                                        out_value * (1.0 - smooth_mosaic_sos)
+                                            + existing * smooth_mosaic_sos;
+                                }
+                                mosaic_write_pos = (mosaic_write_pos + 1) % mosaic_len;
+                            }
+                            track
+                                .mosaic_write_pos
+                                .store(mosaic_write_pos as u32, Ordering::Relaxed);
+                        }
+                    }
+                }
+            } else if engine_type == 6 {
+                Self::process_monomi(
+                    track,
+                    &mut self.track_buffer,
+                    buffer.samples(),
+                    &self.global_tempo,
+                    master_step,
+                    master_phase,
+                    master_step_count,
+                    samples_per_step,
+                    master_sr,
+                    transport_running,
+                    &mut self.monomi_dsp[track_idx],
                 );
                 let mosaic_active =
                     track.granular_type.load(Ordering::Relaxed) == 1
@@ -13214,6 +14303,47 @@ fn fmmi_midi_to_label(midi: i32) -> Option<String> {
     Some(format!("{}{}", note_names[note_index], octave))
 }
 
+fn monomi_midi_to_freq(midi: i32) -> f32 {
+    fmmi_midi_to_freq(midi)
+}
+
+fn monomi_waveform_value(waveform: u32, phase: f32, pwm: f32) -> f32 {
+    match waveform {
+        0 => (2.0 * PI * phase).sin(),
+        1 => 1.0 - 4.0 * (phase - 0.5).abs(),
+        2 => 2.0 * phase - 1.0,
+        3 => if phase < pwm { 1.0 } else { -1.0 },
+        _ => 0.0,
+    }
+}
+
+fn monomi_env_samples(
+    sr: f32,
+    step_sec: f32,
+    attack_steps: f32,
+    decay_steps: f32,
+    sustain_steps: f32,
+    release_steps: f32,
+    gate_steps: f32,
+) -> (u32, u32, u32, f32, u32) {
+    let attack_time = (attack_steps.max(0.0)) * step_sec;
+    let decay_time = (decay_steps.max(1.0)) * step_sec;
+    let release_time = (release_steps.max(1.0)) * step_sec;
+    let sustain_level = (sustain_steps / 128.0).clamp(0.0, 1.0);
+    let attack_samples = (attack_time * sr).round().max(1.0) as u32;
+    let decay_samples = (decay_time * sr).round().max(1.0) as u32;
+    let release_samples = (release_time * sr).round().max(1.0) as u32;
+    let gate_len = gate_steps.max(1.0);
+    let hold_samples = ((gate_len * step_sec) * sr).round().max(0.0) as u32;
+    (
+        attack_samples,
+        decay_samples,
+        release_samples,
+        sustain_level,
+        hold_samples,
+    )
+}
+
 fn modul8_target_options_for_engine(engine_type: u32) -> Vec<SharedString> {
     let ids = modul8_target_ids_for_engine(engine_type);
     ids.iter()
@@ -13256,6 +14386,11 @@ const MODUL8_TARGET_IDS_FMMI: [u32; 59] = [
     67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
     89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
 ];
+const MODUL8_TARGET_IDS_MONOMI: [u32; 61] = [
+    0, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 60, 61, 62,
+    63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84,
+    85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+];
 
 fn modul8_target_ids_for_engine(engine_type: u32) -> &'static [u32] {
     match engine_type {
@@ -13264,6 +14399,7 @@ fn modul8_target_ids_for_engine(engine_type: u32) -> &'static [u32] {
         3 => &MODUL8_TARGET_IDS_SYNDRM,
         4 => &MODUL8_TARGET_IDS_VOID,
         5 => &MODUL8_TARGET_IDS_FMMI,
+        6 => &MODUL8_TARGET_IDS_MONOMI,
         _ => &MODUL8_TARGET_IDS_DEFAULT,
     }
 }
@@ -13304,6 +14440,21 @@ macro_rules! modul8_targets {
             154, "FMMI: Amp Sustain", 0.0, 127.0, fmmi_amp_sustain;
             155, "FMMI: Amp Release", 0.0, 127.0, fmmi_amp_release;
             156, "FMMI: Gate Length", 0.0, 3000.0, fmmi_gate_length;
+            157, "MonoMI: Cutoff", 200.0, 8000.0, monomi_cutoff;
+            158, "MonoMI: Resonance", 0.0, 8.0, monomi_resonance;
+            159, "MonoMI: Morph", 0.0, 1.0, monomi_filter_morph;
+            160, "MonoMI: F Env Int", 0.0, 4.0, monomi_filter_intensity;
+            161, "MonoMI: F Env Pol", -1.0, 1.0, monomi_filter_polarity;
+            162, "MonoMI: Glide", 0.0, 500.0, monomi_glide;
+            163, "MonoMI: Osc1 Detune", -100.0, 100.0, monomi_osc_detune[0];
+            164, "MonoMI: Osc2 Detune", -100.0, 100.0, monomi_osc_detune[1];
+            165, "MonoMI: Osc3 Detune", -100.0, 100.0, monomi_osc_detune[2];
+            166, "MonoMI: Osc1 Mix", 0.0, 1.0, monomi_osc_mix[0];
+            167, "MonoMI: Osc2 Mix", 0.0, 1.0, monomi_osc_mix[1];
+            168, "MonoMI: Osc3 Mix", 0.0, 1.0, monomi_osc_mix[2];
+            169, "MonoMI: Osc1 PWM", 0.05, 0.95, monomi_osc_pwm[0];
+            170, "MonoMI: Osc2 PWM", 0.05, 0.95, monomi_osc_pwm[1];
+            171, "MonoMI: Osc3 PWM", 0.05, 0.95, monomi_osc_pwm[2];
             24, "SynDRM Kick: Pitch", 0.0, 1.0, kick_pitch;
             25, "SynDRM Kick: Decay", 0.0, 1.0, kick_decay;
             26, "SynDRM Kick: Attack", 0.0, 1.0, kick_attack;
@@ -13405,7 +14556,7 @@ macro_rules! modul8_targets {
 }
 
 macro_rules! modul8_target_label_match {
-    ($id:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+    ($id:expr; $( $tid:expr, $label:expr, $min:literal, $max:literal, $field:ident $( [ $idx:expr ] )?; )*) => {
         match $id {
             0 => "None",
             $( $tid => $label, )*
@@ -13449,7 +14600,7 @@ fn modul8_target_label(target: u32) -> &'static str {
 }
 
 macro_rules! modul8_target_range_match {
-    ($id:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+    ($id:expr; $( $tid:expr, $label:expr, $min:literal, $max:literal, $field:ident $( [ $idx:expr ] )?; )*) => {
         match $id {
             $( $tid => Some(($min, $max)), )*
             _ => None,
@@ -13465,9 +14616,9 @@ fn modul8_target_range(target: u32) -> Option<(f32, f32)> {
 }
 
 macro_rules! modul8_target_get_match {
-    ($track:expr, $id:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+    ($track:expr, $id:expr; $( $tid:expr, $label:expr, $min:literal, $max:literal, $field:ident $( [ $idx:expr ] )?; )*) => {
         match $id {
-            $( $tid => Some(f32::from_bits($track.$field.load(Ordering::Relaxed))), )*
+            $( $tid => Some(f32::from_bits($track.$field $( [ $idx ] )?.load(Ordering::Relaxed))), )*
             _ => None,
         }
     };
@@ -13508,9 +14659,9 @@ fn modul8_target_get(track: &Track, target: u32) -> Option<f32> {
 }
 
 macro_rules! modul8_target_set_match {
-    ($track:expr, $id:expr, $bits:expr; $( $tid:expr, $label:expr, $min:expr, $max:expr, $field:ident; )*) => {
+    ($track:expr, $id:expr, $bits:expr; $( $tid:expr, $label:expr, $min:literal, $max:literal, $field:ident $( [ $idx:expr ] )?; )*) => {
         match $id {
-            $( $tid => $track.$field.store($bits, Ordering::Relaxed), )*
+            $( $tid => $track.$field $( [ $idx ] )?.store($bits, Ordering::Relaxed), )*
             _ => {}
         }
     };
@@ -14062,6 +15213,148 @@ fn fmmi_randomize_page_params(track: &Track, page: usize, mod_mode: u32, rng_sta
 fn fmmi_randomize_all_params(track: &Track, mod_mode: u32, rng_state: &mut u32) {
     for step in 0..FMMI_STEPS {
         fmmi_randomize_step_params(track, step, mod_mode, rng_state);
+    }
+}
+
+fn monomi_lerp_rand(base: f32, min: f32, max: f32, amount: f32, rng_state: &mut u32) -> f32 {
+    let rand = min + fmmi_rand_unit(rng_state) * (max - min);
+    base + (rand - base) * amount
+}
+
+fn monomi_randomize_notes_step(track: &Track, step: usize, rng_state: &mut u32) {
+    if step >= MONOMI_STEPS {
+        return;
+    }
+    let active = fmmi_rand_unit(rng_state) > 0.4;
+    track.monomi_sequencer_grid[step].store(active, Ordering::Relaxed);
+    let scale_index = track.monomi_scale_index.load(Ordering::Relaxed) as usize;
+    let note = monomi_random_note_in_scale(rng_state, scale_index);
+    track.monomi_step_note[step].store(note, Ordering::Relaxed);
+}
+
+fn monomi_randomize_notes_page(track: &Track, page: usize, rng_state: &mut u32) {
+    let start = page * MONOMI_PAGE_SIZE;
+    let end = (start + MONOMI_PAGE_SIZE).min(MONOMI_STEPS);
+    for step in start..end {
+        monomi_randomize_notes_step(track, step, rng_state);
+    }
+}
+
+fn monomi_randomize_notes_all(track: &Track, rng_state: &mut u32) {
+    for step in 0..MONOMI_STEPS {
+        monomi_randomize_notes_step(track, step, rng_state);
+    }
+}
+
+fn monomi_reset_notes(track: &Track) {
+    for step in 0..MONOMI_STEPS {
+        let active = step < MONOMI_PAGE_SIZE;
+        track.monomi_sequencer_grid[step].store(active, Ordering::Relaxed);
+        track.monomi_step_note[step].store(-1, Ordering::Relaxed);
+    }
+}
+
+fn monomi_randomize_params_step(track: &Track, step: usize, rng_state: &mut u32) {
+    if step >= MONOMI_STEPS {
+        return;
+    }
+    let amount =
+        f32::from_bits(track.monomi_randomize_amount.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+    let cutoff = f32::from_bits(track.monomi_cutoff.load(Ordering::Relaxed));
+    let resonance = f32::from_bits(track.monomi_resonance.load(Ordering::Relaxed));
+    let filter_morph = f32::from_bits(track.monomi_filter_morph.load(Ordering::Relaxed));
+    let glide = f32::from_bits(track.monomi_glide.load(Ordering::Relaxed));
+    let amp_attack = f32::from_bits(track.monomi_amp_attack.load(Ordering::Relaxed));
+    let amp_decay = f32::from_bits(track.monomi_amp_decay.load(Ordering::Relaxed));
+    let amp_sustain = f32::from_bits(track.monomi_amp_sustain.load(Ordering::Relaxed));
+    let amp_release = f32::from_bits(track.monomi_amp_release.load(Ordering::Relaxed));
+
+    if track.monomi_rand_cutoff.load(Ordering::Relaxed) {
+        let v = monomi_lerp_rand(cutoff, 200.0, 8000.0, amount, rng_state);
+        track.monomi_step_cutoff[step].store(v.to_bits(), Ordering::Relaxed);
+    }
+    if track.monomi_rand_resonance.load(Ordering::Relaxed) {
+        let v = monomi_lerp_rand(resonance, 0.1, 8.0, amount, rng_state);
+        track.monomi_step_resonance[step].store(v.to_bits(), Ordering::Relaxed);
+    }
+    if track.monomi_rand_env_attack.load(Ordering::Relaxed) {
+        let v = monomi_lerp_rand(amp_attack, 0.0, 128.0, amount, rng_state);
+        track.monomi_step_env_attack[step].store(v.to_bits(), Ordering::Relaxed);
+    }
+    if track.monomi_rand_env_decay.load(Ordering::Relaxed) {
+        let v = monomi_lerp_rand(amp_decay, 1.0, 128.0, amount, rng_state);
+        track.monomi_step_env_decay[step].store(v.to_bits(), Ordering::Relaxed);
+    }
+    if track.monomi_rand_env_sustain.load(Ordering::Relaxed) {
+        let v = monomi_lerp_rand(amp_sustain, 1.0, 128.0, amount, rng_state);
+        track.monomi_step_env_sustain[step].store(v.to_bits(), Ordering::Relaxed);
+    }
+    if track.monomi_rand_env_release.load(Ordering::Relaxed) {
+        let v = monomi_lerp_rand(amp_release, 1.0, 128.0, amount, rng_state);
+        track.monomi_step_env_release[step].store(v.to_bits(), Ordering::Relaxed);
+    }
+    if track.monomi_rand_gate.load(Ordering::Relaxed) {
+        let v = monomi_lerp_rand(1.0, 1.0, 128.0, amount, rng_state).round();
+        track.monomi_step_gate[step].store(v.to_bits(), Ordering::Relaxed);
+    }
+    if track.monomi_rand_filter_morph.load(Ordering::Relaxed) {
+        let v = monomi_lerp_rand(filter_morph, 0.0, 1.0, amount, rng_state);
+        track.monomi_step_filter_morph[step].store(v.to_bits(), Ordering::Relaxed);
+    }
+    if track.monomi_rand_glide.load(Ordering::Relaxed) {
+        let v = monomi_lerp_rand(glide, 0.0, 500.0, amount, rng_state);
+        track.monomi_step_glide[step].store(v.to_bits(), Ordering::Relaxed);
+    }
+    for osc in 0..3 {
+        if track.monomi_rand_osc_mix[osc].load(Ordering::Relaxed) {
+            let base = f32::from_bits(track.monomi_osc_mix[osc].load(Ordering::Relaxed));
+            let v = monomi_lerp_rand(base, 0.0, 1.0, amount, rng_state);
+            track.monomi_step_osc_mix[osc][step].store(v.to_bits(), Ordering::Relaxed);
+        }
+        if track.monomi_rand_osc_detune[osc].load(Ordering::Relaxed) {
+            let base = f32::from_bits(track.monomi_osc_detune[osc].load(Ordering::Relaxed));
+            let v = monomi_lerp_rand(base, -100.0, 100.0, amount, rng_state);
+            track.monomi_step_osc_detune[osc][step].store(v.to_bits(), Ordering::Relaxed);
+        }
+        if track.monomi_rand_osc_pwm[osc].load(Ordering::Relaxed) {
+            let base = f32::from_bits(track.monomi_osc_pwm[osc].load(Ordering::Relaxed));
+            let v = monomi_lerp_rand(base, 0.05, 0.95, amount, rng_state);
+            track.monomi_step_osc_pwm[osc][step].store(v.to_bits(), Ordering::Relaxed);
+        }
+    }
+}
+
+fn monomi_randomize_params_page(track: &Track, page: usize, rng_state: &mut u32) {
+    let start = page * MONOMI_PAGE_SIZE;
+    let end = (start + MONOMI_PAGE_SIZE).min(MONOMI_STEPS);
+    for step in start..end {
+        monomi_randomize_params_step(track, step, rng_state);
+    }
+}
+
+fn monomi_randomize_params_all(track: &Track, rng_state: &mut u32) {
+    for step in 0..MONOMI_STEPS {
+        monomi_randomize_params_step(track, step, rng_state);
+    }
+}
+
+fn monomi_reset_params(track: &Track) {
+    for step in 0..MONOMI_STEPS {
+        track.monomi_step_cutoff[step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.monomi_step_resonance[step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.monomi_step_env_attack[step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.monomi_step_env_decay[step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.monomi_step_env_sustain[step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.monomi_step_env_release[step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.monomi_step_gate[step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.monomi_step_filter_morph[step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.monomi_step_glide[step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        for osc in 0..3 {
+            track.monomi_step_osc_mix[osc][step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+            track.monomi_step_osc_detune[osc][step]
+                .store((-1.0f32).to_bits(), Ordering::Relaxed);
+            track.monomi_step_osc_pwm[osc][step].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        }
     }
 }
 
@@ -16367,6 +17660,7 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     let f = |a: &AtomicU32| f32::from_bits(a.load(Ordering::Relaxed));
     let b = |a: &AtomicBool| if a.load(Ordering::Relaxed) { 1.0 } else { 0.0 };
     let u = |a: &AtomicU32| a.load(Ordering::Relaxed) as f32;
+    let i = |a: &AtomicI32| a.load(Ordering::Relaxed) as f32;
 
     params.insert("level".to_string(), f(&track.level));
     params.insert("muted".to_string(), b(&track.is_muted));
@@ -16659,6 +17953,124 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
             format!("fmmi_step_gate_length_{}", i),
             f(&track.fmmi_step_gate_length[i]),
         );
+    }
+
+    for osc in 0..3 {
+        params.insert(format!("monomi_osc_wave_{}", osc), u(&track.monomi_osc_wave[osc]));
+        params.insert(format!("monomi_osc_octave_{}", osc), u(&track.monomi_osc_octave[osc]));
+        params.insert(format!("monomi_osc_detune_{}", osc), f(&track.monomi_osc_detune[osc]));
+        params.insert(format!("monomi_osc_mix_{}", osc), f(&track.monomi_osc_mix[osc]));
+        params.insert(format!("monomi_osc_pwm_{}", osc), f(&track.monomi_osc_pwm[osc]));
+    }
+    params.insert("monomi_cutoff".to_string(), f(&track.monomi_cutoff));
+    params.insert("monomi_resonance".to_string(), f(&track.monomi_resonance));
+    params.insert("monomi_filter_morph".to_string(), f(&track.monomi_filter_morph));
+    params.insert("monomi_filter_mode".to_string(), u(&track.monomi_filter_mode));
+    params.insert("monomi_volume".to_string(), f(&track.monomi_volume));
+    params.insert("monomi_amp_attack".to_string(), f(&track.monomi_amp_attack));
+    params.insert("monomi_amp_decay".to_string(), f(&track.monomi_amp_decay));
+    params.insert("monomi_amp_sustain".to_string(), f(&track.monomi_amp_sustain));
+    params.insert("monomi_amp_release".to_string(), f(&track.monomi_amp_release));
+    params.insert("monomi_filter_attack".to_string(), f(&track.monomi_filter_attack));
+    params.insert("monomi_filter_decay".to_string(), f(&track.monomi_filter_decay));
+    params.insert("monomi_filter_sustain".to_string(), f(&track.monomi_filter_sustain));
+    params.insert("monomi_filter_release".to_string(), f(&track.monomi_filter_release));
+    params.insert("monomi_filter_intensity".to_string(), f(&track.monomi_filter_intensity));
+    params.insert("monomi_filter_polarity".to_string(), f(&track.monomi_filter_polarity));
+    params.insert("monomi_filter_saturation".to_string(), f(&track.monomi_filter_saturation));
+    params.insert("monomi_filter_sat_env".to_string(), f(&track.monomi_filter_sat_env));
+    params.insert("monomi_filter_sat_pre".to_string(), b(&track.monomi_filter_sat_pre));
+    params.insert("monomi_mix_comp_mode".to_string(), u(&track.monomi_mix_comp_mode));
+    params.insert("monomi_glide".to_string(), f(&track.monomi_glide));
+    params.insert("monomi_prob".to_string(), f(&track.monomi_prob));
+    params.insert("monomi_scale_index".to_string(), u(&track.monomi_scale_index));
+    params.insert("monomi_page".to_string(), u(&track.monomi_page));
+    params.insert("monomi_edit_step".to_string(), u(&track.monomi_edit_step));
+    for i in 0..3 {
+        params.insert(format!("monomi_lfo_shape_{}", i), u(&track.monomi_lfo_shape[i]));
+        params.insert(format!("monomi_lfo_target_{}", i), u(&track.monomi_lfo_target[i]));
+        params.insert(format!("monomi_lfo_amount_{}", i), f(&track.monomi_lfo_amount[i]));
+        params.insert(format!("monomi_lfo_rate_{}", i), f(&track.monomi_lfo_rate[i]));
+        params.insert(format!("monomi_lfo_sync_{}", i), b(&track.monomi_lfo_sync[i]));
+        params.insert(format!("monomi_lfo_steps_{}", i), u(&track.monomi_lfo_steps[i]));
+    }
+    params.insert("monomi_rand_cutoff".to_string(), b(&track.monomi_rand_cutoff));
+    params.insert("monomi_rand_resonance".to_string(), b(&track.monomi_rand_resonance));
+    params.insert("monomi_rand_env_attack".to_string(), b(&track.monomi_rand_env_attack));
+    params.insert("monomi_rand_env_decay".to_string(), b(&track.monomi_rand_env_decay));
+    params.insert("monomi_rand_env_sustain".to_string(), b(&track.monomi_rand_env_sustain));
+    params.insert("monomi_rand_env_release".to_string(), b(&track.monomi_rand_env_release));
+    params.insert("monomi_rand_gate".to_string(), b(&track.monomi_rand_gate));
+    params.insert("monomi_rand_filter_morph".to_string(), b(&track.monomi_rand_filter_morph));
+    params.insert("monomi_rand_glide".to_string(), b(&track.monomi_rand_glide));
+    params.insert("monomi_rand_osc1_mix".to_string(), b(&track.monomi_rand_osc_mix[0]));
+    params.insert("monomi_rand_osc2_mix".to_string(), b(&track.monomi_rand_osc_mix[1]));
+    params.insert("monomi_rand_osc3_mix".to_string(), b(&track.monomi_rand_osc_mix[2]));
+    params.insert(
+        "monomi_rand_osc1_detune".to_string(),
+        b(&track.monomi_rand_osc_detune[0]),
+    );
+    params.insert(
+        "monomi_rand_osc2_detune".to_string(),
+        b(&track.monomi_rand_osc_detune[1]),
+    );
+    params.insert(
+        "monomi_rand_osc3_detune".to_string(),
+        b(&track.monomi_rand_osc_detune[2]),
+    );
+    params.insert("monomi_rand_osc1_pwm".to_string(), b(&track.monomi_rand_osc_pwm[0]));
+    params.insert("monomi_rand_osc2_pwm".to_string(), b(&track.monomi_rand_osc_pwm[1]));
+    params.insert("monomi_rand_osc3_pwm".to_string(), b(&track.monomi_rand_osc_pwm[2]));
+    params.insert(
+        "monomi_randomize_amount".to_string(),
+        f(&track.monomi_randomize_amount),
+    );
+    for step in 0..MONOMI_STEPS {
+        params.insert(format!("monomi_step_note_{}", step), i(&track.monomi_step_note[step]));
+        params.insert(
+            format!("monomi_step_cutoff_{}", step),
+            f(&track.monomi_step_cutoff[step]),
+        );
+        params.insert(
+            format!("monomi_step_resonance_{}", step),
+            f(&track.monomi_step_resonance[step]),
+        );
+        params.insert(
+            format!("monomi_step_env_attack_{}", step),
+            f(&track.monomi_step_env_attack[step]),
+        );
+        params.insert(
+            format!("monomi_step_env_decay_{}", step),
+            f(&track.monomi_step_env_decay[step]),
+        );
+        params.insert(
+            format!("monomi_step_env_sustain_{}", step),
+            f(&track.monomi_step_env_sustain[step]),
+        );
+        params.insert(
+            format!("monomi_step_env_release_{}", step),
+            f(&track.monomi_step_env_release[step]),
+        );
+        params.insert(format!("monomi_step_gate_{}", step), f(&track.monomi_step_gate[step]));
+        params.insert(
+            format!("monomi_step_filter_morph_{}", step),
+            f(&track.monomi_step_filter_morph[step]),
+        );
+        params.insert(format!("monomi_step_glide_{}", step), f(&track.monomi_step_glide[step]));
+        for osc in 0..3 {
+            params.insert(
+                format!("monomi_step_osc{}_mix_{}", osc + 1, step),
+                f(&track.monomi_step_osc_mix[osc][step]),
+            );
+            params.insert(
+                format!("monomi_step_osc{}_detune_{}", osc + 1, step),
+                f(&track.monomi_step_osc_detune[osc][step]),
+            );
+            params.insert(
+                format!("monomi_step_osc{}_pwm_{}", osc + 1, step),
+                f(&track.monomi_step_osc_pwm[osc][step]),
+            );
+        }
     }
 
     params.insert("kick_pitch".to_string(), f(&track.kick_pitch));
@@ -17111,6 +18523,11 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     let su = |a: &AtomicU32, name: &str| {
         if let Some(&v) = params.get(name) {
             a.store(v as u32, Ordering::Relaxed);
+        }
+    };
+    let si = |a: &AtomicI32, name: &str| {
+        if let Some(&v) = params.get(name) {
+            a.store(v.round() as i32, Ordering::Relaxed);
         }
     };
     let su_clamp_0_14 = |a: &AtomicU32, name: &str| {
@@ -17641,6 +19058,109 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         Ordering::Relaxed,
     );
 
+    for osc in 0..3 {
+        su(&track.monomi_osc_wave[osc], &format!("monomi_osc_wave_{}", osc));
+        su(&track.monomi_osc_octave[osc], &format!("monomi_osc_octave_{}", osc));
+        sf(&track.monomi_osc_detune[osc], &format!("monomi_osc_detune_{}", osc));
+        sf(&track.monomi_osc_mix[osc], &format!("monomi_osc_mix_{}", osc));
+        sf(&track.monomi_osc_pwm[osc], &format!("monomi_osc_pwm_{}", osc));
+    }
+    sf(&track.monomi_cutoff, "monomi_cutoff");
+    sf(&track.monomi_resonance, "monomi_resonance");
+    sf(&track.monomi_filter_morph, "monomi_filter_morph");
+    su(&track.monomi_filter_mode, "monomi_filter_mode");
+    sf_clamp_0_1(&track.monomi_volume, "monomi_volume");
+    sf(&track.monomi_amp_attack, "monomi_amp_attack");
+    sf(&track.monomi_amp_decay, "monomi_amp_decay");
+    sf(&track.monomi_amp_sustain, "monomi_amp_sustain");
+    sf(&track.monomi_amp_release, "monomi_amp_release");
+    sf(&track.monomi_filter_attack, "monomi_filter_attack");
+    sf(&track.monomi_filter_decay, "monomi_filter_decay");
+    sf(&track.monomi_filter_sustain, "monomi_filter_sustain");
+    sf(&track.monomi_filter_release, "monomi_filter_release");
+    sf(&track.monomi_filter_intensity, "monomi_filter_intensity");
+    sf(&track.monomi_filter_polarity, "monomi_filter_polarity");
+    sf(&track.monomi_filter_saturation, "monomi_filter_saturation");
+    sf(&track.monomi_filter_sat_env, "monomi_filter_sat_env");
+    sb(&track.monomi_filter_sat_pre, "monomi_filter_sat_pre");
+    su(&track.monomi_mix_comp_mode, "monomi_mix_comp_mode");
+    sf(&track.monomi_glide, "monomi_glide");
+    sf(&track.monomi_prob, "monomi_prob");
+    su(&track.monomi_scale_index, "monomi_scale_index");
+    su(&track.monomi_page, "monomi_page");
+    su(&track.monomi_edit_step, "monomi_edit_step");
+    for i in 0..3 {
+        su(&track.monomi_lfo_shape[i], &format!("monomi_lfo_shape_{}", i));
+        su(&track.monomi_lfo_target[i], &format!("monomi_lfo_target_{}", i));
+        sf(&track.monomi_lfo_amount[i], &format!("monomi_lfo_amount_{}", i));
+        sf(&track.monomi_lfo_rate[i], &format!("monomi_lfo_rate_{}", i));
+        sb(&track.monomi_lfo_sync[i], &format!("monomi_lfo_sync_{}", i));
+        su(&track.monomi_lfo_steps[i], &format!("monomi_lfo_steps_{}", i));
+    }
+    sb(&track.monomi_rand_cutoff, "monomi_rand_cutoff");
+    sb(&track.monomi_rand_resonance, "monomi_rand_resonance");
+    sb(&track.monomi_rand_env_attack, "monomi_rand_env_attack");
+    sb(&track.monomi_rand_env_decay, "monomi_rand_env_decay");
+    sb(&track.monomi_rand_env_sustain, "monomi_rand_env_sustain");
+    sb(&track.monomi_rand_env_release, "monomi_rand_env_release");
+    sb(&track.monomi_rand_gate, "monomi_rand_gate");
+    sb(&track.monomi_rand_filter_morph, "monomi_rand_filter_morph");
+    sb(&track.monomi_rand_glide, "monomi_rand_glide");
+    sb(&track.monomi_rand_osc_mix[0], "monomi_rand_osc1_mix");
+    sb(&track.monomi_rand_osc_mix[1], "monomi_rand_osc2_mix");
+    sb(&track.monomi_rand_osc_mix[2], "monomi_rand_osc3_mix");
+    sb(&track.monomi_rand_osc_detune[0], "monomi_rand_osc1_detune");
+    sb(&track.monomi_rand_osc_detune[1], "monomi_rand_osc2_detune");
+    sb(&track.monomi_rand_osc_detune[2], "monomi_rand_osc3_detune");
+    sb(&track.monomi_rand_osc_pwm[0], "monomi_rand_osc1_pwm");
+    sb(&track.monomi_rand_osc_pwm[1], "monomi_rand_osc2_pwm");
+    sb(&track.monomi_rand_osc_pwm[2], "monomi_rand_osc3_pwm");
+    sf_clamp_0_1(&track.monomi_randomize_amount, "monomi_randomize_amount");
+    for i in 0..MONOMI_STEPS {
+        si(&track.monomi_step_note[i], &format!("monomi_step_note_{}", i));
+        sf(&track.monomi_step_cutoff[i], &format!("monomi_step_cutoff_{}", i));
+        sf(
+            &track.monomi_step_resonance[i],
+            &format!("monomi_step_resonance_{}", i),
+        );
+        sf(
+            &track.monomi_step_env_attack[i],
+            &format!("monomi_step_env_attack_{}", i),
+        );
+        sf(
+            &track.monomi_step_env_decay[i],
+            &format!("monomi_step_env_decay_{}", i),
+        );
+        sf(
+            &track.monomi_step_env_sustain[i],
+            &format!("monomi_step_env_sustain_{}", i),
+        );
+        sf(
+            &track.monomi_step_env_release[i],
+            &format!("monomi_step_env_release_{}", i),
+        );
+        sf(&track.monomi_step_gate[i], &format!("monomi_step_gate_{}", i));
+        sf(
+            &track.monomi_step_filter_morph[i],
+            &format!("monomi_step_filter_morph_{}", i),
+        );
+        sf(&track.monomi_step_glide[i], &format!("monomi_step_glide_{}", i));
+        for osc in 0..3 {
+            sf(
+                &track.monomi_step_osc_mix[osc][i],
+                &format!("monomi_step_osc{}_mix_{}", osc + 1, i),
+            );
+            sf(
+                &track.monomi_step_osc_detune[osc][i],
+                &format!("monomi_step_osc{}_detune_{}", osc + 1, i),
+            );
+            sf(
+                &track.monomi_step_osc_pwm[osc][i],
+                &format!("monomi_step_osc{}_pwm_{}", osc + 1, i),
+            );
+        }
+    }
+
     sf(&track.kick_pitch, "kick_pitch");
     sf(&track.kick_decay, "kick_decay");
     sf(&track.kick_attack, "kick_attack");
@@ -18096,6 +19616,11 @@ fn save_project(
             for j in 0..FMMI_STEPS {
                 track_data.sequence.push(grid[j].load(Ordering::Relaxed));
             }
+        } else if track_data.engine_type == 6 {
+            let grid = track.monomi_sequencer_grid.clone();
+            for j in 0..MONOMI_STEPS {
+                track_data.sequence.push(grid[j].load(Ordering::Relaxed));
+            }
         }
 
         if let Some(path) = track.sample_path.lock().as_ref() {
@@ -18199,6 +19724,11 @@ fn load_project(
             for j in 0..FMMI_STEPS {
                 grid[j].store(track_data.sequence[j], Ordering::Relaxed);
             }
+        } else if track_data.engine_type == 6 && track_data.sequence.len() == MONOMI_STEPS {
+            let grid = track.monomi_sequencer_grid.clone();
+            for j in 0..MONOMI_STEPS {
+                grid[j].store(track_data.sequence[j], Ordering::Relaxed);
+            }
         }
 
         track.is_playing.store(false, Ordering::Relaxed);
@@ -18298,6 +19828,11 @@ fn export_project_as_zip(
         } else if track_data.engine_type == 5 {
             let grid = track.fmmi_sequencer_grid.clone();
             for j in 0..FMMI_STEPS {
+                track_data.sequence.push(grid[j].load(Ordering::Relaxed));
+            }
+        } else if track_data.engine_type == 6 {
+            let grid = track.monomi_sequencer_grid.clone();
+            for j in 0..MONOMI_STEPS {
                 track_data.sequence.push(grid[j].load(Ordering::Relaxed));
             }
         }
@@ -20075,6 +21610,290 @@ impl SlintWindow {
         };
         let fmmi_scale_mask = fmmi_scale_mask(&fmmi_scales[fmmi_scale_index].notes);
 
+        let monomi_osc_wave: Vec<i32> = (0..3)
+            .map(|i| self.tracks[track_idx].monomi_osc_wave[i].load(Ordering::Relaxed) as i32)
+            .collect();
+        let monomi_osc_octave: Vec<i32> = (0..3)
+            .map(|i| self.tracks[track_idx].monomi_osc_octave[i].load(Ordering::Relaxed) as i32)
+            .collect();
+        let monomi_osc_detune: Vec<f32> = (0..3)
+            .map(|i| f32::from_bits(self.tracks[track_idx].monomi_osc_detune[i].load(Ordering::Relaxed)))
+            .collect();
+        let monomi_osc_mix: Vec<f32> = (0..3)
+            .map(|i| f32::from_bits(self.tracks[track_idx].monomi_osc_mix[i].load(Ordering::Relaxed)))
+            .collect();
+        let monomi_osc_pwm: Vec<f32> = (0..3)
+            .map(|i| f32::from_bits(self.tracks[track_idx].monomi_osc_pwm[i].load(Ordering::Relaxed)))
+            .collect();
+
+        let monomi_cutoff =
+            f32::from_bits(self.tracks[track_idx].monomi_cutoff.load(Ordering::Relaxed));
+        let monomi_filter_mode =
+            self.tracks[track_idx].monomi_filter_mode.load(Ordering::Relaxed) as i32;
+        let monomi_resonance_max = if monomi_filter_mode == 0 { 1.0 } else { 8.0 };
+        let monomi_resonance =
+            f32::from_bits(self.tracks[track_idx].monomi_resonance.load(Ordering::Relaxed))
+                .clamp(0.0, monomi_resonance_max);
+        let monomi_filter_morph =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_morph.load(Ordering::Relaxed));
+        let monomi_volume =
+            f32::from_bits(self.tracks[track_idx].monomi_volume.load(Ordering::Relaxed));
+        let monomi_amp_attack =
+            f32::from_bits(self.tracks[track_idx].monomi_amp_attack.load(Ordering::Relaxed));
+        let monomi_amp_decay =
+            f32::from_bits(self.tracks[track_idx].monomi_amp_decay.load(Ordering::Relaxed));
+        let monomi_amp_sustain =
+            f32::from_bits(self.tracks[track_idx].monomi_amp_sustain.load(Ordering::Relaxed));
+        let monomi_amp_release =
+            f32::from_bits(self.tracks[track_idx].monomi_amp_release.load(Ordering::Relaxed));
+        let monomi_filter_attack =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_attack.load(Ordering::Relaxed));
+        let monomi_filter_decay =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_decay.load(Ordering::Relaxed));
+        let monomi_filter_sustain =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_sustain.load(Ordering::Relaxed));
+        let monomi_filter_release =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_release.load(Ordering::Relaxed));
+        let monomi_filter_intensity =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_intensity.load(Ordering::Relaxed));
+        let monomi_filter_polarity =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_polarity.load(Ordering::Relaxed));
+        let monomi_filter_saturation =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_saturation.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let monomi_filter_sat_env =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_sat_env.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let monomi_filter_sat_pre =
+            self.tracks[track_idx].monomi_filter_sat_pre.load(Ordering::Relaxed);
+        let monomi_mix_comp_mode =
+            self.tracks[track_idx].monomi_mix_comp_mode.load(Ordering::Relaxed) as i32;
+        let monomi_glide =
+            f32::from_bits(self.tracks[track_idx].monomi_glide.load(Ordering::Relaxed));
+        let monomi_prob =
+            f32::from_bits(self.tracks[track_idx].monomi_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0) * 100.0;
+
+        let monomi_lfo_shape: Vec<i32> = (0..3)
+            .map(|i| self.tracks[track_idx].monomi_lfo_shape[i].load(Ordering::Relaxed) as i32)
+            .collect();
+        let monomi_lfo_target: Vec<i32> = (0..3)
+            .map(|i| self.tracks[track_idx].monomi_lfo_target[i].load(Ordering::Relaxed) as i32)
+            .collect();
+        let monomi_lfo_amount: Vec<f32> = (0..3)
+            .map(|i| f32::from_bits(self.tracks[track_idx].monomi_lfo_amount[i].load(Ordering::Relaxed)))
+            .collect();
+        let monomi_lfo_rate: Vec<f32> = (0..3)
+            .map(|i| f32::from_bits(self.tracks[track_idx].monomi_lfo_rate[i].load(Ordering::Relaxed)))
+            .collect();
+        let monomi_lfo_sync: Vec<bool> = (0..3)
+            .map(|i| self.tracks[track_idx].monomi_lfo_sync[i].load(Ordering::Relaxed))
+            .collect();
+        let monomi_lfo_steps: Vec<i32> = (0..3)
+            .map(|i| self.tracks[track_idx].monomi_lfo_steps[i].load(Ordering::Relaxed) as i32)
+            .collect();
+
+        let monomi_sequencer_current_step =
+            self.tracks[track_idx].monomi_sequencer_step.load(Ordering::Relaxed);
+        let mut monomi_sequencer_grid = Vec::with_capacity(MONOMI_STEPS);
+        let mut monomi_step_note_labels: Vec<SharedString> = Vec::with_capacity(MONOMI_STEPS);
+        for i in 0..MONOMI_STEPS {
+            monomi_sequencer_grid
+                .push(self.tracks[track_idx].monomi_sequencer_grid[i].load(Ordering::Relaxed));
+            let note = self.tracks[track_idx].monomi_step_note[i].load(Ordering::Relaxed);
+            let label = fmmi_midi_to_label(note).unwrap_or_default();
+            monomi_step_note_labels.push(SharedString::from(label));
+        }
+        let monomi_page = self.tracks[track_idx].monomi_page.load(Ordering::Relaxed) as i32;
+        let monomi_edit_step =
+            self.tracks[track_idx].monomi_edit_step.load(Ordering::Relaxed) as i32;
+        let monomi_edit_idx = monomi_edit_step.clamp(0, (MONOMI_STEPS - 1) as i32) as usize;
+        let monomi_step_note = self.tracks[track_idx].monomi_step_note[monomi_edit_idx]
+            .load(Ordering::Relaxed);
+        let monomi_step_note_index = if monomi_step_note >= MONOMI_NOTE_BASE
+            && monomi_step_note <= MONOMI_NOTE_MAX
+        {
+            (monomi_step_note - MONOMI_NOTE_BASE + 1) as i32
+        } else {
+            0
+        };
+        let monomi_step_cutoff = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_cutoff[monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_cutoff }
+        };
+        let monomi_step_resonance = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_resonance[monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 {
+                v.clamp(0.0, monomi_resonance_max)
+            } else {
+                monomi_resonance
+            }
+        };
+        let monomi_step_env_attack = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_env_attack[monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_amp_attack }
+        };
+        let monomi_step_env_decay = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_env_decay[monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_amp_decay }
+        };
+        let monomi_step_env_sustain = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_env_sustain[monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_amp_sustain }
+        };
+        let monomi_step_env_release = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_env_release[monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_amp_release }
+        };
+        let monomi_step_gate = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_gate[monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { 1.0 }
+        };
+        let monomi_step_filter_morph = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_filter_morph[monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_filter_morph }
+        };
+        let monomi_step_glide = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_glide[monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_glide }
+        };
+        let monomi_step_osc1_mix = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_osc_mix[0][monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_osc_mix[0] }
+        };
+        let monomi_step_osc2_mix = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_osc_mix[1][monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_osc_mix[1] }
+        };
+        let monomi_step_osc3_mix = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_osc_mix[2][monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_osc_mix[2] }
+        };
+        let monomi_step_osc1_detune = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_osc_detune[0][monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_osc_detune[0] }
+        };
+        let monomi_step_osc2_detune = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_osc_detune[1][monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_osc_detune[1] }
+        };
+        let monomi_step_osc3_detune = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_osc_detune[2][monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_osc_detune[2] }
+        };
+        let monomi_step_osc1_pwm = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_osc_pwm[0][monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_osc_pwm[0] }
+        };
+        let monomi_step_osc2_pwm = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_osc_pwm[1][monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_osc_pwm[1] }
+        };
+        let monomi_step_osc3_pwm = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].monomi_step_osc_pwm[2][monomi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { monomi_osc_pwm[2] }
+        };
+        let monomi_rand_cutoff =
+            self.tracks[track_idx].monomi_rand_cutoff.load(Ordering::Relaxed);
+        let monomi_rand_resonance =
+            self.tracks[track_idx].monomi_rand_resonance.load(Ordering::Relaxed);
+        let monomi_rand_env_attack =
+            self.tracks[track_idx].monomi_rand_env_attack.load(Ordering::Relaxed);
+        let monomi_rand_env_decay =
+            self.tracks[track_idx].monomi_rand_env_decay.load(Ordering::Relaxed);
+        let monomi_rand_env_sustain =
+            self.tracks[track_idx].monomi_rand_env_sustain.load(Ordering::Relaxed);
+        let monomi_rand_env_release =
+            self.tracks[track_idx].monomi_rand_env_release.load(Ordering::Relaxed);
+        let monomi_rand_gate =
+            self.tracks[track_idx].monomi_rand_gate.load(Ordering::Relaxed);
+        let monomi_rand_filter_morph =
+            self.tracks[track_idx].monomi_rand_filter_morph.load(Ordering::Relaxed);
+        let monomi_rand_glide =
+            self.tracks[track_idx].monomi_rand_glide.load(Ordering::Relaxed);
+        let monomi_rand_osc1_mix =
+            self.tracks[track_idx].monomi_rand_osc_mix[0].load(Ordering::Relaxed);
+        let monomi_rand_osc2_mix =
+            self.tracks[track_idx].monomi_rand_osc_mix[1].load(Ordering::Relaxed);
+        let monomi_rand_osc3_mix =
+            self.tracks[track_idx].monomi_rand_osc_mix[2].load(Ordering::Relaxed);
+        let monomi_rand_osc1_detune =
+            self.tracks[track_idx].monomi_rand_osc_detune[0].load(Ordering::Relaxed);
+        let monomi_rand_osc2_detune =
+            self.tracks[track_idx].monomi_rand_osc_detune[1].load(Ordering::Relaxed);
+        let monomi_rand_osc3_detune =
+            self.tracks[track_idx].monomi_rand_osc_detune[2].load(Ordering::Relaxed);
+        let monomi_rand_osc1_pwm =
+            self.tracks[track_idx].monomi_rand_osc_pwm[0].load(Ordering::Relaxed);
+        let monomi_rand_osc2_pwm =
+            self.tracks[track_idx].monomi_rand_osc_pwm[1].load(Ordering::Relaxed);
+        let monomi_rand_osc3_pwm =
+            self.tracks[track_idx].monomi_rand_osc_pwm[2].load(Ordering::Relaxed);
+        let monomi_randomize_amount =
+            f32::from_bits(self.tracks[track_idx].monomi_randomize_amount.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let monomi_scale_index =
+            self.tracks[track_idx].monomi_scale_index.load(Ordering::Relaxed) as usize;
+        let monomi_scale_index = if monomi_scale_index < fmmi_scales.len() {
+            monomi_scale_index
+        } else {
+            0
+        };
+        let monomi_scale_mask = monomi_scale_mask(&fmmi_scales[monomi_scale_index].notes);
+
         let void_base_freq = f32::from_bits(self.tracks[track_idx].void_base_freq.load(Ordering::Relaxed));
         let void_chaos_depth = f32::from_bits(self.tracks[track_idx].void_chaos_depth.load(Ordering::Relaxed));
         let void_entropy = f32::from_bits(self.tracks[track_idx].void_entropy.load(Ordering::Relaxed));
@@ -20867,6 +22686,124 @@ impl SlintWindow {
         self.ui.set_fmmi_scale_index(fmmi_scale_index as i32);
         self.ui.set_fmmi_scale_mask(fmmi_scale_mask);
 
+        self.ui
+            .set_monomi_osc_wave(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_osc_wave,
+            ))));
+        self.ui
+            .set_monomi_osc_octave(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_osc_octave,
+            ))));
+        self.ui
+            .set_monomi_osc_detune(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_osc_detune,
+            ))));
+        self.ui
+            .set_monomi_osc_mix(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_osc_mix,
+            ))));
+        self.ui
+            .set_monomi_osc_pwm(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_osc_pwm,
+            ))));
+        self.ui.set_monomi_cutoff(monomi_cutoff);
+        self.ui.set_monomi_resonance(monomi_resonance);
+        self.ui.set_monomi_filter_morph(monomi_filter_morph);
+        self.ui.set_monomi_filter_mode(monomi_filter_mode);
+        self.ui.set_monomi_volume(monomi_volume.clamp(0.0, 1.0));
+        self.ui.set_monomi_amp_attack(monomi_amp_attack);
+        self.ui.set_monomi_amp_decay(monomi_amp_decay);
+        self.ui.set_monomi_amp_sustain(monomi_amp_sustain);
+        self.ui.set_monomi_amp_release(monomi_amp_release);
+        self.ui.set_monomi_filter_attack(monomi_filter_attack);
+        self.ui.set_monomi_filter_decay(monomi_filter_decay);
+        self.ui.set_monomi_filter_sustain(monomi_filter_sustain);
+        self.ui.set_monomi_filter_release(monomi_filter_release);
+        self.ui.set_monomi_filter_intensity(monomi_filter_intensity);
+        self.ui.set_monomi_filter_polarity(monomi_filter_polarity);
+        self.ui.set_monomi_filter_saturation(monomi_filter_saturation);
+        self.ui.set_monomi_filter_sat_env(monomi_filter_sat_env);
+        self.ui.set_monomi_filter_sat_pre(monomi_filter_sat_pre);
+        self.ui.set_monomi_mix_comp_mode(monomi_mix_comp_mode);
+        self.ui.set_monomi_glide(monomi_glide);
+        self.ui.set_monomi_prob(monomi_prob);
+        self.ui
+            .set_monomi_lfo_shape(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_lfo_shape,
+            ))));
+        self.ui
+            .set_monomi_lfo_target(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_lfo_target,
+            ))));
+        self.ui
+            .set_monomi_lfo_amount(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_lfo_amount,
+            ))));
+        self.ui
+            .set_monomi_lfo_rate(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_lfo_rate,
+            ))));
+        self.ui
+            .set_monomi_lfo_sync(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_lfo_sync,
+            ))));
+        self.ui
+            .set_monomi_lfo_steps(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_lfo_steps,
+            ))));
+        self.ui
+            .set_monomi_sequencer_current_step(monomi_sequencer_current_step);
+        self.ui
+            .set_monomi_sequencer_grid(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_sequencer_grid,
+            ))));
+        self.ui
+            .set_monomi_step_note_labels(ModelRc::from(std::rc::Rc::new(VecModel::from(
+                monomi_step_note_labels,
+            ))));
+        self.ui.set_monomi_page(monomi_page);
+        self.ui.set_monomi_edit_step(monomi_edit_step);
+        self.ui.set_monomi_step_note_index(monomi_step_note_index);
+        self.ui.set_monomi_step_cutoff(monomi_step_cutoff);
+        self.ui.set_monomi_step_resonance(monomi_step_resonance);
+        self.ui.set_monomi_step_env_attack(monomi_step_env_attack);
+        self.ui.set_monomi_step_env_decay(monomi_step_env_decay);
+        self.ui.set_monomi_step_env_sustain(monomi_step_env_sustain);
+        self.ui.set_monomi_step_env_release(monomi_step_env_release);
+        self.ui.set_monomi_step_gate(monomi_step_gate);
+        self.ui.set_monomi_step_filter_morph(monomi_step_filter_morph);
+        self.ui.set_monomi_step_glide(monomi_step_glide);
+        self.ui.set_monomi_step_osc1_mix(monomi_step_osc1_mix);
+        self.ui.set_monomi_step_osc2_mix(monomi_step_osc2_mix);
+        self.ui.set_monomi_step_osc3_mix(monomi_step_osc3_mix);
+        self.ui.set_monomi_step_osc1_detune(monomi_step_osc1_detune);
+        self.ui.set_monomi_step_osc2_detune(monomi_step_osc2_detune);
+        self.ui.set_monomi_step_osc3_detune(monomi_step_osc3_detune);
+        self.ui.set_monomi_step_osc1_pwm(monomi_step_osc1_pwm);
+        self.ui.set_monomi_step_osc2_pwm(monomi_step_osc2_pwm);
+        self.ui.set_monomi_step_osc3_pwm(monomi_step_osc3_pwm);
+        self.ui.set_monomi_rand_cutoff(monomi_rand_cutoff);
+        self.ui.set_monomi_rand_resonance(monomi_rand_resonance);
+        self.ui.set_monomi_rand_env_attack(monomi_rand_env_attack);
+        self.ui.set_monomi_rand_env_decay(monomi_rand_env_decay);
+        self.ui.set_monomi_rand_env_sustain(monomi_rand_env_sustain);
+        self.ui.set_monomi_rand_env_release(monomi_rand_env_release);
+        self.ui.set_monomi_rand_gate(monomi_rand_gate);
+        self.ui.set_monomi_rand_filter_morph(monomi_rand_filter_morph);
+        self.ui.set_monomi_rand_glide(monomi_rand_glide);
+        self.ui.set_monomi_rand_osc1_mix(monomi_rand_osc1_mix);
+        self.ui.set_monomi_rand_osc2_mix(monomi_rand_osc2_mix);
+        self.ui.set_monomi_rand_osc3_mix(monomi_rand_osc3_mix);
+        self.ui.set_monomi_rand_osc1_detune(monomi_rand_osc1_detune);
+        self.ui.set_monomi_rand_osc2_detune(monomi_rand_osc2_detune);
+        self.ui.set_monomi_rand_osc3_detune(monomi_rand_osc3_detune);
+        self.ui.set_monomi_rand_osc1_pwm(monomi_rand_osc1_pwm);
+        self.ui.set_monomi_rand_osc2_pwm(monomi_rand_osc2_pwm);
+        self.ui.set_monomi_rand_osc3_pwm(monomi_rand_osc3_pwm);
+        self.ui.set_monomi_randomize_amount(monomi_randomize_amount);
+        self.ui.set_monomi_scale_index(monomi_scale_index as i32);
+        self.ui.set_monomi_scale_mask(monomi_scale_mask);
+
         self.ui.set_void_base_freq(void_base_freq);
         self.ui.set_void_chaos_depth(void_chaos_depth);
         self.ui.set_void_entropy(void_entropy);
@@ -21344,6 +23281,28 @@ fn initialize_ui(
         SharedString::from("");
         FMMI_STEPS
     ])));
+    let mut monomi_note_options: Vec<SharedString> = Vec::new();
+    monomi_note_options.push(SharedString::from("Use scale"));
+    for octave in 1..=6 {
+        for name in note_names.iter() {
+            monomi_note_options.push(SharedString::from(format!("{}{}", name, octave)));
+        }
+    }
+    ui.set_monomi_note_options(ModelRc::new(VecModel::from(monomi_note_options)));
+    ui.set_monomi_step_note_labels(ModelRc::new(VecModel::from(vec![
+        SharedString::from("");
+        MONOMI_STEPS
+    ])));
+    let monomi_scale_options: Vec<SharedString> = fmmi_scales()
+        .iter()
+        .map(|scale| SharedString::from(scale.name.clone()))
+        .collect();
+    ui.set_monomi_scale_options(ModelRc::new(VecModel::from(monomi_scale_options)));
+    let monomi_lfo_targets: Vec<SharedString> = MONOMI_LFO_TARGETS
+        .iter()
+        .map(|label| SharedString::from(*label))
+        .collect();
+    ui.set_monomi_lfo_target_options(ModelRc::new(VecModel::from(monomi_lfo_targets)));
     ui.set_modul8_target_options(ModelRc::new(VecModel::from(modul8_target_options_for_engine(0))));
     ui.set_engine_types(ModelRc::new(VecModel::from(vec![
         SharedString::from("Tape-Deck"),
@@ -21351,6 +23310,7 @@ fn initialize_ui(
         SharedString::from("SynDRM"),
         SharedString::from("Void Seed"),
         SharedString::from("FMMI"),
+        SharedString::from("MonoMI"),
     ])));
     ui.set_engine_index(0);
     ui.set_engine_confirm_text(SharedString::from(
@@ -21591,6 +23551,7 @@ fn initialize_ui(
                 2 => 3,
                 3 => 4,
                 4 => 5,
+                5 => 6,
                 _ => 0,
             };
             if engine_type == 0 {
@@ -23998,6 +25959,13 @@ fn initialize_ui(
                     .store(note, Ordering::Relaxed);
                 tracks_animate[track_idx]
                     .fmmi_keybed_trigger
+                    .store(true, Ordering::Relaxed);
+            } else if engine_type == 6 {
+                tracks_animate[track_idx]
+                    .monomi_keybed_note
+                    .store(note, Ordering::Relaxed);
+                tracks_animate[track_idx]
+                    .monomi_keybed_trigger
                     .store(true, Ordering::Relaxed);
             }
         }
@@ -28460,6 +30428,995 @@ fn initialize_ui(
             tracks_fmmi[track_idx]
                 .fmmi_rng_state
                 .store(rng_state, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_osc_wave_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_osc_wave[idx]
+                .store(value.max(0) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_osc_octave_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_osc_octave[idx]
+                .store(value.clamp(0, 2) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_osc_detune_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_osc_detune[idx]
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_osc_mix_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_osc_mix[idx]
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_osc_pwm_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_osc_pwm[idx]
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_cutoff_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_cutoff
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_resonance_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let filter_mode = tracks_monomi[track_idx].monomi_filter_mode.load(Ordering::Relaxed);
+            let value = value.clamp(0.0, if filter_mode == 0 { 1.0 } else { 8.0 });
+            tracks_monomi[track_idx]
+                .monomi_resonance
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_morph_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_morph
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_mode_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_mode
+                .store(value.clamp(0, 2) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_volume_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_volume
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_amp_attack_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_amp_attack
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_amp_decay_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_amp_decay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_amp_sustain_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_amp_sustain
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_amp_release_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_amp_release
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_attack_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_attack
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_decay_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_decay
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_sustain_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_sustain
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_release_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_release
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_intensity_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_intensity
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_polarity_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_polarity
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_saturation_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_saturation
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_sat_env_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_sat_env
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_sat_pre_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_sat_pre
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_mix_comp_mode_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_mix_comp_mode
+                .store(value.max(0) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_glide_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_glide
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_prob_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let prob = (value / 100.0).clamp(0.0, 1.0);
+            tracks_monomi[track_idx]
+                .monomi_prob
+                .store(prob.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_lfo_shape_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_lfo_shape[idx]
+                .store(value.max(0) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_lfo_target_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            let clamped = value.max(0) as u32;
+            tracks_monomi[track_idx]
+                .monomi_lfo_target[idx]
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_lfo_amount_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_lfo_amount[idx]
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_lfo_rate_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_lfo_rate[idx]
+                .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_lfo_sync_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_lfo_sync[idx]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_lfo_steps_changed(move |index, value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let idx = index.clamp(0, 2) as usize;
+            tracks_monomi[track_idx]
+                .monomi_lfo_steps[idx]
+                .store(value.max(1) as u32, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_page_changed(move |page| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = page.max(0).min((MONOMI_PAGES - 1) as i32) as u32;
+            tracks_monomi[track_idx]
+                .monomi_page
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_edit_step_changed(move |step| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = step.max(0).min((MONOMI_STEPS - 1) as i32) as u32;
+            tracks_monomi[track_idx]
+                .monomi_edit_step
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_sequencer_grid_toggled(move |step| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step_idx = step as usize;
+            if step_idx < MONOMI_STEPS {
+                let current =
+                    tracks_monomi[track_idx].monomi_sequencer_grid[step_idx].load(Ordering::Relaxed);
+                tracks_monomi[track_idx]
+                    .monomi_sequencer_grid[step_idx]
+                    .store(!current, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_scale_selected(move |index| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let scales = fmmi_scales();
+            let clamped = if scales.is_empty() {
+                0
+            } else {
+                index.max(0).min((scales.len() - 1) as i32) as u32
+            };
+            tracks_monomi[track_idx]
+                .monomi_scale_index
+                .store(clamped, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_note_index_changed(move |index| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                let note = if index <= 0 {
+                    -1
+                } else {
+                    (MONOMI_NOTE_BASE + (index - 1)) as i32
+                };
+                tracks_monomi[track_idx]
+                    .monomi_step_note[step]
+                    .store(note, Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_cutoff_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_cutoff[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_resonance_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                let filter_mode = tracks_monomi[track_idx].monomi_filter_mode.load(Ordering::Relaxed);
+                let value = value.clamp(0.0, if filter_mode == 0 { 1.0 } else { 8.0 });
+                tracks_monomi[track_idx].monomi_step_resonance[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_env_attack_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_env_attack[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_env_decay_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_env_decay[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_env_sustain_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_env_sustain[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_env_release_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_env_release[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_gate_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_gate[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_filter_morph_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_filter_morph[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_glide_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_glide[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_osc1_mix_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_osc_mix[0][step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_osc2_mix_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_osc_mix[1][step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_osc3_mix_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_osc_mix[2][step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_osc1_detune_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_osc_detune[0][step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_osc2_detune_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_osc_detune[1][step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_osc3_detune_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_osc_detune[2][step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_osc1_pwm_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_osc_pwm[0][step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_osc2_pwm_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_osc_pwm[1][step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_step_osc3_pwm_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < MONOMI_STEPS {
+                tracks_monomi[track_idx].monomi_step_osc_pwm[2][step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_cutoff_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_cutoff
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_resonance_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_resonance
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_env_attack_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_env_attack
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_env_decay_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_env_decay
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_env_sustain_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_env_sustain
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_env_release_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_env_release
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_gate_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_gate
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_filter_morph_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_filter_morph
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_glide_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_glide
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_osc1_mix_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_osc_mix[0]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_osc2_mix_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_osc_mix[1]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_osc3_mix_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_osc_mix[2]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_osc1_detune_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_osc_detune[0]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_osc2_detune_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_osc_detune[1]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_osc3_detune_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_osc_detune[2]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_osc1_pwm_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_osc_pwm[0]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_osc2_pwm_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_osc_pwm[1]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_rand_osc3_pwm_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_rand_osc_pwm[2]
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_randomize_amount_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.clamp(0.0, 1.0);
+            tracks_monomi[track_idx]
+                .monomi_randomize_amount
+                .store(clamped.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_randomize_notes_step(move || {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            let mut rng_state = tracks_monomi[track_idx].monomi_rng_state.load(Ordering::Relaxed);
+            monomi_randomize_notes_step(&tracks_monomi[track_idx], step, &mut rng_state);
+            tracks_monomi[track_idx]
+                .monomi_rng_state
+                .store(rng_state, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_randomize_notes_page(move || {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_monomi[track_idx].monomi_page.load(Ordering::Relaxed) as usize;
+            let mut rng_state = tracks_monomi[track_idx].monomi_rng_state.load(Ordering::Relaxed);
+            monomi_randomize_notes_page(&tracks_monomi[track_idx], page, &mut rng_state);
+            tracks_monomi[track_idx]
+                .monomi_rng_state
+                .store(rng_state, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_randomize_notes_all(move || {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let mut rng_state = tracks_monomi[track_idx].monomi_rng_state.load(Ordering::Relaxed);
+            monomi_randomize_notes_all(&tracks_monomi[track_idx], &mut rng_state);
+            tracks_monomi[track_idx]
+                .monomi_rng_state
+                .store(rng_state, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_reset_notes(move || {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            monomi_reset_notes(&tracks_monomi[track_idx]);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_randomize_params_step(move || {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
+            let mut rng_state = tracks_monomi[track_idx].monomi_rng_state.load(Ordering::Relaxed);
+            monomi_randomize_params_step(&tracks_monomi[track_idx], step, &mut rng_state);
+            tracks_monomi[track_idx]
+                .monomi_rng_state
+                .store(rng_state, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_randomize_params_page(move || {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let page = tracks_monomi[track_idx].monomi_page.load(Ordering::Relaxed) as usize;
+            let mut rng_state = tracks_monomi[track_idx].monomi_rng_state.load(Ordering::Relaxed);
+            monomi_randomize_params_page(&tracks_monomi[track_idx], page, &mut rng_state);
+            tracks_monomi[track_idx]
+                .monomi_rng_state
+                .store(rng_state, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_randomize_params_all(move || {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let mut rng_state = tracks_monomi[track_idx].monomi_rng_state.load(Ordering::Relaxed);
+            monomi_randomize_params_all(&tracks_monomi[track_idx], &mut rng_state);
+            tracks_monomi[track_idx]
+                .monomi_rng_state
+                .store(rng_state, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_reset_params(move || {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            monomi_reset_params(&tracks_monomi[track_idx]);
         }
     });
 

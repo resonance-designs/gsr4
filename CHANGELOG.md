@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.27] - 2026-02-11
+
+- Added new **MonoMI** engine, a 3 oscillator subtractive monosynth and wired it to all downstream devices.
+- Updated 3rd party RDS UI Component Kit Slint library.
+- Added maintenance script to check if the UI library API is compatibale with current code-base, "scripts/check-ui-component-api.js"
+
 ## [0.1.26] - 2026-02-08
 
 - FMMI: Added ADSR amp envelope with per-step controls and Modul8 param targets.

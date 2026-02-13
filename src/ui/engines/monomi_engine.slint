@@ -1,0 +1,1202 @@
+import {
+    RDSHeaderLabel,
+    RDSKnob,
+    RDSComboBox,
+    RDSNumStepper,
+    RDSButton,
+    RDSSequencerCell,
+    RDSKeybed,
+    RDSCircleToggle
+} from "../components/index.slint";
+import { GranulatorDevice } from "../devices/granulator_device.slint";
+import { SilkDevice } from "../devices/silk_device.slint";
+import { G8Device } from "../devices/g8_device.slint";
+import { Modul8Device } from "../devices/modul8_device.slint";
+import { TextureDevice } from "../devices/texture_device.slint";
+import { ReflectDevice } from "../devices/reflect_device.slint";
+import { Theme } from "../theme/index.slint";
+import { RDSKeybedBus } from "../globals.slint";
+
+export component MonoMIEngine inherits Rectangle {
+    in-out property <bool> track-muted: false;
+
+    in property <[string]> monomi-note-options;
+    in property <[string]> monomi-step-note-labels;
+    in property <[string]> monomi-scale-options;
+    in-out property <int> monomi-scale-index: 0;
+    in property <int> monomi-scale-mask: 0;
+
+    in-out property <[int]> monomi-osc-wave: [2, 3, 1];
+    in-out property <[int]> monomi-osc-octave: [0, 1, 2];
+    in-out property <[float]> monomi-osc-detune: [0.0, 0.0, 0.0];
+    in-out property <[float]> monomi-osc-mix: [0.33, 0.33, 0.33];
+    in-out property <[float]> monomi-osc-pwm: [0.5, 0.5, 0.5];
+
+    in-out property <float> monomi-cutoff: 1200;
+    in-out property <float> monomi-resonance: 1;
+    in-out property <float> monomi-filter-morph: 0;
+    in-out property <int> monomi-filter-mode: 0;
+    in-out property <float> monomi-volume: 0.75;
+
+    in-out property <float> monomi-amp-attack: 4;
+    in-out property <float> monomi-amp-decay: 8;
+    in-out property <float> monomi-amp-sustain: 64;
+    in-out property <float> monomi-amp-release: 12;
+
+    in-out property <float> monomi-filter-attack: 4;
+    in-out property <float> monomi-filter-decay: 8;
+    in-out property <float> monomi-filter-sustain: 64;
+    in-out property <float> monomi-filter-release: 12;
+    in-out property <float> monomi-filter-intensity: 2;
+    in-out property <float> monomi-filter-polarity: 1;
+    in-out property <float> monomi-filter-saturation: 0;
+    in-out property <float> monomi-filter-sat-env: 0;
+    in-out property <bool> monomi-filter-sat-pre: false;
+
+    in-out property <int> monomi-mix-comp-mode: 0;
+    in-out property <float> monomi-glide: 0;
+    in-out property <float> monomi-prob: 100;
+
+    in-out property <[int]> monomi-lfo-shape: [0, 1, 4];
+    in-out property <[int]> monomi-lfo-target: [0, 6, 5];
+    in-out property <[float]> monomi-lfo-amount: [0.0, 0.0, 0.0];
+    in-out property <[float]> monomi-lfo-rate: [0.5, 0.25, 1.0];
+    in-out property <[bool]> monomi-lfo-sync: [true, true, false];
+    in-out property <[int]> monomi-lfo-steps: [4, 8, 4];
+    in property <[string]> monomi-lfo-target-options;
+
+    in-out property <int> monomi-page: 0;
+    in-out property <int> monomi-edit-step: 0;
+    in-out property <[bool]> monomi-sequencer-grid;
+    in property <int> monomi-sequencer-current-step: -1;
+
+    in-out property <int> monomi-step-note-index: 0;
+    in-out property <float> monomi-step-cutoff: 0;
+    in-out property <float> monomi-step-resonance: 0;
+    in-out property <float> monomi-step-env-attack: 0;
+    in-out property <float> monomi-step-env-decay: 0;
+    in-out property <float> monomi-step-env-sustain: 0;
+    in-out property <float> monomi-step-env-release: 0;
+    in-out property <float> monomi-step-gate: 0;
+    in-out property <float> monomi-step-filter-morph: 0;
+    in-out property <float> monomi-step-glide: 0;
+    in-out property <float> monomi-step-osc1-mix: 0;
+    in-out property <float> monomi-step-osc2-mix: 0;
+    in-out property <float> monomi-step-osc3-mix: 0;
+    in-out property <float> monomi-step-osc1-detune: 0;
+    in-out property <float> monomi-step-osc2-detune: 0;
+    in-out property <float> monomi-step-osc3-detune: 0;
+    in-out property <float> monomi-step-osc1-pwm: 0;
+    in-out property <float> monomi-step-osc2-pwm: 0;
+    in-out property <float> monomi-step-osc3-pwm: 0;
+
+    in-out property <bool> monomi-rand-cutoff: true;
+    in-out property <bool> monomi-rand-resonance: true;
+    in-out property <bool> monomi-rand-env-attack: true;
+    in-out property <bool> monomi-rand-env-decay: true;
+    in-out property <bool> monomi-rand-env-sustain: true;
+    in-out property <bool> monomi-rand-env-release: true;
+    in-out property <bool> monomi-rand-gate: true;
+    in-out property <bool> monomi-rand-filter-morph: true;
+    in-out property <bool> monomi-rand-glide: true;
+    in-out property <bool> monomi-rand-osc1-mix: true;
+    in-out property <bool> monomi-rand-osc2-mix: true;
+    in-out property <bool> monomi-rand-osc3-mix: true;
+    in-out property <bool> monomi-rand-osc1-detune: true;
+    in-out property <bool> monomi-rand-osc2-detune: true;
+    in-out property <bool> monomi-rand-osc3-detune: true;
+    in-out property <bool> monomi-rand-osc1-pwm: true;
+    in-out property <bool> monomi-rand-osc2-pwm: true;
+    in-out property <bool> monomi-rand-osc3-pwm: true;
+    in-out property <float> monomi-randomize-amount: 1.0;
+
+    in property <[string]> ring-decay-modes;
+    in-out property <bool> mosaic-enabled: true;
+    in-out property <bool> mosaic-loop-lock: false;
+    in-out property <float> mosaic-pitch: 0.0;
+    in-out property <float> mosaic-rate: 0.5;
+    in-out property <float> mosaic-size: 0.5;
+    in-out property <float> mosaic-contour: 0.5;
+    in-out property <float> mosaic-warp: 0.0;
+    in-out property <float> mosaic-spray: 0.0;
+    in-out property <float> mosaic-pattern: 0.0;
+    in-out property <float> mosaic-wet: 0.0;
+    in-out property <float> mosaic-post-gain: 0.5;
+    in-out property <float> mosaic-detune: 0.0;
+    in-out property <float> mosaic-spatial: 0.0;
+    in-out property <float> mosaic-rand-rate: 0.0;
+    in-out property <float> mosaic-rand-size: 0.0;
+    in-out property <float> mosaic-sos: 0.0;
+
+    in-out property <bool> ring-enabled: false;
+    in-out property <float> ring-cutoff: 0.5;
+    in-out property <float> ring-resonance: 0.0;
+    in-out property <float> ring-decay: 0.0;
+    in-out property <float> ring-pitch: 0.5;
+    in-out property <int> ring-decay-mode: 0;
+    in-out property <float> ring-slope: 0.5;
+    in-out property <float> ring-tone: 0.5;
+    in-out property <float> ring-tilt: 0.5;
+    in-out property <float> ring-wet: 0.0;
+    in-out property <float> ring-detune: 0.0;
+    in-out property <float> ring-waves: 0.0;
+    in-out property <float> ring-waves-rate: 0.5;
+    in-out property <float> ring-noise: 0.0;
+    in-out property <float> ring-noise-rate: 0.5;
+    in-out property <bool> ring-pre-post: true;
+
+    in-out property <bool> texture-enabled: false;
+    in-out property <bool> texture-gate: false;
+    in-out property <float> texture-drive: 0.0;
+    in-out property <float> texture-compress: 0.0;
+    in-out property <float> texture-crush: 0.0;
+    in-out property <float> texture-tilt: 0.0;
+    in-out property <float> texture-noise: 0.0;
+    in-out property <float> texture-noise-decay: 0.0;
+    in-out property <float> texture-noise-color: 0.0;
+    in-out property <float> texture-wet: 1.0;
+    in-out property <float> texture-post-gain: 0.5;
+
+    in-out property <bool> reflect-enabled: false;
+    in-out property <bool> reflect-freeze: false;
+    in-out property <float> reflect-delay: 0.0;
+    in-out property <float> reflect-time: 0.5;
+    in-out property <int> reflect-time-mode: 0;
+    in-out property <float> reflect-reverb: 0.0;
+    in-out property <float> reflect-size: 0.5;
+    in-out property <float> reflect-feedback: 0.0;
+    in-out property <float> reflect-spread: 0.0;
+    in-out property <float> reflect-damp: 0.5;
+    in-out property <float> reflect-decay: 0.5;
+    in-out property <float> reflect-post-gain: 0.5;
+
+    in-out property <bool> g8-enabled: true;
+    in-out property <int> g8-rate-index: 0;
+    in-out property <[float]> g8-steps: [
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+    ];
+
+    in property <[string]> modul8-target-options;
+    in-out property <bool> modul8-enabled: false;
+    in-out property <[int]> modul8-wave: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-rate: [1, 1, 1, 1, 1, 1, 1, 1];
+    in-out property <[bool]> modul8-sync: [true, true, true, true, true, true, true, true];
+    in-out property <[int]> modul8-division: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-amount: [0, 0, 0, 0, 0, 0, 0, 0];
+    in-out property <[float]> modul8-bias: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
+    in-out property <[int]> modul8-target: [0, 0, 0, 0, 0, 0, 0, 0];
+
+    callback toggle-track-mute();
+    callback monomi-osc-wave-changed(int, int);
+    callback monomi-osc-octave-changed(int, int);
+    callback monomi-osc-detune-changed(int, float);
+    callback monomi-osc-mix-changed(int, float);
+    callback monomi-osc-pwm-changed(int, float);
+    callback monomi-cutoff-changed(float);
+    callback monomi-resonance-changed(float);
+    callback monomi-filter-morph-changed(float);
+    callback monomi-filter-mode-changed(int);
+    callback monomi-volume-changed(float);
+    callback monomi-amp-attack-changed(float);
+    callback monomi-amp-decay-changed(float);
+    callback monomi-amp-sustain-changed(float);
+    callback monomi-amp-release-changed(float);
+    callback monomi-filter-attack-changed(float);
+    callback monomi-filter-decay-changed(float);
+    callback monomi-filter-sustain-changed(float);
+    callback monomi-filter-release-changed(float);
+    callback monomi-filter-intensity-changed(float);
+    callback monomi-filter-polarity-changed(float);
+    callback monomi-filter-saturation-changed(float);
+    callback monomi-filter-sat-env-changed(float);
+    callback monomi-filter-sat-pre-changed(bool);
+    callback monomi-mix-comp-mode-changed(int);
+    callback monomi-glide-changed(float);
+    callback monomi-prob-changed(float);
+
+    callback monomi-lfo-shape-changed(int, int);
+    callback monomi-lfo-target-changed(int, int);
+    callback monomi-lfo-amount-changed(int, float);
+    callback monomi-lfo-rate-changed(int, float);
+    callback monomi-lfo-sync-changed(int, bool);
+    callback monomi-lfo-steps-changed(int, int);
+
+    callback monomi-page-changed(int);
+    callback monomi-edit-step-changed(int);
+    callback monomi-sequencer-grid-toggled(int);
+    callback monomi-scale-selected(int);
+    callback monomi-step-note-index-changed(int);
+    callback monomi-step-cutoff-changed(float);
+    callback monomi-step-resonance-changed(float);
+    callback monomi-step-env-attack-changed(float);
+    callback monomi-step-env-decay-changed(float);
+    callback monomi-step-env-sustain-changed(float);
+    callback monomi-step-env-release-changed(float);
+    callback monomi-step-gate-changed(float);
+    callback monomi-step-filter-morph-changed(float);
+    callback monomi-step-glide-changed(float);
+    callback monomi-step-osc1-mix-changed(float);
+    callback monomi-step-osc2-mix-changed(float);
+    callback monomi-step-osc3-mix-changed(float);
+    callback monomi-step-osc1-detune-changed(float);
+    callback monomi-step-osc2-detune-changed(float);
+    callback monomi-step-osc3-detune-changed(float);
+    callback monomi-step-osc1-pwm-changed(float);
+    callback monomi-step-osc2-pwm-changed(float);
+    callback monomi-step-osc3-pwm-changed(float);
+
+    callback monomi-rand-cutoff-changed(bool);
+    callback monomi-rand-resonance-changed(bool);
+    callback monomi-rand-env-attack-changed(bool);
+    callback monomi-rand-env-decay-changed(bool);
+    callback monomi-rand-env-sustain-changed(bool);
+    callback monomi-rand-env-release-changed(bool);
+    callback monomi-rand-gate-changed(bool);
+    callback monomi-rand-filter-morph-changed(bool);
+    callback monomi-rand-glide-changed(bool);
+    callback monomi-rand-osc1-mix-changed(bool);
+    callback monomi-rand-osc2-mix-changed(bool);
+    callback monomi-rand-osc3-mix-changed(bool);
+    callback monomi-rand-osc1-detune-changed(bool);
+    callback monomi-rand-osc2-detune-changed(bool);
+    callback monomi-rand-osc3-detune-changed(bool);
+    callback monomi-rand-osc1-pwm-changed(bool);
+    callback monomi-rand-osc2-pwm-changed(bool);
+    callback monomi-rand-osc3-pwm-changed(bool);
+    callback monomi-randomize-amount-changed(float);
+
+    callback monomi-randomize-notes-step();
+    callback monomi-randomize-notes-page();
+    callback monomi-randomize-notes-all();
+    callback monomi-reset-notes();
+    callback monomi-randomize-params-step();
+    callback monomi-randomize-params-page();
+    callback monomi-randomize-params-all();
+    callback monomi-reset-params();
+
+    callback toggle-mosaic-enabled();
+    callback toggle-mosaic-loop-lock();
+    callback mosaic-pitch-changed(float);
+    callback mosaic-rate-changed(float);
+    callback mosaic-size-changed(float);
+    callback mosaic-contour-changed(float);
+    callback mosaic-warp-changed(float);
+    callback mosaic-spray-changed(float);
+    callback mosaic-pattern-changed(float);
+    callback mosaic-wet-changed(float);
+    callback mosaic-post-gain-changed(float);
+    callback mosaic-detune-changed(float);
+    callback mosaic-spatial-changed(float);
+    callback mosaic-rand-rate-changed(float);
+    callback mosaic-rand-size-changed(float);
+    callback mosaic-sos-changed(float);
+
+    callback toggle-ring-enabled();
+    callback toggle-ring-pre-post();
+    callback ring-cutoff-changed(float);
+    callback ring-resonance-changed(float);
+    callback ring-decay-changed(float);
+    callback ring-pitch-changed(float);
+    callback ring-decay-mode-selected(int);
+    callback ring-slope-changed(float);
+    callback ring-tone-changed(float);
+    callback ring-tilt-changed(float);
+    callback ring-wet-changed(float);
+    callback ring-detune-changed(float);
+    callback ring-waves-changed(float);
+    callback ring-waves-rate-changed(float);
+    callback ring-noise-changed(float);
+    callback ring-noise-rate-changed(float);
+
+    callback toggle-texture-enabled();
+    callback toggle-texture-gate();
+    callback texture-drive-changed(float);
+    callback texture-compress-changed(float);
+    callback texture-crush-changed(float);
+    callback texture-tilt-changed(float);
+    callback texture-noise-changed(float);
+    callback texture-noise-decay-changed(float);
+    callback texture-noise-color-changed(float);
+    callback texture-wet-changed(float);
+    callback texture-post-gain-changed(float);
+
+    callback toggle-reflect-enabled();
+    callback toggle-reflect-freeze();
+    callback reflect-clear();
+    callback reflect-delay-changed(float);
+    callback reflect-time-changed(float);
+    callback reflect-time-mode-selected(int);
+    callback reflect-reverb-changed(float);
+    callback reflect-size-changed(float);
+    callback reflect-feedback-changed(float);
+    callback reflect-spread-changed(float);
+    callback reflect-damp-changed(float);
+    callback reflect-decay-changed(float);
+    callback reflect-post-gain-changed(float);
+
+    callback toggle-g8-enabled();
+    callback g8-rate-selected(int);
+    callback g8-step-changed(int, float);
+
+    callback toggle-modul8-enabled();
+    callback modul8-wave-changed(int, int);
+    callback modul8-rate-changed(int, float);
+    callback modul8-sync-changed(int, bool);
+    callback modul8-division-changed(int, int);
+    callback modul8-amount-changed(int, float);
+    callback modul8-bias-changed(int, float);
+    callback modul8-target-changed(int, int);
+
+    width: 1242px;
+    background: transparent;
+
+    // Engine Container
+    VerticalLayout {
+        spacing: 8px;
+        padding: 12px;
+
+        // Main engine controls
+        Rectangle {
+            horizontal-stretch: 2;
+            background: transparent;
+            VerticalLayout {
+                spacing: 12px;
+
+                RDSHeaderLabel { text: "MonoMI"; }
+
+                // Oscillator bank
+                Rectangle {
+                    background: Theme.active.ui_device_panel_bg;
+                    border-width: 2px;
+                    border-radius: 6px;
+                    border-color: Theme.active.border_strong;
+                    height: 176px;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 8px;
+                        RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Oscillator Bank"; }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            for osc_idx in 3 : Rectangle {
+                                width: 390px;
+                                background: Theme.active.ui_device_panel_bg;
+                                border-width: 1px;
+                                border-radius: 6px;
+                                border-color: Theme.active.border_subtle;
+                                VerticalLayout {
+                                    padding: 8px;
+                                    spacing: 6px;
+                                    Text { text: "Osc " + (osc_idx + 1); color: Theme.active.text_secondary; font-size: 11px; }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        VerticalLayout {
+                                            spacing: 12px;
+                                            RDSComboBox {
+                                                width: 120px;
+                                                model: ["Sine", "Triangle", "Saw", "Square/PWM"];
+                                                current-index: root.monomi_osc_wave[osc_idx];
+                                                selected => {
+                                                    root.monomi_osc_wave[osc_idx] = self.current-index;
+                                                    root.monomi-osc-wave-changed(osc_idx, root.monomi_osc_wave[osc_idx]);
+                                                }
+                                            }
+                                            RDSComboBox {
+                                                width: 90px;
+                                                model: ["8'", "16'", "32'"];
+                                                current-index: root.monomi_osc_octave[osc_idx];
+                                                selected => {
+                                                    root.monomi_osc_octave[osc_idx] = self.current-index;
+                                                    root.monomi-osc-octave-changed(osc_idx, root.monomi_osc_octave[osc_idx]);
+                                                }
+                                            }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_osc_detune[osc_idx];
+                                            min-value: -100;
+                                            max-value: 100;
+                                            size: 78px;
+                                            indicator-position: 22px;
+                                            label: "Detune";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.monomi_osc_detune[osc_idx] = v;
+                                                root.monomi-osc-detune-changed(osc_idx, v);
+                                            }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_osc_mix[osc_idx];
+                                            min-value: 0;
+                                            max-value: 1;
+                                            size: 78px;
+                                            indicator-position: 22px;
+                                            label: "Mix";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.monomi_osc_mix[osc_idx] = v;
+                                                root.monomi-osc-mix-changed(osc_idx, v);
+                                            }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_osc_pwm[osc_idx];
+                                            min-value: 0.05;
+                                            max-value: 0.95;
+                                            size: 78px;
+                                            indicator-position: 22px;
+                                            label: "PWM";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.monomi_osc_pwm[osc_idx] = v;
+                                                root.monomi-osc-pwm-changed(osc_idx, v);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Filter and envelopes
+                HorizontalLayout {
+                    spacing: 12px;
+                    Rectangle {
+                        width: parent.width / 2;
+                        height: 282px;
+                        background: Theme.active.ui_device_panel_bg;
+                        border-width: 2px;
+                        border-radius: 6px;
+                        border-color: Theme.active.border_strong;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 8px;
+                            RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Filter"; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    spacing: 12px;
+                                    RDSComboBox {
+                                        width: 120px;
+                                        model: ["LP 24dB", "LP 12dB", "HP 12dB"];
+                                        current-index: root.monomi_filter_mode;
+                                        selected => {
+                                            root.monomi_filter_mode = self.current-index;
+                                            root.monomi-filter-mode-changed(root.monomi_filter_mode);
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        x: parent.width / 4;
+                                        RDSCircleToggle {
+                                            active: !root.monomi_filter_sat_pre;
+                                            label: "Pre";
+                                            label-active: "Post";
+                                            label-pos: "left";
+                                            clicked => {
+                                                root.monomi_filter_sat_pre = !root.monomi_filter_sat_pre;
+                                                root.monomi-filter-sat-pre-changed(root.monomi_filter_sat_pre);
+                                            }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        padding-top: 18px;
+                                        x: parent.width / 6;
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_filter_sat_env;
+                                            min-value: 0;
+                                            max-value: 1;
+                                            size: 86px;
+                                            indicator-position: 26px;
+                                            label: "Sat Env";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.monomi_filter_sat_env = v;
+                                                root.monomi-filter-sat-env-changed(v);
+                                            }
+                                        }
+                                    }
+                                }
+                                GridLayout {
+                                    padding-top: 24px;
+                                    spacing: 14px;
+                                    Row {
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_cutoff;
+                                            min-value: 200;
+                                            max-value: 8000;
+                                            size: 102px;
+                                            indicator-position: 26px;
+                                            label: "Cut";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.monomi_cutoff = v;
+                                                root.monomi-cutoff-changed(v);
+                                            }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_resonance;
+                                            min-value: 0;
+                                            max-value: root.monomi_filter_mode == 0 ? 1 : 8;
+                                            size: 102px;
+                                            indicator-position: 26px;
+                                            label: "Res";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.monomi_resonance = v;
+                                                root.monomi-resonance-changed(v);
+                                            }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_filter_morph;
+                                            min-value: 0;
+                                            max-value: 1;
+                                            size: 102px;
+                                            indicator-position: 26px;
+                                            label: "Morph";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.monomi_filter_morph = v;
+                                                root.monomi-filter-morph-changed(v);
+                                            }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_filter_saturation;
+                                            min-value: 0;
+                                            max-value: 1;
+                                            size: 102px;
+                                            indicator-position: 26px;
+                                            label: "Sat";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.monomi_filter_saturation = v;
+                                                root.monomi-filter-saturation-changed(v);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        width: parent.width / 2 - 12px;
+                        height: 282px;
+                        background: Theme.active.ui_device_panel_bg;
+                        border-width: 2px;
+                        border-radius: 6px;
+                        border-color: Theme.active.border_strong;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 8px;
+                            RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Envelopes"; }
+                            GridLayout {
+                                Row {
+                                    HorizontalLayout {
+                                        padding-top: 24px;
+                                        spacing: 12px;
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_amp_attack;
+                                            min-value: 0;
+                                            max-value: 128;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "A";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_amp_attack = v; root.monomi-amp-attack-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_amp_decay;
+                                            min-value: 1;
+                                            max-value: 128;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "D";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_amp_decay = v; root.monomi-amp-decay-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_amp_sustain;
+                                            min-value: 1;
+                                            max-value: 128;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "S";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_amp_sustain = v; root.monomi-amp-sustain-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_amp_release;
+                                            min-value: 1;
+                                            max-value: 128;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "R";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_amp_release = v; root.monomi-amp-release-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_volume;
+                                            min-value: 0;
+                                            max-value: 1;
+                                            sensitivity: 0.01;
+                                            scroll-sensitivity: 0.01;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "Vol";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_volume = v; root.monomi-volume-changed(v); }
+                                        }
+                                    }
+                                }
+                                Row {
+                                    HorizontalLayout {
+                                        padding-top: 24px;
+                                        spacing: 12px;
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_filter_intensity;
+                                            min-value: 0;
+                                            max-value: 4;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "F Env";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_filter_intensity = v; root.monomi-filter-intensity-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_filter_polarity;
+                                            min-value: -1;
+                                            max-value: 1;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "Pol";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_filter_polarity = v; root.monomi-filter-polarity-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_filter_attack;
+                                            min-value: 0;
+                                            max-value: 128;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "FA";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_filter_attack = v; root.monomi-filter-attack-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_filter_decay;
+                                            min-value: 1;
+                                            max-value: 128;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "FD";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_filter_decay = v; root.monomi-filter-decay-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_filter_sustain;
+                                            min-value: 1;
+                                            max-value: 128;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "FS";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_filter_sustain = v; root.monomi-filter-sustain-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_filter_release;
+                                            min-value: 1;
+                                            max-value: 128;
+                                            size: 86px;
+                                            indicator-position: 22px;
+                                            label: "FR";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_filter_release = v; root.monomi-filter-release-changed(v); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Sequencer + step params
+                Rectangle {
+                    height: 740px;
+                    background: Theme.active.ui_device_panel_bg;
+                    border-width: 2px;
+                    border-radius: 6px;
+                    border-color: Theme.active.border_strong;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 8px;
+                        RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Sequencer"; }
+                        HorizontalLayout {
+                            spacing: 12px;
+
+                            // Left column: grid, step params, randomize toggles/buttons, keybed
+                            Rectangle {
+                                horizontal-stretch: 3;
+                                background: transparent;
+                                VerticalLayout {
+                                    spacing: 8px;
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_prob;
+                                            min-value: 0;
+                                            max-value: 100;
+                                            size: 60px;
+                                            indicator-position: 18px;
+                                            label: "Prob";
+                                            label-pos: "top-center";
+                                            value-changed(v) => { root.monomi_prob = v; root.monomi-prob-changed(v); }
+                                        }
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_glide;
+                                            min-value: 0;
+                                            max-value: 500;
+                                            size: 60px;
+                                            indicator-position: 18px;
+                                            label: "Glide";
+                                            label-pos: "top-center";
+                                            readout-suffix: "ms";
+                                            value-changed(v) => { root.monomi_glide = v; root.monomi-glide-changed(v); }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 4px;
+                                            for s in 16 : RDSSequencerCell {
+                                                property <int> step-index: root.monomi_page * 16 + s;
+                                                active: (step-index >= 0 && step-index < root.monomi_sequencer_grid.length)
+                                                    ? root.monomi_sequencer_grid[step-index]
+                                                    : false;
+                                                current: step-index == root.monomi_sequencer_current_step;
+                                                edit: step-index == root.monomi_edit_step;
+                                                cell-text: (step-index >= 0 && step-index < root.monomi_step_note_labels.length)
+                                                    ? root.monomi_step_note_labels[step-index]
+                                                    : "";
+                                                cell-width: 40px;
+                                                cell-height: 40px;
+                                                clicked => { root.monomi-sequencer-grid-toggled(step-index); }
+                                            }
+                                        }
+                                    }
+                                    RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Step Params"; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        VerticalLayout {
+                                            padding-top: 6px;
+                                            Text { text: "Scale"; color: Theme.active.text_secondary; font-size: 11px; }
+                                            RDSComboBox {
+                                                width: 140px;
+                                                model: root.monomi_scale_options;
+                                                current-index: root.monomi_scale_index;
+                                                selected => {
+                                                    root.monomi_scale_index = self.current-index;
+                                                    root.monomi-scale-selected(root.monomi_scale_index);
+                                                }
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            padding-top: 6px;
+                                            Text { text: "Note"; color: Theme.active.text_secondary; font-size: 11px; }
+                                            RDSComboBox {
+                                                width: 160px;
+                                                model: root.monomi_note_options;
+                                                current-index: root.monomi_step_note_index;
+                                                selected => {
+                                                    root.monomi_step_note_index = self.current-index;
+                                                    root.monomi-step-note-index-changed(root.monomi_step_note_index);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_cutoff; min-value: 200; max-value: 8000; size: 70px; indicator-position: 22px; label: "Cut"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_cutoff = v; root.monomi-step-cutoff-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_resonance; min-value: 0; max-value: root.monomi_filter_mode == 0 ? 1 : 8; size: 70px; indicator-position: 22px; label: "Res"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_resonance = v; root.monomi-step-resonance-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_env_attack; min-value: 0; max-value: 128; size: 70px; indicator-position: 22px; label: "A"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_env_attack = v; root.monomi-step-env-attack-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_env_decay; min-value: 1; max-value: 128; size: 70px; indicator-position: 22px; label: "D"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_env_decay = v; root.monomi-step-env-decay-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_env_sustain; min-value: 1; max-value: 128; size: 70px; indicator-position: 22px; label: "S"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_env_sustain = v; root.monomi-step-env-sustain-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_env_release; min-value: 1; max-value: 128; size: 70px; indicator-position: 22px; label: "R"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_env_release = v; root.monomi-step-env-release-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_gate; min-value: 1; max-value: 128; size: 70px; indicator-position: 22px; label: "Gate"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_gate = v; root.monomi-step-gate-changed(v); } }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_filter_morph; min-value: 0; max-value: 1; size: 70px; indicator-position: 22px; label: "Morph"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_filter_morph = v; root.monomi-step-filter-morph-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_glide; min-value: 0; max-value: 500; size: 70px; indicator-position: 22px; label: "Glide"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_glide = v; root.monomi-step-glide-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_osc1_mix; min-value: 0; max-value: 1; size: 70px; indicator-position: 22px; label: "O1 Mix"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_osc1_mix = v; root.monomi-step-osc1-mix-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_osc2_mix; min-value: 0; max-value: 1; size: 70px; indicator-position: 22px; label: "O2 Mix"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_osc2_mix = v; root.monomi-step-osc2-mix-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_osc3_mix; min-value: 0; max-value: 1; size: 70px; indicator-position: 22px; label: "O3 Mix"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_osc3_mix = v; root.monomi-step-osc3-mix-changed(v); } }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_osc1_detune; min-value: -100; max-value: 100; size: 70px; indicator-position: 22px; label: "O1 Det"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_osc1_detune = v; root.monomi-step-osc1-detune-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_osc2_detune; min-value: -100; max-value: 100; size: 70px; indicator-position: 22px; label: "O2 Det"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_osc2_detune = v; root.monomi-step-osc2-detune-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_osc3_detune; min-value: -100; max-value: 100; size: 70px; indicator-position: 22px; label: "O3 Det"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_osc3_detune = v; root.monomi-step-osc3-detune-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_osc1_pwm; min-value: 0.05; max-value: 0.95; size: 70px; indicator-position: 22px; label: "O1 PWM"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_osc1_pwm = v; root.monomi-step-osc1-pwm-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_osc2_pwm; min-value: 0.05; max-value: 0.95; size: 70px; indicator-position: 22px; label: "O2 PWM"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_osc2_pwm = v; root.monomi-step-osc2-pwm-changed(v); } }
+                                        RDSKnob { renderer: "lo-fi"; value: root.monomi_step_osc3_pwm; min-value: 0.05; max-value: 0.95; size: 70px; indicator-position: 22px; label: "O3 PWM"; label-pos: "top-center"; value-changed(v) => { root.monomi_step_osc3_pwm = v; root.monomi-step-osc3-pwm-changed(v); } }
+                                    }
+                                    Text { text: "Randomize Params"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 11px; }
+                                    GridLayout {
+                                        spacing-horizontal: 10px;
+                                        spacing-vertical: 8px;
+                                        Row {
+                                            RDSCircleToggle { label: "Cut"; active: root.monomi_rand_cutoff; clicked => { root.monomi_rand_cutoff = !root.monomi_rand_cutoff; root.monomi-rand-cutoff-changed(root.monomi_rand_cutoff); } }
+                                            RDSCircleToggle { label: "Res"; active: root.monomi_rand_resonance; clicked => { root.monomi_rand_resonance = !root.monomi_rand_resonance; root.monomi-rand-resonance-changed(root.monomi_rand_resonance); } }
+                                            RDSCircleToggle { label: "Atk"; active: root.monomi_rand_env_attack; clicked => { root.monomi_rand_env_attack = !root.monomi_rand_env_attack; root.monomi-rand-env-attack-changed(root.monomi_rand_env_attack); } }
+                                            RDSCircleToggle { label: "Dec"; active: root.monomi_rand_env_decay; clicked => { root.monomi_rand_env_decay = !root.monomi_rand_env_decay; root.monomi-rand-env-decay-changed(root.monomi_rand_env_decay); } }
+                                            RDSCircleToggle { label: "Sus"; active: root.monomi_rand_env_sustain; clicked => { root.monomi_rand_env_sustain = !root.monomi_rand_env_sustain; root.monomi-rand-env-sustain-changed(root.monomi_rand_env_sustain); } }
+                                            RDSCircleToggle { label: "Rel"; active: root.monomi_rand_env_release; clicked => { root.monomi_rand_env_release = !root.monomi_rand_env_release; root.monomi-rand-env-release-changed(root.monomi_rand_env_release); } }
+                                        }
+                                        Row {
+                                            RDSCircleToggle { label: "Gate"; active: root.monomi_rand_gate; clicked => { root.monomi_rand_gate = !root.monomi_rand_gate; root.monomi-rand-gate-changed(root.monomi_rand_gate); } }
+                                            RDSCircleToggle { label: "Morph"; active: root.monomi_rand_filter_morph; clicked => { root.monomi_rand_filter_morph = !root.monomi_rand_filter_morph; root.monomi-rand-filter-morph-changed(root.monomi_rand_filter_morph); } }
+                                            RDSCircleToggle { label: "Glide"; active: root.monomi_rand_glide; clicked => { root.monomi_rand_glide = !root.monomi_rand_glide; root.monomi-rand-glide-changed(root.monomi_rand_glide); } }
+                                            RDSCircleToggle { label: "O1Mix"; active: root.monomi_rand_osc1_mix; clicked => { root.monomi_rand_osc1_mix = !root.monomi_rand_osc1_mix; root.monomi-rand-osc1-mix-changed(root.monomi_rand_osc1_mix); } }
+                                            RDSCircleToggle { label: "O2Mix"; active: root.monomi_rand_osc2_mix; clicked => { root.monomi_rand_osc2_mix = !root.monomi_rand_osc2_mix; root.monomi-rand-osc2-mix-changed(root.monomi_rand_osc2_mix); } }
+                                            RDSCircleToggle { label: "O3Mix"; active: root.monomi_rand_osc3_mix; clicked => { root.monomi_rand_osc3_mix = !root.monomi_rand_osc3_mix; root.monomi-rand-osc3-mix-changed(root.monomi_rand_osc3_mix); } }
+                                        }
+                                        Row {
+                                            RDSCircleToggle { label: "O1Det"; active: root.monomi_rand_osc1_detune; clicked => { root.monomi_rand_osc1_detune = !root.monomi_rand_osc1_detune; root.monomi-rand-osc1-detune-changed(root.monomi_rand_osc1_detune); } }
+                                            RDSCircleToggle { label: "O2Det"; active: root.monomi_rand_osc2_detune; clicked => { root.monomi_rand_osc2_detune = !root.monomi_rand_osc2_detune; root.monomi-rand-osc2-detune-changed(root.monomi_rand_osc2_detune); } }
+                                            RDSCircleToggle { label: "O3Det"; active: root.monomi_rand_osc3_detune; clicked => { root.monomi_rand_osc3_detune = !root.monomi_rand_osc3_detune; root.monomi-rand-osc3-detune-changed(root.monomi_rand_osc3_detune); } }
+                                            RDSCircleToggle { label: "O1PWM"; active: root.monomi_rand_osc1_pwm; clicked => { root.monomi_rand_osc1_pwm = !root.monomi_rand_osc1_pwm; root.monomi-rand-osc1-pwm-changed(root.monomi_rand_osc1_pwm); } }
+                                            RDSCircleToggle { label: "O2PWM"; active: root.monomi_rand_osc2_pwm; clicked => { root.monomi_rand_osc2_pwm = !root.monomi_rand_osc2_pwm; root.monomi-rand-osc2-pwm-changed(root.monomi_rand_osc2_pwm); } }
+                                            RDSCircleToggle { label: "O3PWM"; active: root.monomi_rand_osc3_pwm; clicked => { root.monomi_rand_osc3_pwm = !root.monomi_rand_osc3_pwm; root.monomi-rand-osc3-pwm-changed(root.monomi_rand_osc3_pwm); } }
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.monomi_randomize_amount * 100;
+                                            min-value: 0;
+                                            max-value: 100;
+                                            size: 60px;
+                                            indicator-position: 18px;
+                                            label: "Rand Amt";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                let amt = Math.max(0, Math.min(100, v)) / 100.0;
+                                                root.monomi_randomize_amount = amt;
+                                                root.monomi-randomize-amount-changed(amt);
+                                            }
+                                        }
+                                        RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand Step"; clicked => root.monomi-randomize-params-step(); }
+                                        RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand Page"; clicked => root.monomi-randomize-params-page(); }
+                                        RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand All"; clicked => root.monomi-randomize-params-all(); }
+                                    }
+                                    RDSKeybed {
+                                        octaves: 5;
+                                        scale: "chromatic";
+                                        scale-mask: root.monomi_scale_mask;
+                                        size: 24px;
+                                        note-triggered(note) => {
+                                            RDSKeybedBus.last-note = note;
+                                            RDSKeybedBus.note-triggered(note);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Right column: page/step navigation + utility functions
+                            Rectangle {
+                                width: 270px;
+                                background: Theme.active.ui_device_panel_bg;
+                                border-width: 2px;
+                                border-radius: 6px;
+                                border-color: Theme.active.border_strong;
+                                VerticalLayout {
+                                    padding: 10px;
+                                    spacing: 10px;
+                                    RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Step Navigation"; }
+                                    VerticalLayout {
+                                        spacing: 4px;
+                                        Text { horizontal-alignment: center; text: "Page"; color: Theme.active.text_secondary; font-size: 11px; }
+                                        RDSNumStepper {
+                                            value: root.monomi_page;
+                                            min-value: 0;
+                                            max-value: 7;
+                                            step: 1;
+                                            pad-digits: 2;
+                                            allow-editing: false;
+                                            button-pos: "left-right";
+                                            readout-width: 44px;
+                                            readout-height: 26px;
+                                            readout-text-size: 12px;
+                                            value-changed(v) => {
+                                                root.monomi_page = v;
+                                                root.monomi-page-changed(v);
+                                            }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        spacing: 4px;
+                                        Text { horizontal-alignment: center; text: "Step"; color: Theme.active.text_secondary; font-size: 11px; }
+                                        RDSNumStepper {
+                                            value: root.monomi_edit_step + 1;
+                                            min-value: 1;
+                                            max-value: 128;
+                                            step: 1;
+                                            pad-digits: 3;
+                                            allow-editing: false;
+                                            button-pos: "left-right";
+                                            readout-width: 52px;
+                                            readout-height: 26px;
+                                            readout-text-size: 12px;
+                                            value-changed(v) => {
+                                                let step = v - 1;
+                                                root.monomi_edit_step = step;
+                                                root.monomi-edit-step-changed(step);
+                                            }
+                                        }
+                                    }
+                                    RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Utilities"; }
+                                    RDSButton { button-width: 240px; button-height: 24px; border-width: 2px; label: "Notes Step"; clicked => root.monomi-randomize-notes-step(); }
+                                    RDSButton { button-width: 240px; button-height: 24px; border-width: 2px; label: "Notes Page"; clicked => root.monomi-randomize-notes-page(); }
+                                    RDSButton { button-width: 240px; button-height: 24px; border-width: 2px; label: "Notes All"; clicked => root.monomi-randomize-notes-all(); }
+                                    RDSButton { button-width: 240px; button-height: 24px; border-width: 2px; label: "Clear Notes"; clicked => root.monomi-reset-notes(); }
+                                    RDSButton { button-width: 240px; button-height: 24px; border-width: 2px; label: "Reset Params"; clicked => root.monomi-reset-params(); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Downstream Devices
+        VerticalLayout {
+            width: parent.width;
+
+            // Granulator & Silk Devices
+            HorizontalLayout {
+                spacing: 8px;
+
+                // Granulator Device
+                Rectangle {
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+                    GranulatorDevice {
+                        mosaic-enabled <=> root.mosaic-enabled;
+                        mosaic-loop-lock <=> root.mosaic-loop-lock;
+                        mosaic-pitch <=> root.mosaic-pitch;
+                        mosaic-rate <=> root.mosaic-rate;
+                        mosaic-size <=> root.mosaic-size;
+                        mosaic-contour <=> root.mosaic-contour;
+                        mosaic-warp <=> root.mosaic-warp;
+                        mosaic-spray <=> root.mosaic-spray;
+                        mosaic-pattern <=> root.mosaic-pattern;
+                        mosaic-wet <=> root.mosaic-wet;
+                        mosaic-post-gain <=> root.mosaic-post-gain;
+                        mosaic-detune <=> root.mosaic-detune;
+                        mosaic-spatial <=> root.mosaic-spatial;
+                        mosaic-rand-rate <=> root.mosaic-rand-rate;
+                        mosaic-rand-size <=> root.mosaic-rand-size;
+                        mosaic-sos <=> root.mosaic-sos;
+                        toggle-mosaic-enabled => root.toggle-mosaic-enabled();
+                        mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
+                        mosaic-rate-changed(value) => { root.mosaic-rate-changed(value); }
+                        mosaic-size-changed(value) => { root.mosaic-size-changed(value); }
+                        mosaic-contour-changed(value) => { root.mosaic-contour-changed(value); }
+                        mosaic-warp-changed(value) => { root.mosaic-warp-changed(value); }
+                        mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
+                        mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
+                        mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                        mosaic-post-gain-changed(value) => { root.mosaic-post-gain-changed(value); }
+                        mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
+                        mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
+                        mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
+                        mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
+                        mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
+                        toggle-mosaic-loop-lock => root.toggle-mosaic-loop-lock();
+                    }
+                }
+
+                // Silk Device
+                Rectangle {
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+                    SilkDevice {
+                        ring-enabled <=> root.ring-enabled;
+                        ring-cutoff <=> root.ring-cutoff;
+                        ring-resonance <=> root.ring-resonance;
+                        ring-decay <=> root.ring-decay;
+                        ring-pitch <=> root.ring-pitch;
+                        ring-decay-modes: root.ring-decay-modes;
+                        ring-decay-mode <=> root.ring-decay-mode;
+                        ring-slope <=> root.ring-slope;
+                        ring-tone <=> root.ring-tone;
+                        ring-tilt <=> root.ring-tilt;
+                        ring-wet <=> root.ring-wet;
+                        ring-detune <=> root.ring-detune;
+                        ring-waves <=> root.ring-waves;
+                        ring-waves-rate <=> root.ring-waves-rate;
+                        ring-noise <=> root.ring-noise;
+                        ring-noise-rate <=> root.ring-noise-rate;
+                        ring-pre-post <=> root.ring-pre-post;
+                        toggle-ring-enabled => root.toggle-ring-enabled();
+                        toggle-ring-pre-post => root.toggle-ring-pre-post();
+                        ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
+                        ring-resonance-changed(value) => { root.ring-resonance-changed(value); }
+                        ring-decay-changed(value) => { root.ring-decay-changed(value); }
+                        ring-pitch-changed(value) => { root.ring-pitch-changed(value); }
+                        ring-decay-mode-selected(index) => { root.ring-decay-mode-selected(index); }
+                        ring-slope-changed(value) => { root.ring-slope-changed(value); }
+                        ring-tone-changed(value) => { root.ring-tone-changed(value); }
+                        ring-tilt-changed(value) => { root.ring-tilt-changed(value); }
+                        ring-wet-changed(value) => { root.ring-wet-changed(value); }
+                        ring-detune-changed(value) => { root.ring-detune-changed(value); }
+                        ring-waves-changed(value) => { root.ring-waves-changed(value); }
+                        ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
+                        ring-noise-changed(value) => { root.ring-noise-changed(value); }
+                        ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
+                    }
+                }
+            }
+
+            // Texture & Reflect Devices
+            HorizontalLayout {
+                spacing: 8px;
+
+                // Texture Device
+                Rectangle {
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+                    TextureDevice {
+                        texture-enabled <=> root.texture-enabled;
+                        texture-gate <=> root.texture-gate;
+                        texture-drive <=> root.texture-drive;
+                        texture-compress <=> root.texture-compress;
+                        texture-crush <=> root.texture-crush;
+                        texture-tilt <=> root.texture-tilt;
+                        texture-noise <=> root.texture-noise;
+                        texture-noise-decay <=> root.texture-noise-decay;
+                        texture-noise-color <=> root.texture-noise-color;
+                        texture-wet <=> root.texture-wet;
+                        texture-post-gain <=> root.texture-post-gain;
+                        toggle-texture-enabled => root.toggle-texture-enabled();
+                        toggle-texture-gate => root.toggle-texture-gate();
+                        texture-drive-changed(value) => { root.texture-drive-changed(value); }
+                        texture-compress-changed(value) => { root.texture-compress-changed(value); }
+                        texture-crush-changed(value) => { root.texture-crush-changed(value); }
+                        texture-tilt-changed(value) => { root.texture-tilt-changed(value); }
+                        texture-noise-changed(value) => { root.texture-noise-changed(value); }
+                        texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
+                        texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
+                        texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                        texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
+                    }
+                }
+
+                // Reflect Device
+                Rectangle {
+                    width: parent.width / 2 - 16px;
+                    height: 266px;
+                    ReflectDevice {
+                        reflect-enabled <=> root.reflect-enabled;
+                        reflect-freeze <=> root.reflect-freeze;
+                        reflect-delay <=> root.reflect-delay;
+                        reflect-time <=> root.reflect-time;
+                        reflect-time-mode <=> root.reflect-time-mode;
+                        reflect-reverb <=> root.reflect-reverb;
+                        reflect-size <=> root.reflect-size;
+                        reflect-feedback <=> root.reflect-feedback;
+                        reflect-spread <=> root.reflect-spread;
+                        reflect-damp <=> root.reflect-damp;
+                        reflect-decay <=> root.reflect-decay;
+                        reflect-post-gain <=> root.reflect-post-gain;
+                        toggle-reflect-enabled => root.toggle-reflect-enabled();
+                        toggle-reflect-freeze => root.toggle-reflect-freeze();
+                        reflect-clear => root.reflect-clear();
+                        reflect-delay-changed(value) => { root.reflect-delay-changed(value); }
+                        reflect-time-changed(value) => { root.reflect-time-changed(value); }
+                        reflect-time-mode-selected(index) => { root.reflect-time-mode-selected(index); }
+                        reflect-reverb-changed(value) => { root.reflect-reverb-changed(value); }
+                        reflect-size-changed(value) => { root.reflect-size-changed(value); }
+                        reflect-feedback-changed(value) => { root.reflect-feedback-changed(value); }
+                        reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
+                        reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
+                        reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
+                        reflect-post-gain-changed(value) => { root.reflect-post-gain-changed(value); }
+                    }
+                }
+            }
+
+            // G8 & Modul8 Devices
+            HorizontalLayout {
+                spacing: 8px;
+
+                // Modul8 Device
+                Rectangle {
+                    width: 1216px;
+                    height: 354px;
+                    Modul8Device {
+                        width: parent.width;
+                        modul8-enabled <=> root.modul8-enabled;
+                        modul8-target-options: root.modul8-target-options;
+                        modul8-wave <=> root.modul8-wave;
+                        modul8-rate <=> root.modul8-rate;
+                        modul8-sync <=> root.modul8-sync;
+                        modul8-division <=> root.modul8-division;
+                        modul8-amount <=> root.modul8-amount;
+                        modul8-bias <=> root.modul8-bias;
+                        modul8-target <=> root.modul8-target;
+                        toggle-modul8-enabled => root.toggle-modul8-enabled();
+                        modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                        modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                        modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                        modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                        modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                        modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
+                        modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                // G8 Device
+                Rectangle {
+                    width: 1216px;
+                    height: 186px;
+                    G8Device {
+                        gate-enabled <=> root.g8-enabled;
+                        gate-rate-index <=> root.g8-rate-index;
+                        gate-steps <=> root.g8-steps;
+                        toggle-gate-enabled => root.toggle-g8-enabled();
+                        gate-rate-selected(index) => { root.g8-rate-selected(index); }
+                        gate-step-changed(index, value) => { root.g8-step-changed(index, value); }
+                    }
+                }
+            }
+        }
+    }
+}

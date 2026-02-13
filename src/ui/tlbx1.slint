@@ -38,6 +38,7 @@ import { AnimateEngine } from "./engines/animate_engine.slint";
 import { SynDRMEngine } from "./engines/syndrm_engine.slint";
 import { VoidSeedEngine } from "./engines/void_seed_engine.slint";
 import { FMMIEngine } from "./engines/fmmi_engine.slint";
+import { MonoMIEngine } from "./engines/monomi_engine.slint";
 import { Browser, BrowserEntry } from "./browser.slint";
 import { Theme } from "./theme/index.slint";
 import { RDSButton } from "components/index.slint";
@@ -168,6 +169,87 @@ export component TLBX1UI inherits Window {
     in-out property <int> fmmi-scale-index: 0;
     in property <int> fmmi-scale-mask: 0;
     in-out property <int> fmmi-utility-mode: 0;
+    // MonoMI Engine Properties
+    in property <[string]> monomi-note-options;
+    in-out property <[string]> monomi-step-note-labels;
+    in property <[string]> monomi-scale-options;
+    in-out property <int> monomi-scale-index: 0;
+    in property <int> monomi-scale-mask: 0;
+    in-out property <[int]> monomi-osc-wave: [2, 3, 1];
+    in-out property <[int]> monomi-osc-octave: [0, 1, 2];
+    in-out property <[float]> monomi-osc-detune: [0.0, 0.0, 0.0];
+    in-out property <[float]> monomi-osc-mix: [0.33, 0.33, 0.33];
+    in-out property <[float]> monomi-osc-pwm: [0.5, 0.5, 0.5];
+    in-out property <float> monomi-cutoff: 1200;
+    in-out property <float> monomi-resonance: 1;
+    in-out property <float> monomi-filter-morph: 0;
+    in-out property <int> monomi-filter-mode: 0;
+    in-out property <float> monomi-volume: 0.75;
+    in-out property <float> monomi-amp-attack: 4;
+    in-out property <float> monomi-amp-decay: 8;
+    in-out property <float> monomi-amp-sustain: 64;
+    in-out property <float> monomi-amp-release: 12;
+    in-out property <float> monomi-filter-attack: 4;
+    in-out property <float> monomi-filter-decay: 8;
+    in-out property <float> monomi-filter-sustain: 64;
+    in-out property <float> monomi-filter-release: 12;
+    in-out property <float> monomi-filter-intensity: 2;
+    in-out property <float> monomi-filter-polarity: 1;
+    in-out property <float> monomi-filter-saturation: 0;
+    in-out property <float> monomi-filter-sat-env: 0;
+    in-out property <bool> monomi-filter-sat-pre: false;
+    in-out property <int> monomi-mix-comp-mode: 0;
+    in-out property <float> monomi-glide: 0;
+    in-out property <float> monomi-prob: 100;
+    in-out property <[int]> monomi-lfo-shape: [0, 1, 4];
+    in-out property <[int]> monomi-lfo-target: [0, 6, 5];
+    in-out property <[float]> monomi-lfo-amount: [0.0, 0.0, 0.0];
+    in-out property <[float]> monomi-lfo-rate: [0.5, 0.25, 1.0];
+    in-out property <[bool]> monomi-lfo-sync: [true, true, false];
+    in-out property <[int]> monomi-lfo-steps: [4, 8, 4];
+    in property <[string]> monomi-lfo-target-options;
+    in-out property <[bool]> monomi-sequencer-grid;
+    in property <int> monomi-sequencer-current-step: -1;
+    in-out property <int> monomi-page: 0;
+    in-out property <int> monomi-edit-step: 0;
+    in-out property <int> monomi-step-note-index: 0;
+    in-out property <float> monomi-step-cutoff: 0;
+    in-out property <float> monomi-step-resonance: 0;
+    in-out property <float> monomi-step-env-attack: 0;
+    in-out property <float> monomi-step-env-decay: 0;
+    in-out property <float> monomi-step-env-sustain: 0;
+    in-out property <float> monomi-step-env-release: 0;
+    in-out property <float> monomi-step-gate: 0;
+    in-out property <float> monomi-step-filter-morph: 0;
+    in-out property <float> monomi-step-glide: 0;
+    in-out property <float> monomi-step-osc1-mix: 0;
+    in-out property <float> monomi-step-osc2-mix: 0;
+    in-out property <float> monomi-step-osc3-mix: 0;
+    in-out property <float> monomi-step-osc1-detune: 0;
+    in-out property <float> monomi-step-osc2-detune: 0;
+    in-out property <float> monomi-step-osc3-detune: 0;
+    in-out property <float> monomi-step-osc1-pwm: 0;
+    in-out property <float> monomi-step-osc2-pwm: 0;
+    in-out property <float> monomi-step-osc3-pwm: 0;
+    in-out property <bool> monomi-rand-cutoff: true;
+    in-out property <bool> monomi-rand-resonance: true;
+    in-out property <bool> monomi-rand-env-attack: true;
+    in-out property <bool> monomi-rand-env-decay: true;
+    in-out property <bool> monomi-rand-env-sustain: true;
+    in-out property <bool> monomi-rand-env-release: true;
+    in-out property <bool> monomi-rand-gate: true;
+    in-out property <bool> monomi-rand-filter-morph: true;
+    in-out property <bool> monomi-rand-glide: true;
+    in-out property <bool> monomi-rand-osc1-mix: true;
+    in-out property <bool> monomi-rand-osc2-mix: true;
+    in-out property <bool> monomi-rand-osc3-mix: true;
+    in-out property <bool> monomi-rand-osc1-detune: true;
+    in-out property <bool> monomi-rand-osc2-detune: true;
+    in-out property <bool> monomi-rand-osc3-detune: true;
+    in-out property <bool> monomi-rand-osc1-pwm: true;
+    in-out property <bool> monomi-rand-osc2-pwm: true;
+    in-out property <bool> monomi-rand-osc3-pwm: true;
+    in-out property <float> monomi-randomize-amount: 1.0;
     in-out property <bool> texture-enabled: false;
     in-out property <bool> texture-gate: false;
     in-out property <float> texture-drive: 0.0;
@@ -245,7 +327,7 @@ export component TLBX1UI inherits Window {
     in property <string> metronome-count-in-label;
     in-out property <bool> show-engine-confirm: false;
     in property <string> engine-confirm-text;
-    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate, 3 = SynDRM, 4 = Void Seed, 5 = FMMI
+    in property <int> active-engine-type: 0; // 1 = Tape, 2 = Animate, 3 = SynDRM, 4 = Void Seed, 5 = FMMI, 6 = MonoMI
     in property <bool> is-software-renderer: false;
 
     // Browser Properties
@@ -1139,6 +1221,89 @@ export component TLBX1UI inherits Window {
     callback fmmi-rand-step-params();
     callback fmmi-rand-page-params();
     callback fmmi-rand-all-params();
+    // MonoMI Engine Callbacks
+    callback monomi-osc-wave-changed(index: int, value: int);
+    callback monomi-osc-octave-changed(index: int, value: int);
+    callback monomi-osc-detune-changed(index: int, value: float);
+    callback monomi-osc-mix-changed(index: int, value: float);
+    callback monomi-osc-pwm-changed(index: int, value: float);
+    callback monomi-cutoff-changed(value: float);
+    callback monomi-resonance-changed(value: float);
+    callback monomi-filter-morph-changed(value: float);
+    callback monomi-filter-mode-changed(value: int);
+    callback monomi-volume-changed(value: float);
+    callback monomi-amp-attack-changed(value: float);
+    callback monomi-amp-decay-changed(value: float);
+    callback monomi-amp-sustain-changed(value: float);
+    callback monomi-amp-release-changed(value: float);
+    callback monomi-filter-attack-changed(value: float);
+    callback monomi-filter-decay-changed(value: float);
+    callback monomi-filter-sustain-changed(value: float);
+    callback monomi-filter-release-changed(value: float);
+    callback monomi-filter-intensity-changed(value: float);
+    callback monomi-filter-polarity-changed(value: float);
+    callback monomi-filter-saturation-changed(value: float);
+    callback monomi-filter-sat-env-changed(value: float);
+    callback monomi-filter-sat-pre-changed(value: bool);
+    callback monomi-mix-comp-mode-changed(value: int);
+    callback monomi-glide-changed(value: float);
+    callback monomi-prob-changed(value: float);
+    callback monomi-lfo-shape-changed(index: int, value: int);
+    callback monomi-lfo-target-changed(index: int, value: int);
+    callback monomi-lfo-amount-changed(index: int, value: float);
+    callback monomi-lfo-rate-changed(index: int, value: float);
+    callback monomi-lfo-sync-changed(index: int, value: bool);
+    callback monomi-lfo-steps-changed(index: int, value: int);
+    callback monomi-page-changed(page: int);
+    callback monomi-edit-step-changed(step: int);
+    callback monomi-sequencer-grid-toggled(step: int);
+    callback monomi-scale-selected(index: int);
+    callback monomi-step-note-index-changed(index: int);
+    callback monomi-step-cutoff-changed(value: float);
+    callback monomi-step-resonance-changed(value: float);
+    callback monomi-step-env-attack-changed(value: float);
+    callback monomi-step-env-decay-changed(value: float);
+    callback monomi-step-env-sustain-changed(value: float);
+    callback monomi-step-env-release-changed(value: float);
+    callback monomi-step-gate-changed(value: float);
+    callback monomi-step-filter-morph-changed(value: float);
+    callback monomi-step-glide-changed(value: float);
+    callback monomi-step-osc1-mix-changed(value: float);
+    callback monomi-step-osc2-mix-changed(value: float);
+    callback monomi-step-osc3-mix-changed(value: float);
+    callback monomi-step-osc1-detune-changed(value: float);
+    callback monomi-step-osc2-detune-changed(value: float);
+    callback monomi-step-osc3-detune-changed(value: float);
+    callback monomi-step-osc1-pwm-changed(value: float);
+    callback monomi-step-osc2-pwm-changed(value: float);
+    callback monomi-step-osc3-pwm-changed(value: float);
+    callback monomi-rand-cutoff-changed(value: bool);
+    callback monomi-rand-resonance-changed(value: bool);
+    callback monomi-rand-env-attack-changed(value: bool);
+    callback monomi-rand-env-decay-changed(value: bool);
+    callback monomi-rand-env-sustain-changed(value: bool);
+    callback monomi-rand-env-release-changed(value: bool);
+    callback monomi-rand-gate-changed(value: bool);
+    callback monomi-rand-filter-morph-changed(value: bool);
+    callback monomi-rand-glide-changed(value: bool);
+    callback monomi-rand-osc1-mix-changed(value: bool);
+    callback monomi-rand-osc2-mix-changed(value: bool);
+    callback monomi-rand-osc3-mix-changed(value: bool);
+    callback monomi-rand-osc1-detune-changed(value: bool);
+    callback monomi-rand-osc2-detune-changed(value: bool);
+    callback monomi-rand-osc3-detune-changed(value: bool);
+    callback monomi-rand-osc1-pwm-changed(value: bool);
+    callback monomi-rand-osc2-pwm-changed(value: bool);
+    callback monomi-rand-osc3-pwm-changed(value: bool);
+    callback monomi-randomize-amount-changed(value: float);
+    callback monomi-randomize-notes-step();
+    callback monomi-randomize-notes-page();
+    callback monomi-randomize-notes-all();
+    callback monomi-reset-notes();
+    callback monomi-randomize-params-step();
+    callback monomi-randomize-params-page();
+    callback monomi-randomize-params-all();
+    callback monomi-reset-params();
 
     // Void Seed Engine Callbacks
     callback void-base-freq-changed(value: float);
@@ -1303,6 +1468,7 @@ export component TLBX1UI inherits Window {
                                                     : root.active-engine-type == 3 ? "SynDRM"
                                                     : root.active-engine-type == 4 ? "Void Seed"
                                                     : root.active-engine-type == 5 ? "FMMI"
+                                                    : root.active-engine-type == 6 ? "MonoMI"
                                                     : "None");
                                             color: #f0f0f2;
                                             font-size: 16px;
@@ -2916,6 +3082,322 @@ export component TLBX1UI inherits Window {
                                             fmmi-rand-step-params() => { root.fmmi-rand-step-params(); }
                                             fmmi-rand-page-params() => { root.fmmi-rand-page-params(); }
                                             fmmi-rand-all-params() => { root.fmmi-rand-all-params(); }
+                                            toggle-mosaic-enabled => root.toggle-mosaic-enabled();
+                                            toggle-mosaic-loop-lock => root.toggle-mosaic-loop-lock();
+                                            mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
+                                            mosaic-rate-changed(value) => { root.mosaic-rate-changed(value); }
+                                            mosaic-size-changed(value) => { root.mosaic-size-changed(value); }
+                                            mosaic-contour-changed(value) => { root.mosaic-contour-changed(value); }
+                                            mosaic-warp-changed(value) => { root.mosaic-warp-changed(value); }
+                                            mosaic-spray-changed(value) => { root.mosaic-spray-changed(value); }
+                                            mosaic-pattern-changed(value) => { root.mosaic-pattern-changed(value); }
+                                            mosaic-wet-changed(value) => { root.mosaic-wet-changed(value); }
+                                            mosaic-post-gain-changed(value) => { root.mosaic-post-gain-changed(value); }
+                                            mosaic-detune-changed(value) => { root.mosaic-detune-changed(value); }
+                                            mosaic-spatial-changed(value) => { root.mosaic-spatial-changed(value); }
+                                            mosaic-rand-rate-changed(value) => { root.mosaic-rand-rate-changed(value); }
+                                            mosaic-rand-size-changed(value) => { root.mosaic-rand-size-changed(value); }
+                                            mosaic-sos-changed(value) => { root.mosaic-sos-changed(value); }
+                                            toggle-ring-enabled => root.toggle-ring-enabled();
+                                            toggle-ring-pre-post => root.toggle-ring-pre-post();
+                                            ring-cutoff-changed(value) => { root.ring-cutoff-changed(value); }
+                                            ring-resonance-changed(value) => { root.ring-resonance-changed(value); }
+                                            ring-decay-changed(value) => { root.ring-decay-changed(value); }
+                                            ring-pitch-changed(value) => { root.ring-pitch-changed(value); }
+                                            ring-decay-mode-selected(index) => { root.ring-decay-mode-selected(index); }
+                                            ring-slope-changed(value) => { root.ring-slope-changed(value); }
+                                            ring-tone-changed(value) => { root.ring-tone-changed(value); }
+                                            ring-tilt-changed(value) => { root.ring-tilt-changed(value); }
+                                            ring-wet-changed(value) => { root.ring-wet-changed(value); }
+                                            ring-detune-changed(value) => { root.ring-detune-changed(value); }
+                                            ring-waves-changed(value) => { root.ring-waves-changed(value); }
+                                            ring-waves-rate-changed(value) => { root.ring-waves-rate-changed(value); }
+                                            ring-noise-changed(value) => { root.ring-noise-changed(value); }
+                                            ring-noise-rate-changed(value) => { root.ring-noise-rate-changed(value); }
+                                            toggle-g8-enabled => root.toggle-g8-enabled();
+                                            g8-rate-selected(index) => { root.g8-rate-selected(index); }
+                                            g8-step-changed(index, value) => { root.g8-step-changed(index, value); }
+                                            toggle-modul8-enabled => root.toggle-modul8-enabled();
+                                            modul8-wave-changed(index, value) => { root.modul8-wave-changed(index, value); }
+                                            modul8-rate-changed(index, value) => { root.modul8-rate-changed(index, value); }
+                                            modul8-sync-changed(index, value) => { root.modul8-sync-changed(index, value); }
+                                            modul8-division-changed(index, value) => { root.modul8-division-changed(index, value); }
+                                            modul8-amount-changed(index, value) => { root.modul8-amount-changed(index, value); }
+                                            modul8-bias-changed(index, value) => { root.modul8-bias-changed(index, value); }
+                                            modul8-target-changed(index, value) => { root.modul8-target-changed(index, value); }
+                                            toggle-texture-enabled => root.toggle-texture-enabled();
+                                            toggle-texture-gate => root.toggle-texture-gate();
+                                            texture-drive-changed(value) => { root.texture-drive-changed(value); }
+                                            texture-compress-changed(value) => { root.texture-compress-changed(value); }
+                                            texture-crush-changed(value) => { root.texture-crush-changed(value); }
+                                            texture-tilt-changed(value) => { root.texture-tilt-changed(value); }
+                                            texture-noise-changed(value) => { root.texture-noise-changed(value); }
+                                            texture-noise-decay-changed(value) => { root.texture-noise-decay-changed(value); }
+                                            texture-noise-color-changed(value) => { root.texture-noise-color-changed(value); }
+                                            texture-wet-changed(value) => { root.texture-wet-changed(value); }
+                                            texture-post-gain-changed(value) => { root.texture-post-gain-changed(value); }
+                                            toggle-reflect-enabled => root.toggle-reflect-enabled();
+                                            toggle-reflect-freeze => root.toggle-reflect-freeze();
+                                            reflect-clear => root.reflect-clear();
+                                            reflect-delay-changed(value) => { root.reflect-delay-changed(value); }
+                                            reflect-time-changed(value) => { root.reflect-time-changed(value); }
+                                            reflect-time-mode-selected(index) => { root.reflect-time-mode-selected(index); }
+                                            reflect-reverb-changed(value) => { root.reflect-reverb-changed(value); }
+                                            reflect-size-changed(value) => { root.reflect-size-changed(value); }
+                                            reflect-feedback-changed(value) => { root.reflect-feedback-changed(value); }
+                                            reflect-spread-changed(value) => { root.reflect-spread-changed(value); }
+                                            reflect-damp-changed(value) => { root.reflect-damp-changed(value); }
+                                            reflect-decay-changed(value) => { root.reflect-decay-changed(value); }
+                                            reflect-post-gain-changed(value) => { root.reflect-post-gain-changed(value); }
+                                            toggle-track-mute => root.toggle-track-mute();
+                                        }
+                                    }
+                                }
+                                // MonoMI Engine
+                                monomi-section := Rectangle {
+                                    width: parent.width;
+                                    height: root.active-engine-type == 6 ? monomi-content.preferred-height : 0px;
+                                    clip: true;
+                                    visible: root.active-engine-type == 6;
+
+                                    monomi-content := VerticalLayout {
+                                        spacing: 8px;
+                                        width: parent.width;
+
+                                        MonoMIEngine {
+                                            width: parent.width;
+                                            track-muted <=> root.track-muted;
+                                            monomi-note-options: root.monomi-note-options;
+                                            monomi-step-note-labels: root.monomi-step-note-labels;
+                                            monomi-scale-options: root.monomi-scale-options;
+                                            monomi-scale-index <=> root.monomi-scale-index;
+                                            monomi-scale-mask: root.monomi-scale-mask;
+                                            monomi-osc-wave <=> root.monomi-osc-wave;
+                                            monomi-osc-octave <=> root.monomi-osc-octave;
+                                            monomi-osc-detune <=> root.monomi-osc-detune;
+                                            monomi-osc-mix <=> root.monomi-osc-mix;
+                                            monomi-osc-pwm <=> root.monomi-osc-pwm;
+                                            monomi-cutoff <=> root.monomi-cutoff;
+                                            monomi-resonance <=> root.monomi-resonance;
+                                            monomi-filter-morph <=> root.monomi-filter-morph;
+                                            monomi-filter-mode <=> root.monomi-filter-mode;
+                                            monomi-volume <=> root.monomi-volume;
+                                            monomi-amp-attack <=> root.monomi-amp-attack;
+                                            monomi-amp-decay <=> root.monomi-amp-decay;
+                                            monomi-amp-sustain <=> root.monomi-amp-sustain;
+                                            monomi-amp-release <=> root.monomi-amp-release;
+                                            monomi-filter-attack <=> root.monomi-filter-attack;
+                                            monomi-filter-decay <=> root.monomi-filter-decay;
+                                            monomi-filter-sustain <=> root.monomi-filter-sustain;
+                                            monomi-filter-release <=> root.monomi-filter-release;
+                                            monomi-filter-intensity <=> root.monomi-filter-intensity;
+                                            monomi-filter-polarity <=> root.monomi-filter-polarity;
+                                            monomi-filter-saturation <=> root.monomi-filter-saturation;
+                                            monomi-filter-sat-env <=> root.monomi-filter-sat-env;
+                                            monomi-filter-sat-pre <=> root.monomi-filter-sat-pre;
+                                            monomi-mix-comp-mode <=> root.monomi-mix-comp-mode;
+                                            monomi-glide <=> root.monomi-glide;
+                                            monomi-prob <=> root.monomi-prob;
+                                            monomi-lfo-shape <=> root.monomi-lfo-shape;
+                                            monomi-lfo-target <=> root.monomi-lfo-target;
+                                            monomi-lfo-amount <=> root.monomi-lfo-amount;
+                                            monomi-lfo-rate <=> root.monomi-lfo-rate;
+                                            monomi-lfo-sync <=> root.monomi-lfo-sync;
+                                            monomi-lfo-steps <=> root.monomi-lfo-steps;
+                                            monomi-lfo-target-options: root.monomi-lfo-target-options;
+                                            monomi-sequencer-grid <=> root.monomi-sequencer-grid;
+                                            monomi-sequencer-current-step: root.monomi-sequencer-current-step;
+                                            monomi-page <=> root.monomi-page;
+                                            monomi-edit-step <=> root.monomi-edit-step;
+                                            monomi-step-note-index <=> root.monomi-step-note-index;
+                                            monomi-step-cutoff <=> root.monomi-step-cutoff;
+                                            monomi-step-resonance <=> root.monomi-step-resonance;
+                                            monomi-step-env-attack <=> root.monomi-step-env-attack;
+                                            monomi-step-env-decay <=> root.monomi-step-env-decay;
+                                            monomi-step-env-sustain <=> root.monomi-step-env-sustain;
+                                            monomi-step-env-release <=> root.monomi-step-env-release;
+                                            monomi-step-gate <=> root.monomi-step-gate;
+                                            monomi-step-filter-morph <=> root.monomi-step-filter-morph;
+                                            monomi-step-glide <=> root.monomi-step-glide;
+                                            monomi-step-osc1-mix <=> root.monomi-step-osc1-mix;
+                                            monomi-step-osc2-mix <=> root.monomi-step-osc2-mix;
+                                            monomi-step-osc3-mix <=> root.monomi-step-osc3-mix;
+                                            monomi-step-osc1-detune <=> root.monomi-step-osc1-detune;
+                                            monomi-step-osc2-detune <=> root.monomi-step-osc2-detune;
+                                            monomi-step-osc3-detune <=> root.monomi-step-osc3-detune;
+                                            monomi-step-osc1-pwm <=> root.monomi-step-osc1-pwm;
+                                            monomi-step-osc2-pwm <=> root.monomi-step-osc2-pwm;
+                                            monomi-step-osc3-pwm <=> root.monomi-step-osc3-pwm;
+                                            monomi-rand-cutoff <=> root.monomi-rand-cutoff;
+                                            monomi-rand-resonance <=> root.monomi-rand-resonance;
+                                            monomi-rand-env-attack <=> root.monomi-rand-env-attack;
+                                            monomi-rand-env-decay <=> root.monomi-rand-env-decay;
+                                            monomi-rand-env-sustain <=> root.monomi-rand-env-sustain;
+                                            monomi-rand-env-release <=> root.monomi-rand-env-release;
+                                            monomi-rand-gate <=> root.monomi-rand-gate;
+                                            monomi-rand-filter-morph <=> root.monomi-rand-filter-morph;
+                                            monomi-rand-glide <=> root.monomi-rand-glide;
+                                            monomi-rand-osc1-mix <=> root.monomi-rand-osc1-mix;
+                                            monomi-rand-osc2-mix <=> root.monomi-rand-osc2-mix;
+                                            monomi-rand-osc3-mix <=> root.monomi-rand-osc3-mix;
+                                            monomi-rand-osc1-detune <=> root.monomi-rand-osc1-detune;
+                                            monomi-rand-osc2-detune <=> root.monomi-rand-osc2-detune;
+                                            monomi-rand-osc3-detune <=> root.monomi-rand-osc3-detune;
+                                            monomi-rand-osc1-pwm <=> root.monomi-rand-osc1-pwm;
+                                            monomi-rand-osc2-pwm <=> root.monomi-rand-osc2-pwm;
+                                            monomi-rand-osc3-pwm <=> root.monomi-rand-osc3-pwm;
+                                            monomi-randomize-amount <=> root.monomi-randomize-amount;
+                                            ring-decay-modes: root.ring-decay-modes;
+                                            mosaic-enabled <=> root.mosaic-enabled;
+                                            mosaic-loop-lock <=> root.mosaic-loop-lock;
+                                            mosaic-pitch <=> root.mosaic-pitch;
+                                            mosaic-rate <=> root.mosaic-rate;
+                                            mosaic-size <=> root.mosaic-size;
+                                            mosaic-contour <=> root.mosaic-contour;
+                                            mosaic-warp <=> root.mosaic-warp;
+                                            mosaic-spray <=> root.mosaic-spray;
+                                            mosaic-pattern <=> root.mosaic-pattern;
+                                            mosaic-wet <=> root.mosaic-wet;
+                                            mosaic-post-gain <=> root.mosaic-post-gain;
+                                            mosaic-detune <=> root.mosaic-detune;
+                                            mosaic-spatial <=> root.mosaic-spatial;
+                                            mosaic-rand-rate <=> root.mosaic-rand-rate;
+                                            mosaic-rand-size <=> root.mosaic-rand-size;
+                                            mosaic-sos <=> root.mosaic-sos;
+                                            ring-enabled <=> root.ring-enabled;
+                                            ring-cutoff <=> root.ring-cutoff;
+                                            ring-resonance <=> root.ring-resonance;
+                                            ring-decay <=> root.ring-decay;
+                                            ring-pitch <=> root.ring-pitch;
+                                            ring-decay-mode <=> root.ring-decay-mode;
+                                            ring-slope <=> root.ring-slope;
+                                            ring-tone <=> root.ring-tone;
+                                            ring-tilt <=> root.ring-tilt;
+                                            ring-wet <=> root.ring-wet;
+                                            ring-detune <=> root.ring-detune;
+                                            ring-waves <=> root.ring-waves;
+                                            ring-waves-rate <=> root.ring-waves-rate;
+                                            ring-noise <=> root.ring-noise;
+                                            ring-noise-rate <=> root.ring-noise-rate;
+                                            ring-pre-post <=> root.ring-pre-post;
+                                            texture-enabled <=> root.texture-enabled;
+                                            texture-gate <=> root.texture-gate;
+                                            texture-drive <=> root.texture-drive;
+                                            texture-compress <=> root.texture-compress;
+                                            texture-crush <=> root.texture-crush;
+                                            texture-tilt <=> root.texture-tilt;
+                                            texture-noise <=> root.texture-noise;
+                                            texture-noise-decay <=> root.texture-noise-decay;
+                                            texture-noise-color <=> root.texture-noise-color;
+                                            texture-wet <=> root.texture-wet;
+                                            texture-post-gain <=> root.texture-post-gain;
+                                            reflect-enabled <=> root.reflect-enabled;
+                                            reflect-freeze <=> root.reflect-freeze;
+                                            reflect-delay <=> root.reflect-delay;
+                                            reflect-time <=> root.reflect-time;
+                                            reflect-time-mode <=> root.reflect-time-mode;
+                                            reflect-reverb <=> root.reflect-reverb;
+                                            reflect-size <=> root.reflect-size;
+                                            reflect-feedback <=> root.reflect-feedback;
+                                            reflect-spread <=> root.reflect-spread;
+                                            reflect-damp <=> root.reflect-damp;
+                                            reflect-decay <=> root.reflect-decay;
+                                            reflect-post-gain <=> root.reflect-post-gain;
+                                            g8-enabled <=> root.g8-enabled;
+                                            g8-rate-index <=> root.g8-rate-index;
+                                            g8-steps <=> root.g8-steps;
+                                            modul8-target-options: root.modul8-target-options;
+                                            modul8-enabled <=> root.modul8-enabled;
+                                            modul8-wave <=> root.modul8-wave;
+                                            modul8-rate <=> root.modul8-rate;
+                                            modul8-sync <=> root.modul8-sync;
+                                            modul8-division <=> root.modul8-division;
+                                            modul8-amount <=> root.modul8-amount;
+                                            modul8-bias <=> root.modul8-bias;
+                                            modul8-target <=> root.modul8-target;
+
+                                            monomi-osc-wave-changed(index, value) => { root.monomi-osc-wave-changed(index, value); }
+                                            monomi-osc-octave-changed(index, value) => { root.monomi-osc-octave-changed(index, value); }
+                                            monomi-osc-detune-changed(index, value) => { root.monomi-osc-detune-changed(index, value); }
+                                            monomi-osc-mix-changed(index, value) => { root.monomi-osc-mix-changed(index, value); }
+                                            monomi-osc-pwm-changed(index, value) => { root.monomi-osc-pwm-changed(index, value); }
+                                            monomi-cutoff-changed(value) => { root.monomi-cutoff-changed(value); }
+                                            monomi-resonance-changed(value) => { root.monomi-resonance-changed(value); }
+                                            monomi-filter-morph-changed(value) => { root.monomi-filter-morph-changed(value); }
+                                            monomi-filter-mode-changed(value) => { root.monomi-filter-mode-changed(value); }
+                                            monomi-volume-changed(value) => { root.monomi-volume-changed(value); }
+                                            monomi-amp-attack-changed(value) => { root.monomi-amp-attack-changed(value); }
+                                            monomi-amp-decay-changed(value) => { root.monomi-amp-decay-changed(value); }
+                                            monomi-amp-sustain-changed(value) => { root.monomi-amp-sustain-changed(value); }
+                                            monomi-amp-release-changed(value) => { root.monomi-amp-release-changed(value); }
+                                            monomi-filter-attack-changed(value) => { root.monomi-filter-attack-changed(value); }
+                                            monomi-filter-decay-changed(value) => { root.monomi-filter-decay-changed(value); }
+                                            monomi-filter-sustain-changed(value) => { root.monomi-filter-sustain-changed(value); }
+                                            monomi-filter-release-changed(value) => { root.monomi-filter-release-changed(value); }
+                                            monomi-filter-intensity-changed(value) => { root.monomi-filter-intensity-changed(value); }
+                                            monomi-filter-polarity-changed(value) => { root.monomi-filter-polarity-changed(value); }
+                                            monomi-filter-saturation-changed(value) => { root.monomi-filter-saturation-changed(value); }
+                                            monomi-filter-sat-env-changed(value) => { root.monomi-filter-sat-env-changed(value); }
+                                            monomi-filter-sat-pre-changed(value) => { root.monomi-filter-sat-pre-changed(value); }
+                                            monomi-mix-comp-mode-changed(value) => { root.monomi-mix-comp-mode-changed(value); }
+                                            monomi-glide-changed(value) => { root.monomi-glide-changed(value); }
+                                            monomi-prob-changed(value) => { root.monomi-prob-changed(value); }
+                                            monomi-lfo-shape-changed(index, value) => { root.monomi-lfo-shape-changed(index, value); }
+                                            monomi-lfo-target-changed(index, value) => { root.monomi-lfo-target-changed(index, value); }
+                                            monomi-lfo-amount-changed(index, value) => { root.monomi-lfo-amount-changed(index, value); }
+                                            monomi-lfo-rate-changed(index, value) => { root.monomi-lfo-rate-changed(index, value); }
+                                            monomi-lfo-sync-changed(index, value) => { root.monomi-lfo-sync-changed(index, value); }
+                                            monomi-lfo-steps-changed(index, value) => { root.monomi-lfo-steps-changed(index, value); }
+                                            monomi-page-changed(page) => { root.monomi-page-changed(page); }
+                                            monomi-edit-step-changed(step) => { root.monomi-edit-step-changed(step); }
+                                            monomi-sequencer-grid-toggled(step) => { root.monomi-sequencer-grid-toggled(step); }
+                                            monomi-scale-selected(index) => { root.monomi-scale-selected(index); }
+                                            monomi-step-note-index-changed(index) => { root.monomi-step-note-index-changed(index); }
+                                            monomi-step-cutoff-changed(value) => { root.monomi-step-cutoff-changed(value); }
+                                            monomi-step-resonance-changed(value) => { root.monomi-step-resonance-changed(value); }
+                                            monomi-step-env-attack-changed(value) => { root.monomi-step-env-attack-changed(value); }
+                                            monomi-step-env-decay-changed(value) => { root.monomi-step-env-decay-changed(value); }
+                                            monomi-step-env-sustain-changed(value) => { root.monomi-step-env-sustain-changed(value); }
+                                            monomi-step-env-release-changed(value) => { root.monomi-step-env-release-changed(value); }
+                                            monomi-step-gate-changed(value) => { root.monomi-step-gate-changed(value); }
+                                            monomi-step-filter-morph-changed(value) => { root.monomi-step-filter-morph-changed(value); }
+                                            monomi-step-glide-changed(value) => { root.monomi-step-glide-changed(value); }
+                                            monomi-step-osc1-mix-changed(value) => { root.monomi-step-osc1-mix-changed(value); }
+                                            monomi-step-osc2-mix-changed(value) => { root.monomi-step-osc2-mix-changed(value); }
+                                            monomi-step-osc3-mix-changed(value) => { root.monomi-step-osc3-mix-changed(value); }
+                                            monomi-step-osc1-detune-changed(value) => { root.monomi-step-osc1-detune-changed(value); }
+                                            monomi-step-osc2-detune-changed(value) => { root.monomi-step-osc2-detune-changed(value); }
+                                            monomi-step-osc3-detune-changed(value) => { root.monomi-step-osc3-detune-changed(value); }
+                                            monomi-step-osc1-pwm-changed(value) => { root.monomi-step-osc1-pwm-changed(value); }
+                                            monomi-step-osc2-pwm-changed(value) => { root.monomi-step-osc2-pwm-changed(value); }
+                                            monomi-step-osc3-pwm-changed(value) => { root.monomi-step-osc3-pwm-changed(value); }
+                                            monomi-rand-cutoff-changed(value) => { root.monomi-rand-cutoff-changed(value); }
+                                            monomi-rand-resonance-changed(value) => { root.monomi-rand-resonance-changed(value); }
+                                            monomi-rand-env-attack-changed(value) => { root.monomi-rand-env-attack-changed(value); }
+                                            monomi-rand-env-decay-changed(value) => { root.monomi-rand-env-decay-changed(value); }
+                                            monomi-rand-env-sustain-changed(value) => { root.monomi-rand-env-sustain-changed(value); }
+                                            monomi-rand-env-release-changed(value) => { root.monomi-rand-env-release-changed(value); }
+                                            monomi-rand-gate-changed(value) => { root.monomi-rand-gate-changed(value); }
+                                            monomi-rand-filter-morph-changed(value) => { root.monomi-rand-filter-morph-changed(value); }
+                                            monomi-rand-glide-changed(value) => { root.monomi-rand-glide-changed(value); }
+                                            monomi-rand-osc1-mix-changed(value) => { root.monomi-rand-osc1-mix-changed(value); }
+                                            monomi-rand-osc2-mix-changed(value) => { root.monomi-rand-osc2-mix-changed(value); }
+                                            monomi-rand-osc3-mix-changed(value) => { root.monomi-rand-osc3-mix-changed(value); }
+                                            monomi-rand-osc1-detune-changed(value) => { root.monomi-rand-osc1-detune-changed(value); }
+                                            monomi-rand-osc2-detune-changed(value) => { root.monomi-rand-osc2-detune-changed(value); }
+                                            monomi-rand-osc3-detune-changed(value) => { root.monomi-rand-osc3-detune-changed(value); }
+                                            monomi-rand-osc1-pwm-changed(value) => { root.monomi-rand-osc1-pwm-changed(value); }
+                                            monomi-rand-osc2-pwm-changed(value) => { root.monomi-rand-osc2-pwm-changed(value); }
+                                            monomi-rand-osc3-pwm-changed(value) => { root.monomi-rand-osc3-pwm-changed(value); }
+                                            monomi-randomize-amount-changed(value) => { root.monomi-randomize-amount-changed(value); }
+                                            monomi-randomize-notes-step() => { root.monomi-randomize-notes-step(); }
+                                            monomi-randomize-notes-page() => { root.monomi-randomize-notes-page(); }
+                                            monomi-randomize-notes-all() => { root.monomi-randomize-notes-all(); }
+                                            monomi-reset-notes() => { root.monomi-reset-notes(); }
+                                            monomi-randomize-params-step() => { root.monomi-randomize-params-step(); }
+                                            monomi-randomize-params-page() => { root.monomi-randomize-params-page(); }
+                                            monomi-randomize-params-all() => { root.monomi-randomize-params-all(); }
+                                            monomi-reset-params() => { root.monomi-reset-params(); }
                                             toggle-mosaic-enabled => root.toggle-mosaic-enabled();
                                             toggle-mosaic-loop-lock => root.toggle-mosaic-loop-lock();
                                             mosaic-pitch-changed(value) => { root.mosaic-pitch-changed(value); }
