@@ -28,7 +28,7 @@ TLBX-1 features several specialized engines that serve as the primary sound sour
 
 - **[Tape-Deck Engine](./tape-deck-engine.md)**: A sample-based tape-deck simulator with looping and recording.
 - **[Animate Engine](./animate-engine.md)**: A 4-slot vector synthesizer with wavetables and samples.
-- **[FMMI Engine](./fmmi-engine.md)**: A two-operator FM synth with sequencer and per-step parameter locks.
+- **[FMMI Engine](./fmmi-engine.md)**: A two-operator FM synth with ADSR amp envelope, scale-based randomization, mono/poly modes, and per-step parameter locks.
 - **[SynDRM Engine](./syndrm-engine.md)**: A multi-channel drum synth and sequencer.
 - **[Void Seed Engine](./void-seed-engine.md)**: A generative drone and texture synthesizer.
 

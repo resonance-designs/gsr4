@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.25
+ * Version: 0.1.26
  * Component: Core Logic
  */
 
@@ -58,12 +58,18 @@ struct PendingProjectParams {
     master_filter: f32,
     master_comp: f32,
 }
+
+#[derive(Serialize, Deserialize, Clone)]
+struct FmmiScaleDef {
+    name: String,
+    notes: Vec<i32>,
+}
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::cell::RefCell;
 use std::sync::mpsc;
-use std::sync::{Arc, Once};
+use std::sync::{Arc, Once, OnceLock};
 use std::time::Instant;
 use std::f32::consts::PI;
 use fundsp::hacker32::{
@@ -79,8 +85,221 @@ pub const SYNDRM_LANES: usize = 7 + SYNDRM_SAMPLE_CHANNELS;
 pub const FMMI_PAGE_SIZE: usize = 16;
 pub const FMMI_PAGES: usize = 8;
 pub const FMMI_STEPS: usize = FMMI_PAGE_SIZE * FMMI_PAGES;
+
+const FMMI_SCALES_PATH: &str = "src/ui/assets/scales.json";
 pub const MODUL8_LFOS: usize = 8;
-pub const MODUL8_TARGET_COUNT: u32 = 152;
+pub const MODUL8_TARGET_COUNT: u32 = 157;
+const FMMI_VOICES: usize = 8;
+
+fn fmmi_compute_env(
+    sr: f32,
+    default_gate_ms: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+    gate_len: f32,
+) -> (u32, u32, u32, f32, u32) {
+    let attack_time = (attack / 127.0).clamp(0.0, 1.0) * 2.0;
+    let decay_time = (decay / 127.0).clamp(0.0, 1.0) * 2.0;
+    let release_time = (release / 127.0).clamp(0.0, 1.0) * 2.0;
+    let attack_samples = (attack_time * sr).round().max(1.0) as u32;
+    let decay_samples = (decay_time * sr).round().max(1.0) as u32;
+    let release_samples = (release_time * sr).round().max(1.0) as u32;
+    let sustain_level = (sustain / 127.0).clamp(0.0, 1.0);
+    let gate_len_ms = if gate_len.is_finite() {
+        gate_len.max(0.0)
+    } else {
+        default_gate_ms
+    };
+    let hold_samples = ((gate_len_ms / 1000.0) * sr).round().max(0.0) as u32;
+    (
+        attack_samples,
+        decay_samples,
+        release_samples,
+        sustain_level,
+        hold_samples,
+    )
+}
+
+fn fmmi_trigger_voice(
+    dsp_state: &mut FmmiDspState,
+    sr: f32,
+    default_gate_ms: f32,
+    car_wave: u32,
+    car_freq: f32,
+    car_detune: f32,
+    mod_wave: u32,
+    mod_mode: u32,
+    mod_value: f32,
+    mod_detune: f32,
+    index: f32,
+    feedback: f32,
+    drive: f32,
+    out_level: f32,
+    amp_attack: f32,
+    amp_decay: f32,
+    amp_sustain: f32,
+    amp_release: f32,
+    gate_length: f32,
+) {
+    let mut voice_idx = None;
+    for (idx, voice) in dsp_state.voices.iter().enumerate() {
+        if !voice.active {
+            voice_idx = Some(idx);
+            break;
+        }
+    }
+    let idx = if let Some(idx) = voice_idx {
+        idx
+    } else {
+        let mut best_idx = 0;
+        let mut best_level = f32::MAX;
+        let mut best_trigger = u64::MAX;
+        for (idx, voice) in dsp_state.voices.iter().enumerate() {
+            if voice.gate_level < best_level
+                || (voice.gate_level == best_level && voice.last_trigger < best_trigger)
+            {
+                best_level = voice.gate_level;
+                best_trigger = voice.last_trigger;
+                best_idx = idx;
+            }
+        }
+        best_idx
+    };
+
+    dsp_state.voice_clock = dsp_state.voice_clock.wrapping_add(1);
+    let (attack_samples, decay_samples, release_samples, sustain_level, hold_samples) =
+        fmmi_compute_env(
+            sr,
+            default_gate_ms,
+            amp_attack,
+            amp_decay,
+            amp_sustain,
+            amp_release,
+            gate_length,
+        );
+    dsp_state.voices[idx] = FmmiVoiceState {
+        active: true,
+        car_phase: 0.0,
+        mod_phase: 0.0,
+        gate_level: 0.0,
+        gate_stage: 1,
+        gate_pos: 0,
+        gate_hold: hold_samples,
+        last_carrier: 0.0,
+        car_wave,
+        car_freq,
+        car_detune,
+        mod_wave,
+        mod_mode,
+        mod_value,
+        mod_detune,
+        index,
+        feedback,
+        drive,
+        out_level,
+        amp_attack,
+        amp_decay,
+        amp_sustain,
+        amp_release,
+        gate_length,
+        attack_samples,
+        decay_samples,
+        release_samples,
+        sustain_level,
+        hold_samples,
+        last_trigger: dsp_state.voice_clock,
+    };
+}
+
+fn default_fmmi_scales() -> Vec<FmmiScaleDef> {
+    vec![
+        FmmiScaleDef {
+            name: "Chromatic".to_string(),
+            notes: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        },
+        FmmiScaleDef {
+            name: "Major".to_string(),
+            notes: vec![0, 2, 4, 5, 7, 9, 11],
+        },
+        FmmiScaleDef {
+            name: "Minor".to_string(),
+            notes: vec![0, 2, 3, 5, 7, 8, 10],
+        },
+        FmmiScaleDef {
+            name: "Pentatonic".to_string(),
+            notes: vec![0, 2, 4, 7, 9],
+        },
+        FmmiScaleDef {
+            name: "Blues".to_string(),
+            notes: vec![0, 3, 5, 6, 7, 10],
+        },
+    ]
+}
+
+fn sanitize_fmmi_scales(mut scales: Vec<FmmiScaleDef>) -> Vec<FmmiScaleDef> {
+    for scale in scales.iter_mut() {
+        scale.notes.retain(|note| (0..=11).contains(note));
+        scale.notes.sort_unstable();
+        scale.notes.dedup();
+        if scale.notes.is_empty() {
+            scale.notes = vec![0, 2, 4, 5, 7, 9, 11];
+        }
+    }
+    scales.retain(|scale| !scale.name.trim().is_empty());
+    if scales.is_empty() {
+        default_fmmi_scales()
+    } else {
+        scales
+    }
+}
+
+fn fmmi_scales() -> &'static Vec<FmmiScaleDef> {
+    static FMMI_SCALES: OnceLock<Vec<FmmiScaleDef>> = OnceLock::new();
+    FMMI_SCALES.get_or_init(|| {
+        let fallback = default_fmmi_scales();
+        let Ok(text) = fs::read_to_string(FMMI_SCALES_PATH) else {
+            return fallback;
+        };
+        let Ok(scales) = serde_json::from_str::<Vec<FmmiScaleDef>>(&text) else {
+            return fallback;
+        };
+        sanitize_fmmi_scales(scales)
+    })
+}
+
+fn fmmi_scale_mask(scale_notes: &[i32]) -> i32 {
+    let mut mask = 0i32;
+    for &note in scale_notes {
+        if (0..=11).contains(&note) {
+            mask |= 1 << note;
+        }
+    }
+    mask
+}
+
+fn fmmi_random_note_in_scale(rng_state: &mut u32, scale_index: usize) -> i32 {
+    let scales = fmmi_scales();
+    let notes = scales
+        .get(scale_index)
+        .map(|scale| scale.notes.as_slice())
+        .unwrap_or_else(|| scales[0].notes.as_slice());
+    let octave_min = (FMMI_NOTE_BASE / 12).max(0);
+    let octave_max = (FMMI_NOTE_MAX / 12).max(octave_min);
+    for _ in 0..16 {
+        let octave = octave_min
+            + (fmmi_rand_unit(rng_state) * ((octave_max - octave_min + 1) as f32)) as i32;
+        let idx = (fmmi_rand_unit(rng_state) * (notes.len() as f32)) as usize;
+        if let Some(&semitone) = notes.get(idx) {
+            let note = octave * 12 + semitone;
+            if (FMMI_NOTE_BASE..=FMMI_NOTE_MAX).contains(&note) {
+                return note;
+            }
+        }
+    }
+    FMMI_NOTE_BASE
+}
 pub const SYNDRM_FILTER_TYPES: u32 = 4;
 pub const WAVEFORM_SUMMARY_SIZE: usize = 100;
 pub const RECORD_MAX_SECONDS: usize = 30;
@@ -276,6 +495,11 @@ struct FMMIStepParamsCopy {
     feedback: u32,
     drive: u32,
     out_level: u32,
+    amp_attack: u32,
+    amp_decay: u32,
+    amp_sustain: u32,
+    amp_release: u32,
+    gate_length: u32,
 }
 
 struct FMMICopyBuffer {
@@ -1441,8 +1665,20 @@ struct Track {
     fmmi_drive: AtomicU32,
     /// FMMI output level.
     fmmi_out_level: AtomicU32,
+    /// FMMI amp envelope attack (0..127 UI value).
+    fmmi_amp_attack: AtomicU32,
+    /// FMMI amp envelope decay (0..127 UI value).
+    fmmi_amp_decay: AtomicU32,
+    /// FMMI amp envelope sustain (0..127 UI value).
+    fmmi_amp_sustain: AtomicU32,
+    /// FMMI amp envelope release (0..127 UI value).
+    fmmi_amp_release: AtomicU32,
+    /// FMMI default gate length in ms (-1 = step length).
+    fmmi_gate_length: AtomicU32,
     /// FMMI sequencer note trigger probability (0..1).
     fmmi_prob: AtomicU32,
+    /// FMMI poly mode enabled.
+    fmmi_poly_enabled: AtomicBool,
     /// FMMI sequencer grid (128 steps).
     fmmi_sequencer_grid: Arc<[AtomicBool; FMMI_STEPS]>,
     /// FMMI sequencer current step.
@@ -1479,6 +1715,16 @@ struct Track {
     fmmi_step_drive: Arc<[AtomicU32; FMMI_STEPS]>,
     /// FMMI per-step output level (-1 = global).
     fmmi_step_out_level: Arc<[AtomicU32; FMMI_STEPS]>,
+    /// FMMI per-step amp attack (-1 = global).
+    fmmi_step_amp_attack: Arc<[AtomicU32; FMMI_STEPS]>,
+    /// FMMI per-step amp decay (-1 = global).
+    fmmi_step_amp_decay: Arc<[AtomicU32; FMMI_STEPS]>,
+    /// FMMI per-step amp sustain (-1 = global).
+    fmmi_step_amp_sustain: Arc<[AtomicU32; FMMI_STEPS]>,
+    /// FMMI per-step amp release (-1 = global).
+    fmmi_step_amp_release: Arc<[AtomicU32; FMMI_STEPS]>,
+    /// FMMI per-step gate length in ms (-1 = global).
+    fmmi_step_gate_length: Arc<[AtomicU32; FMMI_STEPS]>,
     /// FMMI randomize toggles per step parameter.
     fmmi_rand_note_enabled: AtomicBool,
     fmmi_rand_car_wave_enabled: AtomicBool,
@@ -1492,6 +1738,17 @@ struct Track {
     fmmi_rand_feedback_enabled: AtomicBool,
     fmmi_rand_drive_enabled: AtomicBool,
     fmmi_rand_out_level_enabled: AtomicBool,
+    fmmi_rand_amp_attack_enabled: AtomicBool,
+    fmmi_rand_amp_decay_enabled: AtomicBool,
+    fmmi_rand_amp_sustain_enabled: AtomicBool,
+    fmmi_rand_amp_release_enabled: AtomicBool,
+    fmmi_rand_gate_length_enabled: AtomicBool,
+    /// FMMI randomize amount (0..1).
+    fmmi_randomize_amount: AtomicU32,
+    /// FMMI randomize steps amount (0..1).
+    fmmi_randomize_steps_amount: AtomicU32,
+    /// FMMI scale index for note randomization/highlight.
+    fmmi_scale_index: AtomicU32,
     /// FMMI keybed trigger note (MIDI).
     fmmi_keybed_note: AtomicI32,
     /// FMMI keybed trigger flag.
@@ -1518,10 +1775,12 @@ struct Track {
     fmmi_mod_phase: AtomicU32,
     /// FMMI gate envelope level.
     fmmi_gate_level: AtomicU32,
-    /// FMMI gate envelope stage (0 idle, 1 attack, 2 decay).
+    /// FMMI gate envelope stage (0 idle, 1 attack, 2 decay, 3 sustain, 4 release).
     fmmi_gate_stage: AtomicU32,
     /// FMMI gate envelope position in samples.
     fmmi_gate_pos: AtomicU32,
+    /// FMMI gate hold remaining samples.
+    fmmi_gate_hold: AtomicU32,
     /// FMMI last carrier sample (for feedback).
     fmmi_last_carrier: AtomicU32,
     /// Void Seed base frequency.
@@ -2222,7 +2481,13 @@ impl Default for Track {
             fmmi_feedback: AtomicU32::new(0.0f32.to_bits()),
             fmmi_drive: AtomicU32::new(0.0f32.to_bits()),
             fmmi_out_level: AtomicU32::new(0.5f32.to_bits()),
+            fmmi_amp_attack: AtomicU32::new(63.0f32.to_bits()),
+            fmmi_amp_decay: AtomicU32::new(63.0f32.to_bits()),
+            fmmi_amp_sustain: AtomicU32::new(63.0f32.to_bits()),
+            fmmi_amp_release: AtomicU32::new(63.0f32.to_bits()),
+            fmmi_gate_length: AtomicU32::new((-1.0f32).to_bits()),
             fmmi_prob: AtomicU32::new(1.0f32.to_bits()),
+            fmmi_poly_enabled: AtomicBool::new(false),
             fmmi_sequencer_grid: Arc::new(std::array::from_fn(|idx| {
                 AtomicBool::new(idx < FMMI_PAGE_SIZE && idx % 2 == 0)
             })),
@@ -2243,6 +2508,11 @@ impl Default for Track {
             fmmi_step_feedback: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
             fmmi_step_drive: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
             fmmi_step_out_level: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            fmmi_step_amp_attack: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            fmmi_step_amp_decay: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            fmmi_step_amp_sustain: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            fmmi_step_amp_release: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
+            fmmi_step_gate_length: Arc::new(std::array::from_fn(|_| AtomicU32::new((-1.0f32).to_bits()))),
             fmmi_rand_note_enabled: AtomicBool::new(true),
             fmmi_rand_car_wave_enabled: AtomicBool::new(true),
             fmmi_rand_mod_wave_enabled: AtomicBool::new(true),
@@ -2255,6 +2525,14 @@ impl Default for Track {
             fmmi_rand_feedback_enabled: AtomicBool::new(true),
             fmmi_rand_drive_enabled: AtomicBool::new(true),
             fmmi_rand_out_level_enabled: AtomicBool::new(true),
+            fmmi_rand_amp_attack_enabled: AtomicBool::new(true),
+            fmmi_rand_amp_decay_enabled: AtomicBool::new(true),
+            fmmi_rand_amp_sustain_enabled: AtomicBool::new(true),
+            fmmi_rand_amp_release_enabled: AtomicBool::new(true),
+            fmmi_rand_gate_length_enabled: AtomicBool::new(true),
+            fmmi_randomize_amount: AtomicU32::new(1.0f32.to_bits()),
+            fmmi_randomize_steps_amount: AtomicU32::new(1.0f32.to_bits()),
+            fmmi_scale_index: AtomicU32::new(0),
             fmmi_keybed_note: AtomicI32::new(60),
             fmmi_keybed_trigger: AtomicBool::new(false),
             fmmi_current_car_freq: AtomicU32::new(220.0f32.to_bits()),
@@ -2270,6 +2548,7 @@ impl Default for Track {
             fmmi_gate_level: AtomicU32::new(0.0f32.to_bits()),
             fmmi_gate_stage: AtomicU32::new(0),
             fmmi_gate_pos: AtomicU32::new(0),
+            fmmi_gate_hold: AtomicU32::new(0),
             fmmi_last_carrier: AtomicU32::new(0.0f32.to_bits()),
             void_base_freq: AtomicU32::new(40.0f32.to_bits()),
             void_base_freq_smooth: AtomicU32::new(40.0f32.to_bits()),
@@ -2351,7 +2630,93 @@ pub struct TLBX1 {
     syndrm_dsp: [SynDRMDspState; NUM_TRACKS],
     animate_dsp: [AnimateDspState; NUM_TRACKS],
     void_dsp: [VoidSeedDspState; NUM_TRACKS],
+    fmmi_dsp: [FmmiDspState; NUM_TRACKS],
     last_host_playing: bool,
+}
+
+#[derive(Clone, Copy)]
+struct FmmiVoiceState {
+    active: bool,
+    car_phase: f32,
+    mod_phase: f32,
+    gate_level: f32,
+    gate_stage: u32,
+    gate_pos: u32,
+    gate_hold: u32,
+    last_carrier: f32,
+    car_wave: u32,
+    car_freq: f32,
+    car_detune: f32,
+    mod_wave: u32,
+    mod_mode: u32,
+    mod_value: f32,
+    mod_detune: f32,
+    index: f32,
+    feedback: f32,
+    drive: f32,
+    out_level: f32,
+    amp_attack: f32,
+    amp_decay: f32,
+    amp_sustain: f32,
+    amp_release: f32,
+    gate_length: f32,
+    attack_samples: u32,
+    decay_samples: u32,
+    release_samples: u32,
+    sustain_level: f32,
+    hold_samples: u32,
+    last_trigger: u64,
+}
+
+impl Default for FmmiVoiceState {
+    fn default() -> Self {
+        Self {
+            active: false,
+            car_phase: 0.0,
+            mod_phase: 0.0,
+            gate_level: 0.0,
+            gate_stage: 0,
+            gate_pos: 0,
+            gate_hold: 0,
+            last_carrier: 0.0,
+            car_wave: 0,
+            car_freq: 220.0,
+            car_detune: 0.0,
+            mod_wave: 0,
+            mod_mode: 0,
+            mod_value: 220.0,
+            mod_detune: 0.0,
+            index: 800.0,
+            feedback: 0.0,
+            drive: 0.0,
+            out_level: 0.5,
+            amp_attack: 63.0,
+            amp_decay: 63.0,
+            amp_sustain: 63.0,
+            amp_release: 63.0,
+            gate_length: -1.0,
+            attack_samples: 1,
+            decay_samples: 1,
+            release_samples: 1,
+            sustain_level: 1.0,
+            hold_samples: 0,
+            last_trigger: 0,
+        }
+    }
+}
+
+struct FmmiDspState {
+    voices: [FmmiVoiceState; FMMI_VOICES],
+    voice_clock: u64,
+}
+
+impl FmmiDspState {
+    fn new() -> Self {
+        Self {
+            voices: std::array::from_fn(|_| FmmiVoiceState::default()),
+            voice_clock: 0,
+        }
+    }
 }
 
 struct SynDRMDspState {
@@ -2715,6 +3080,7 @@ impl Default for TLBX1 {
             syndrm_dsp: std::array::from_fn(|_| SynDRMDspState::new()),
             animate_dsp: std::array::from_fn(|_| AnimateDspState::new()),
             void_dsp: std::array::from_fn(|_| VoidSeedDspState::new()),
+            fmmi_dsp: std::array::from_fn(|_| FmmiDspState::new()),
             last_host_playing: false,
         }
     }
@@ -3635,7 +4001,13 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.fmmi_feedback.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.fmmi_drive.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.fmmi_out_level.store(0.5f32.to_bits(), Ordering::Relaxed);
+    track.fmmi_amp_attack.store(63.0f32.to_bits(), Ordering::Relaxed);
+    track.fmmi_amp_decay.store(63.0f32.to_bits(), Ordering::Relaxed);
+    track.fmmi_amp_sustain.store(63.0f32.to_bits(), Ordering::Relaxed);
+    track.fmmi_amp_release.store(63.0f32.to_bits(), Ordering::Relaxed);
+    track.fmmi_gate_length.store((-1.0f32).to_bits(), Ordering::Relaxed);
     track.fmmi_prob.store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.fmmi_poly_enabled.store(false, Ordering::Relaxed);
     for i in 0..FMMI_STEPS {
         let active = i < FMMI_PAGE_SIZE && i % 2 == 0;
         track.fmmi_sequencer_grid[i].store(active, Ordering::Relaxed);
@@ -3651,6 +4023,21 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
         track.fmmi_step_feedback[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
         track.fmmi_step_drive[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
         track.fmmi_step_out_level[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_attack[i]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_decay[i]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_sustain[i]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_release[i]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_gate_length[i]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
     }
     track.fmmi_sequencer_step.store(-1, Ordering::Relaxed);
     track.fmmi_sequencer_phase.store(0, Ordering::Relaxed);
@@ -3671,6 +4058,18 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.fmmi_rand_feedback_enabled.store(true, Ordering::Relaxed);
     track.fmmi_rand_drive_enabled.store(true, Ordering::Relaxed);
     track.fmmi_rand_out_level_enabled.store(true, Ordering::Relaxed);
+    track.fmmi_rand_amp_attack_enabled.store(true, Ordering::Relaxed);
+    track.fmmi_rand_amp_decay_enabled.store(true, Ordering::Relaxed);
+    track.fmmi_rand_amp_sustain_enabled.store(true, Ordering::Relaxed);
+    track.fmmi_rand_amp_release_enabled.store(true, Ordering::Relaxed);
+    track.fmmi_rand_gate_length_enabled.store(true, Ordering::Relaxed);
+    track
+        .fmmi_randomize_amount
+        .store(1.0f32.to_bits(), Ordering::Relaxed);
+    track
+        .fmmi_randomize_steps_amount
+        .store(1.0f32.to_bits(), Ordering::Relaxed);
+    track.fmmi_scale_index.store(0, Ordering::Relaxed);
     track.fmmi_current_car_freq.store(220.0f32.to_bits(), Ordering::Relaxed);
     track.fmmi_current_car_detune.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.fmmi_current_mod_value.store(220.0f32.to_bits(), Ordering::Relaxed);
@@ -3684,6 +4083,7 @@ fn reset_track_for_engine(track: &Track, engine_type: u32) {
     track.fmmi_gate_level.store(0.0f32.to_bits(), Ordering::Relaxed);
     track.fmmi_gate_stage.store(0, Ordering::Relaxed);
     track.fmmi_gate_pos.store(0, Ordering::Relaxed);
+    track.fmmi_gate_hold.store(0, Ordering::Relaxed);
     track.fmmi_last_carrier.store(0.0f32.to_bits(), Ordering::Relaxed);
 
     track.void_base_freq.store(40.0f32.to_bits(), Ordering::Relaxed);
@@ -8277,6 +8677,7 @@ impl TLBX1 {
         samples_per_step: f32,
         sample_rate: f32,
         transport_running: bool,
+        dsp_state: &mut FmmiDspState,
     ) {
         let sr = sample_rate.max(1.0);
         let tempo_bits = global_tempo.load(Ordering::Relaxed);
@@ -8286,6 +8687,456 @@ impl TLBX1 {
         } else {
             120.0
         };
+        let poly_enabled = track.fmmi_poly_enabled.load(Ordering::Relaxed);
+
+        if poly_enabled {
+            let mut max_active_step = None;
+            for i in 0..FMMI_STEPS {
+                if track.fmmi_sequencer_grid[i].load(Ordering::Relaxed) {
+                    max_active_step = Some(i);
+                }
+            }
+            let mut loop_steps = FMMI_PAGE_SIZE;
+            if let Some(max_step) = max_active_step {
+                loop_steps = ((max_step / FMMI_PAGE_SIZE) + 1) * FMMI_PAGE_SIZE;
+            }
+            let loop_steps_i32 = loop_steps.max(1) as i32;
+
+            let mut sequencer_phase = if transport_running {
+                master_phase
+            } else {
+                f32::from_bits(track.fmmi_sequencer_phase.load(Ordering::Relaxed))
+            };
+            let mut current_step = if transport_running {
+                (master_step_count as i32).rem_euclid(loop_steps_i32)
+            } else {
+                let step = track.fmmi_sequencer_step.load(Ordering::Relaxed);
+                if step < 0 {
+                    step
+                } else {
+                    step.rem_euclid(loop_steps_i32)
+                }
+            };
+            if transport_running {
+                track.fmmi_sequencer_step.store(current_step, Ordering::Relaxed);
+            }
+
+            let car_wave = track.fmmi_car_wave.load(Ordering::Relaxed);
+            let car_freq = f32::from_bits(track.fmmi_car_freq.load(Ordering::Relaxed))
+                .clamp(10.0, 20000.0);
+            let car_detune = f32::from_bits(track.fmmi_car_detune.load(Ordering::Relaxed))
+                .clamp(-1200.0, 1200.0);
+            let mod_wave = track.fmmi_mod_wave.load(Ordering::Relaxed);
+            let mod_mode = track.fmmi_mod_mode.load(Ordering::Relaxed);
+            let mod_value = f32::from_bits(track.fmmi_mod_value.load(Ordering::Relaxed));
+            let mod_detune = f32::from_bits(track.fmmi_mod_detune.load(Ordering::Relaxed))
+                .clamp(-1200.0, 1200.0);
+            let index = f32::from_bits(track.fmmi_index.load(Ordering::Relaxed)).max(0.0);
+            let feedback = f32::from_bits(track.fmmi_feedback.load(Ordering::Relaxed)).max(0.0);
+            let drive = f32::from_bits(track.fmmi_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+            let out_level = f32::from_bits(track.fmmi_out_level.load(Ordering::Relaxed))
+                .clamp(0.0, 1.5);
+            let amp_attack = f32::from_bits(track.fmmi_amp_attack.load(Ordering::Relaxed))
+                .clamp(0.0, 127.0);
+            let amp_decay = f32::from_bits(track.fmmi_amp_decay.load(Ordering::Relaxed))
+                .clamp(0.0, 127.0);
+            let amp_sustain = f32::from_bits(track.fmmi_amp_sustain.load(Ordering::Relaxed))
+                .clamp(0.0, 127.0);
+            let amp_release = f32::from_bits(track.fmmi_amp_release.load(Ordering::Relaxed))
+                .clamp(0.0, 127.0);
+            let gate_length_override =
+                f32::from_bits(track.fmmi_gate_length.load(Ordering::Relaxed));
+            let prob = f32::from_bits(track.fmmi_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+            let mut rng_state = track.fmmi_rng_state.load(Ordering::Relaxed);
+
+            let default_gate_ms = if gate_length_override.is_finite() && gate_length_override >= 0.0
+            {
+                gate_length_override
+            } else {
+                (samples_per_step / sr).max(0.0) * 1000.0
+            };
+
+            let mut current_car_freq =
+                f32::from_bits(track.fmmi_current_car_freq.load(Ordering::Relaxed));
+            let mut current_car_wave = car_wave;
+            let mut current_car_detune =
+                f32::from_bits(track.fmmi_current_car_detune.load(Ordering::Relaxed));
+            let mut current_mod_value =
+                f32::from_bits(track.fmmi_current_mod_value.load(Ordering::Relaxed));
+            let mut current_mod_wave = mod_wave;
+            let mut current_mod_mode = mod_mode;
+            let mut current_mod_detune =
+                f32::from_bits(track.fmmi_current_mod_detune.load(Ordering::Relaxed));
+            let mut current_index =
+                f32::from_bits(track.fmmi_current_index.load(Ordering::Relaxed));
+            let mut current_feedback =
+                f32::from_bits(track.fmmi_current_feedback.load(Ordering::Relaxed));
+            let mut current_drive =
+                f32::from_bits(track.fmmi_current_drive.load(Ordering::Relaxed));
+            let mut current_out_level =
+                f32::from_bits(track.fmmi_current_out_level.load(Ordering::Relaxed));
+
+            if !current_car_freq.is_finite() {
+                current_car_freq = car_freq;
+            }
+            if !current_car_detune.is_finite() {
+                current_car_detune = car_detune;
+            }
+            if !current_mod_value.is_finite() {
+                current_mod_value = mod_value;
+            }
+            if !current_mod_detune.is_finite() {
+                current_mod_detune = mod_detune;
+            }
+            if !current_index.is_finite() {
+                current_index = index;
+            }
+            if !current_feedback.is_finite() {
+                current_feedback = feedback;
+            }
+            if !current_drive.is_finite() {
+                current_drive = drive;
+            }
+            if !current_out_level.is_finite() {
+                current_out_level = out_level;
+            }
+
+            let mut current_amp_attack = amp_attack;
+            let mut current_amp_decay = amp_decay;
+            let mut current_amp_sustain = amp_sustain;
+            let mut current_amp_release = amp_release;
+            let mut current_gate_length = default_gate_ms;
+
+            let keybed_triggered = track.fmmi_keybed_trigger.swap(false, Ordering::Relaxed);
+            if keybed_triggered {
+                let note = track.fmmi_keybed_note.load(Ordering::Relaxed);
+                let freq = fmmi_midi_to_freq(note);
+                current_car_freq = freq;
+                current_car_wave = car_wave;
+                current_car_detune = car_detune;
+                current_mod_value = mod_value;
+                current_mod_wave = mod_wave;
+                current_mod_mode = mod_mode;
+                current_mod_detune = mod_detune;
+                current_index = index;
+                current_feedback = feedback;
+                current_drive = drive;
+                current_out_level = out_level;
+                current_amp_attack = amp_attack;
+                current_amp_decay = amp_decay;
+                current_amp_sustain = amp_sustain;
+                current_amp_release = amp_release;
+                current_gate_length = default_gate_ms;
+
+                fmmi_trigger_voice(
+                    dsp_state,
+                    sr,
+                    default_gate_ms,
+                    current_car_wave,
+                    current_car_freq,
+                    current_car_detune,
+                    current_mod_wave,
+                    current_mod_mode,
+                    current_mod_value,
+                    current_mod_detune,
+                    current_index,
+                    current_feedback,
+                    current_drive,
+                    current_out_level,
+                    current_amp_attack,
+                    current_amp_decay,
+                    current_amp_sustain,
+                    current_amp_release,
+                    current_gate_length,
+                );
+            }
+
+            let output = track_output;
+            let num_channels = output.len().max(1);
+
+            for sample_idx in 0..num_buffer_samples {
+                if transport_running {
+                    sequencer_phase += 1.0;
+                    if sequencer_phase >= samples_per_step {
+                        sequencer_phase -= samples_per_step;
+                        current_step = (current_step + 1).rem_euclid(loop_steps_i32);
+                        track
+                            .fmmi_sequencer_step
+                            .store(current_step, Ordering::Relaxed);
+
+                        let step_idx = current_step.max(0) as usize;
+                        if step_idx < FMMI_STEPS
+                            && track.fmmi_sequencer_grid[step_idx].load(Ordering::Relaxed)
+                            && (prob >= 1.0 || fmmi_rand_unit(&mut rng_state) <= prob)
+                        {
+                            let step_note =
+                                track.fmmi_step_note[step_idx].load(Ordering::Relaxed);
+                            let step_car_wave =
+                                track.fmmi_step_car_wave[step_idx].load(Ordering::Relaxed);
+                            let step_mod_wave =
+                                track.fmmi_step_mod_wave[step_idx].load(Ordering::Relaxed);
+                            let step_mod_mode =
+                                track.fmmi_step_mod_mode[step_idx].load(Ordering::Relaxed);
+                            if step_note >= FMMI_NOTE_BASE && step_note <= FMMI_NOTE_MAX {
+                                current_car_freq = fmmi_midi_to_freq(step_note);
+                            } else {
+                                current_car_freq = car_freq;
+                            }
+                            let step_car_freq = f32::from_bits(
+                                track.fmmi_step_car_freq[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_car_detune = f32::from_bits(
+                                track.fmmi_step_car_detune[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_mod = f32::from_bits(
+                                track.fmmi_step_mod_value[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_mod_detune = f32::from_bits(
+                                track.fmmi_step_mod_detune[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_index = f32::from_bits(
+                                track.fmmi_step_index[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_feedback = f32::from_bits(
+                                track.fmmi_step_feedback[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_drive = f32::from_bits(
+                                track.fmmi_step_drive[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_out_level = f32::from_bits(
+                                track.fmmi_step_out_level[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_amp_attack = f32::from_bits(
+                                track.fmmi_step_amp_attack[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_amp_decay = f32::from_bits(
+                                track.fmmi_step_amp_decay[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_amp_sustain = f32::from_bits(
+                                track.fmmi_step_amp_sustain[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_amp_release = f32::from_bits(
+                                track.fmmi_step_amp_release[step_idx].load(Ordering::Relaxed),
+                            );
+                            let step_gate_length = f32::from_bits(
+                                track.fmmi_step_gate_length[step_idx].load(Ordering::Relaxed),
+                            );
+
+                            if step_car_freq >= 0.0 {
+                                current_car_freq = step_car_freq;
+                            }
+                            if (0..=3).contains(&step_car_wave) {
+                                current_car_wave = step_car_wave as u32;
+                            } else {
+                                current_car_wave = car_wave;
+                            }
+                            if (0..=3).contains(&step_mod_wave) {
+                                current_mod_wave = step_mod_wave as u32;
+                            } else {
+                                current_mod_wave = mod_wave;
+                            }
+                            if (0..=1).contains(&step_mod_mode) {
+                                current_mod_mode = step_mod_mode as u32;
+                            } else {
+                                current_mod_mode = mod_mode;
+                            }
+                            current_car_detune = if step_car_detune >= 0.0 {
+                                step_car_detune
+                            } else {
+                                car_detune
+                            };
+                            current_mod_value = if step_mod >= 0.0 { step_mod } else { mod_value };
+                            current_mod_detune =
+                                if step_mod_detune >= 0.0 { step_mod_detune } else { mod_detune };
+                            current_index = if step_index >= 0.0 { step_index } else { index };
+                            current_feedback =
+                                if step_feedback >= 0.0 { step_feedback } else { feedback };
+                            current_drive = if step_drive >= 0.0 { step_drive } else { drive };
+                            current_out_level =
+                                if step_out_level >= 0.0 { step_out_level } else { out_level };
+                            current_amp_attack =
+                                if step_amp_attack >= 0.0 { step_amp_attack } else { amp_attack };
+                            current_amp_decay =
+                                if step_amp_decay >= 0.0 { step_amp_decay } else { amp_decay };
+                            current_amp_sustain = if step_amp_sustain >= 0.0 {
+                                step_amp_sustain
+                            } else {
+                                amp_sustain
+                            };
+                            current_amp_release = if step_amp_release >= 0.0 {
+                                step_amp_release
+                            } else {
+                                amp_release
+                            };
+                            current_gate_length = if step_gate_length >= 0.0 {
+                                step_gate_length
+                            } else {
+                                default_gate_ms
+                            };
+
+                            fmmi_trigger_voice(
+                                dsp_state,
+                                sr,
+                                default_gate_ms,
+                                current_car_wave,
+                                current_car_freq,
+                                current_car_detune,
+                                current_mod_wave,
+                                current_mod_mode,
+                                current_mod_value,
+                                current_mod_detune,
+                                current_index,
+                                current_feedback,
+                                current_drive,
+                                current_out_level,
+                                current_amp_attack,
+                                current_amp_decay,
+                                current_amp_sustain,
+                                current_amp_release,
+                                current_gate_length,
+                            );
+                        }
+                    }
+                }
+
+                let mut sample_sum = 0.0f32;
+                for voice in dsp_state.voices.iter_mut() {
+                    if !voice.active {
+                        continue;
+                    }
+
+                    let gate_on = voice.gate_hold > 0;
+                    if voice.gate_hold > 0 {
+                        voice.gate_hold = voice.gate_hold.saturating_sub(1);
+                    }
+
+                    if voice.gate_stage == 1 {
+                        voice.gate_level =
+                            (voice.gate_pos as f32 / voice.attack_samples as f32)
+                                .clamp(0.0, 1.0);
+                        voice.gate_pos = voice.gate_pos.saturating_add(1);
+                        if voice.gate_pos >= voice.attack_samples {
+                            voice.gate_stage = 2;
+                            voice.gate_pos = 0;
+                            voice.gate_level = 1.0;
+                        }
+                    } else if voice.gate_stage == 2 {
+                        voice.gate_level = (1.0
+                            - (1.0 - voice.sustain_level)
+                                * (voice.gate_pos as f32 / voice.decay_samples as f32))
+                            .clamp(0.0, 1.0);
+                        voice.gate_pos = voice.gate_pos.saturating_add(1);
+                        if voice.gate_pos >= voice.decay_samples {
+                            voice.gate_stage = 3;
+                            voice.gate_pos = 0;
+                            voice.gate_level = voice.sustain_level;
+                        }
+                    } else if voice.gate_stage == 3 {
+                        voice.gate_level = voice.sustain_level;
+                        if !gate_on {
+                            voice.gate_stage = 4;
+                            voice.gate_pos = 0;
+                        }
+                    } else if voice.gate_stage == 4 {
+                        voice.gate_level = (voice.gate_level
+                            * (1.0 - (1.0 / voice.release_samples as f32)))
+                            .max(0.0);
+                        voice.gate_pos = voice.gate_pos.saturating_add(1);
+                        if voice.gate_pos >= voice.release_samples || voice.gate_level <= 1.0e-4 {
+                            voice.gate_stage = 0;
+                            voice.gate_pos = 0;
+                            voice.gate_level = 0.0;
+                        }
+                    } else {
+                        voice.gate_level = 0.0;
+                        if gate_on {
+                            voice.gate_stage = 1;
+                            voice.gate_pos = 0;
+                        }
+                    }
+
+                    if voice.gate_stage == 0 && voice.gate_level <= 1.0e-4 {
+                        voice.active = false;
+                        continue;
+                    }
+
+                    let car_detune_ratio = 2.0f32.powf(voice.car_detune / 1200.0);
+                    let mod_detune_ratio = 2.0f32.powf(voice.mod_detune / 1200.0);
+                    let mut mod_freq = if voice.mod_mode == 1 {
+                        (voice.car_freq * voice.mod_value).max(0.1)
+                    } else {
+                        voice.mod_value.max(0.1)
+                    };
+                    mod_freq = (mod_freq * mod_detune_ratio).clamp(0.1, 20_000.0);
+                    let base_car_freq = (voice.car_freq * car_detune_ratio).clamp(0.1, 20_000.0);
+
+                    voice.mod_phase += mod_freq / sr;
+                    if voice.mod_phase >= 1.0 {
+                        voice.mod_phase -= 1.0;
+                    }
+                    let mod_signal = fmmi_waveform_value(voice.mod_wave, voice.mod_phase);
+
+                    let fm = (mod_signal + voice.feedback * voice.last_carrier) * voice.index;
+                    let inst_freq = (base_car_freq + fm).clamp(0.1, 20_000.0);
+
+                    voice.car_phase += inst_freq / sr;
+                    if voice.car_phase >= 1.0 {
+                        voice.car_phase -= 1.0;
+                    }
+                    let mut sample = fmmi_waveform_value(voice.car_wave, voice.car_phase);
+                    voice.last_carrier = sample;
+
+                    sample *= voice.gate_level;
+                    if voice.drive > 0.0 {
+                        let pre = 1.0 + voice.drive * 20.0;
+                        sample = (sample * pre).tanh();
+                    }
+                    sample *= voice.out_level;
+                    sample_sum += sample;
+                }
+
+                if num_channels >= 2 {
+                    output[0][sample_idx] += sample_sum;
+                    output[1][sample_idx] += sample_sum;
+                } else {
+                    output[0][sample_idx] += sample_sum;
+                }
+            }
+
+            track
+                .fmmi_sequencer_phase
+                .store(sequencer_phase.round().max(0.0) as u32, Ordering::Relaxed);
+            track
+                .fmmi_current_car_freq
+                .store(current_car_freq.to_bits(), Ordering::Relaxed);
+            track
+                .fmmi_current_car_detune
+                .store(current_car_detune.to_bits(), Ordering::Relaxed);
+            track
+                .fmmi_current_mod_value
+                .store(current_mod_value.to_bits(), Ordering::Relaxed);
+            track
+                .fmmi_current_mod_detune
+                .store(current_mod_detune.to_bits(), Ordering::Relaxed);
+            track
+                .fmmi_current_index
+                .store(current_index.to_bits(), Ordering::Relaxed);
+            track
+                .fmmi_current_feedback
+                .store(current_feedback.to_bits(), Ordering::Relaxed);
+            track
+                .fmmi_current_drive
+                .store(current_drive.to_bits(), Ordering::Relaxed);
+            track
+                .fmmi_current_out_level
+                .store(current_out_level.to_bits(), Ordering::Relaxed);
+            track.fmmi_gate_level.store(0.0f32.to_bits(), Ordering::Relaxed);
+            track.fmmi_gate_stage.store(0, Ordering::Relaxed);
+            track.fmmi_gate_pos.store(0, Ordering::Relaxed);
+            track.fmmi_gate_hold.store(0, Ordering::Relaxed);
+            track.fmmi_rng_state.store(rng_state, Ordering::Relaxed);
+            return;
+        }
 
         let mut max_active_step = None;
         for i in 0..FMMI_STEPS {
@@ -8329,6 +9180,16 @@ impl TLBX1 {
         let drive = f32::from_bits(track.fmmi_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let out_level = f32::from_bits(track.fmmi_out_level.load(Ordering::Relaxed))
             .clamp(0.0, 1.5);
+        let amp_attack = f32::from_bits(track.fmmi_amp_attack.load(Ordering::Relaxed))
+            .clamp(0.0, 127.0);
+        let amp_decay = f32::from_bits(track.fmmi_amp_decay.load(Ordering::Relaxed))
+            .clamp(0.0, 127.0);
+        let amp_sustain = f32::from_bits(track.fmmi_amp_sustain.load(Ordering::Relaxed))
+            .clamp(0.0, 127.0);
+        let amp_release = f32::from_bits(track.fmmi_amp_release.load(Ordering::Relaxed))
+            .clamp(0.0, 127.0);
+        let gate_length_override =
+            f32::from_bits(track.fmmi_gate_length.load(Ordering::Relaxed));
         let prob = f32::from_bits(track.fmmi_prob.load(Ordering::Relaxed)).clamp(0.0, 1.0);
         let mut rng_state = track.fmmi_rng_state.load(Ordering::Relaxed);
 
@@ -8361,6 +9222,65 @@ impl TLBX1 {
         if !current_drive.is_finite() { current_drive = drive; }
         if !current_out_level.is_finite() { current_out_level = out_level; }
 
+        let mut car_phase = f32::from_bits(track.fmmi_car_phase.load(Ordering::Relaxed));
+        let mut mod_phase = f32::from_bits(track.fmmi_mod_phase.load(Ordering::Relaxed));
+        let mut gate_level = f32::from_bits(track.fmmi_gate_level.load(Ordering::Relaxed));
+        let mut gate_stage = track.fmmi_gate_stage.load(Ordering::Relaxed);
+        let mut gate_pos = track.fmmi_gate_pos.load(Ordering::Relaxed);
+        let mut gate_hold = track.fmmi_gate_hold.load(Ordering::Relaxed);
+        let mut last_carrier = f32::from_bits(track.fmmi_last_carrier.load(Ordering::Relaxed));
+
+        let mut current_amp_attack = amp_attack;
+        let mut current_amp_decay = amp_decay;
+        let mut current_amp_sustain = amp_sustain;
+        let mut current_amp_release = amp_release;
+        let default_gate_ms = if gate_length_override.is_finite() && gate_length_override >= 0.0
+        {
+            gate_length_override
+        } else {
+            (samples_per_step / sr).max(0.0) * 1000.0
+        };
+        let mut current_gate_length = default_gate_ms;
+        let mut attack_samples = 1u32;
+        let mut decay_samples = 1u32;
+        let mut release_samples = 1u32;
+        let mut sustain_level = 1.0f32;
+        let mut hold_samples = ((default_gate_ms / 1000.0) * sr).round().max(0.0) as u32;
+        let compute_env = |attack: f32,
+                           decay: f32,
+                           sustain: f32,
+                           release: f32,
+                           gate_len: f32| {
+            let attack_time = (attack / 127.0).clamp(0.0, 1.0) * 2.0;
+            let decay_time = (decay / 127.0).clamp(0.0, 1.0) * 2.0;
+            let release_time = (release / 127.0).clamp(0.0, 1.0) * 2.0;
+            let attack_samples = (attack_time * sr).round().max(1.0) as u32;
+            let decay_samples = (decay_time * sr).round().max(1.0) as u32;
+            let release_samples = (release_time * sr).round().max(1.0) as u32;
+            let sustain_level = (sustain / 127.0).clamp(0.0, 1.0);
+            let gate_len_ms = if gate_len.is_finite() {
+                gate_len.max(0.0)
+            } else {
+                default_gate_ms
+            };
+            let hold_samples = ((gate_len_ms / 1000.0) * sr).round().max(0.0) as u32;
+            (attack_samples, decay_samples, release_samples, sustain_level, hold_samples)
+        };
+        {
+            let (a, d, r, s, h) = compute_env(
+                current_amp_attack,
+                current_amp_decay,
+                current_amp_sustain,
+                current_amp_release,
+                current_gate_length,
+            );
+            attack_samples = a;
+            decay_samples = d;
+            release_samples = r;
+            sustain_level = s;
+            hold_samples = h;
+        }
+
         let keybed_triggered = track.fmmi_keybed_trigger.swap(false, Ordering::Relaxed);
         if keybed_triggered {
             let note = track.fmmi_keybed_note.load(Ordering::Relaxed);
@@ -8376,20 +9296,31 @@ impl TLBX1 {
             current_feedback = feedback;
             current_drive = drive;
             current_out_level = out_level;
+            current_amp_attack = amp_attack;
+            current_amp_decay = amp_decay;
+            current_amp_sustain = amp_sustain;
+            current_amp_release = amp_release;
+            current_gate_length = default_gate_ms;
+            {
+                let (a, d, r, s, h) = compute_env(
+                    current_amp_attack,
+                    current_amp_decay,
+                    current_amp_sustain,
+                    current_amp_release,
+                    current_gate_length,
+                );
+                attack_samples = a;
+                decay_samples = d;
+                release_samples = r;
+                sustain_level = s;
+                hold_samples = h;
+            }
             track.fmmi_gate_stage.store(1, Ordering::Relaxed);
             track.fmmi_gate_pos.store(0, Ordering::Relaxed);
             track.fmmi_gate_level.store(0.0f32.to_bits(), Ordering::Relaxed);
+            track.fmmi_gate_hold.store(hold_samples, Ordering::Relaxed);
+            gate_hold = hold_samples;
         }
-
-        let mut car_phase = f32::from_bits(track.fmmi_car_phase.load(Ordering::Relaxed));
-        let mut mod_phase = f32::from_bits(track.fmmi_mod_phase.load(Ordering::Relaxed));
-        let mut gate_level = f32::from_bits(track.fmmi_gate_level.load(Ordering::Relaxed));
-        let mut gate_stage = track.fmmi_gate_stage.load(Ordering::Relaxed);
-        let mut gate_pos = track.fmmi_gate_pos.load(Ordering::Relaxed);
-        let mut last_carrier = f32::from_bits(track.fmmi_last_carrier.load(Ordering::Relaxed));
-
-        let attack_samples = (0.001 * sr).round().max(1.0) as u32;
-        let decay_samples = (0.1 * sr).round().max(1.0) as u32;
 
         if gate_stage == 0 {
             current_car_freq = car_freq;
@@ -8459,6 +9390,21 @@ impl TLBX1 {
                         let step_out_level = f32::from_bits(
                             track.fmmi_step_out_level[step_idx].load(Ordering::Relaxed),
                         );
+                        let step_amp_attack = f32::from_bits(
+                            track.fmmi_step_amp_attack[step_idx].load(Ordering::Relaxed),
+                        );
+                        let step_amp_decay = f32::from_bits(
+                            track.fmmi_step_amp_decay[step_idx].load(Ordering::Relaxed),
+                        );
+                        let step_amp_sustain = f32::from_bits(
+                            track.fmmi_step_amp_sustain[step_idx].load(Ordering::Relaxed),
+                        );
+                        let step_amp_release = f32::from_bits(
+                            track.fmmi_step_amp_release[step_idx].load(Ordering::Relaxed),
+                        );
+                        let step_gate_length = f32::from_bits(
+                            track.fmmi_step_gate_length[step_idx].load(Ordering::Relaxed),
+                        );
 
                         if step_car_freq >= 0.0 {
                             current_car_freq = step_car_freq;
@@ -8490,12 +9436,46 @@ impl TLBX1 {
                         current_drive = if step_drive >= 0.0 { step_drive } else { drive };
                         current_out_level =
                             if step_out_level >= 0.0 { step_out_level } else { out_level };
+                        current_amp_attack =
+                            if step_amp_attack >= 0.0 { step_amp_attack } else { amp_attack };
+                        current_amp_decay =
+                            if step_amp_decay >= 0.0 { step_amp_decay } else { amp_decay };
+                        current_amp_sustain =
+                            if step_amp_sustain >= 0.0 { step_amp_sustain } else { amp_sustain };
+                        current_amp_release =
+                            if step_amp_release >= 0.0 { step_amp_release } else { amp_release };
+                        current_gate_length = if step_gate_length >= 0.0 {
+                            step_gate_length
+                        } else {
+                            default_gate_ms
+                        };
+
+                        {
+                            let (a, d, r, s, h) = compute_env(
+                                current_amp_attack,
+                                current_amp_decay,
+                                current_amp_sustain,
+                                current_amp_release,
+                                current_gate_length,
+                            );
+                            attack_samples = a;
+                            decay_samples = d;
+                            release_samples = r;
+                            sustain_level = s;
+                            hold_samples = h;
+                        }
 
                         gate_stage = 1;
                         gate_pos = 0;
                         gate_level = 0.0;
+                        gate_hold = hold_samples;
                     }
                 }
+            }
+
+            let gate_on = gate_hold > 0;
+            if gate_hold > 0 {
+                gate_hold = gate_hold.saturating_sub(1);
             }
 
             if gate_stage == 1 {
@@ -8507,15 +9487,35 @@ impl TLBX1 {
                     gate_level = 1.0;
                 }
             } else if gate_stage == 2 {
-                gate_level = (1.0 - (gate_pos as f32 / decay_samples as f32)).clamp(0.0, 1.0);
+                gate_level = (1.0 - (1.0 - sustain_level) * (gate_pos as f32 / decay_samples as f32))
+                    .clamp(0.0, 1.0);
                 gate_pos = gate_pos.saturating_add(1);
                 if gate_pos >= decay_samples {
+                    gate_stage = 3;
+                    gate_pos = 0;
+                    gate_level = sustain_level;
+                }
+            } else if gate_stage == 3 {
+                gate_level = sustain_level;
+                if !gate_on {
+                    gate_stage = 4;
+                    gate_pos = 0;
+                }
+            } else if gate_stage == 4 {
+                gate_level =
+                    (gate_level * (1.0 - (1.0 / release_samples as f32))).max(0.0);
+                gate_pos = gate_pos.saturating_add(1);
+                if gate_pos >= release_samples || gate_level <= 1.0e-4 {
                     gate_stage = 0;
                     gate_pos = 0;
                     gate_level = 0.0;
                 }
             } else {
                 gate_level = 0.0;
+                if gate_on {
+                    gate_stage = 1;
+                    gate_pos = 0;
+                }
             }
 
             let car_detune_ratio = 2.0f32.powf(current_car_detune / 1200.0);
@@ -8587,6 +9587,7 @@ impl TLBX1 {
         track.fmmi_gate_level.store(gate_level.to_bits(), Ordering::Relaxed);
         track.fmmi_gate_stage.store(gate_stage, Ordering::Relaxed);
         track.fmmi_gate_pos.store(gate_pos, Ordering::Relaxed);
+        track.fmmi_gate_hold.store(gate_hold, Ordering::Relaxed);
         track.fmmi_last_carrier.store(last_carrier.to_bits(), Ordering::Relaxed);
         track.fmmi_rng_state.store(rng_state, Ordering::Relaxed);
     }
@@ -9762,32 +10763,28 @@ impl TLBX1 {
         sample_rate: f32,
         transport_running: bool,
     ) {
+        let restore_base = |track: &Track, i: usize| {
+            let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
+            if prev_target != u32::MAX {
+                let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
+                if modul8_target_range(prev_target).is_some() {
+                    modul8_target_set(track, prev_target, base);
+                }
+                track.modul8_base_target[i].store(u32::MAX, Ordering::Relaxed);
+            }
+        };
         if num_buffer_samples == 0 || sample_rate <= 0.0 {
             return;
         }
         if !transport_running {
             for i in 0..MODUL8_LFOS {
-                let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
-                if prev_target != u32::MAX {
-                    let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
-                    if modul8_target_range(prev_target).is_some() {
-                        modul8_target_set(track, prev_target, base);
-                    }
-                    track.modul8_base_target[i].store(u32::MAX, Ordering::Relaxed);
-                }
+                restore_base(track, i);
             }
             return;
         }
         if !track.modul8_enabled.load(Ordering::Relaxed) {
             for i in 0..MODUL8_LFOS {
-                let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
-                if prev_target != u32::MAX {
-                    let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
-                    if modul8_target_range(prev_target).is_some() {
-                        modul8_target_set(track, prev_target, base);
-                    }
-                    track.modul8_base_target[i].store(u32::MAX, Ordering::Relaxed);
-                }
+                restore_base(track, i);
             }
             return;
         }
@@ -9815,14 +10812,7 @@ impl TLBX1 {
             let target_index = target_index.min(target_ids.len().saturating_sub(1));
             let target = *target_ids.get(target_index).unwrap_or(&0);
             if target == 0 || target >= MODUL8_TARGET_COUNT {
-                let prev_target = track.modul8_base_target[i].load(Ordering::Relaxed);
-                if prev_target != u32::MAX {
-                    let base = f32::from_bits(track.modul8_base_value[i].load(Ordering::Relaxed));
-                    if modul8_target_range(prev_target).is_some() {
-                        modul8_target_set(track, prev_target, base);
-                    }
-                    track.modul8_base_target[i].store(u32::MAX, Ordering::Relaxed);
-                }
+                restore_base(track, i);
                 continue;
             }
             let Some((min_v, max_v)) = modul8_target_range(target) else {
@@ -11136,7 +12126,54 @@ impl Plugin for TLBX1 {
                     samples_per_step,
                     master_sr,
                     transport_running,
+                    &mut self.fmmi_dsp[track_idx],
                 );
+                let mosaic_active =
+                    track.granular_type.load(Ordering::Relaxed) == 1
+                        && track.mosaic_enabled.load(Ordering::Relaxed);
+                if mosaic_active {
+                    if let Some(mut mosaic) = track.mosaic_buffer.try_lock() {
+                        if !mosaic.is_empty() && !mosaic[0].is_empty() {
+                            let sr = master_sr.max(1.0) as usize;
+                            let mosaic_len = (sr * MOSAIC_BUFFER_SECONDS)
+                                .min(MOSAIC_BUFFER_SAMPLES)
+                                .max(1);
+                            let mut mosaic_write_pos =
+                                (track.mosaic_write_pos.load(Ordering::Relaxed) as usize)
+                                    % mosaic_len;
+                            let target_mosaic_sos = f32::from_bits(
+                                track.mosaic_sos.load(Ordering::Relaxed),
+                            )
+                            .clamp(0.0, 1.0);
+                            let smooth_mosaic_sos = smooth_param(
+                                f32::from_bits(
+                                    track.mosaic_sos_smooth.load(Ordering::Relaxed),
+                                ),
+                                target_mosaic_sos,
+                                buffer.samples(),
+                                master_sr,
+                            );
+                            track
+                                .mosaic_sos_smooth
+                                .store(smooth_mosaic_sos.to_bits(), Ordering::Relaxed);
+                            let num_buffer_samples = buffer.samples();
+                            let num_channels = self.track_buffer.len().min(mosaic.len());
+                            for sample_idx in 0..num_buffer_samples {
+                                for channel_idx in 0..num_channels {
+                                    let out_value = self.track_buffer[channel_idx][sample_idx];
+                                    let existing = mosaic[channel_idx][mosaic_write_pos];
+                                    mosaic[channel_idx][mosaic_write_pos] =
+                                        out_value * (1.0 - smooth_mosaic_sos)
+                                            + existing * smooth_mosaic_sos;
+                                }
+                                mosaic_write_pos = (mosaic_write_pos + 1) % mosaic_len;
+                            }
+                            track
+                                .mosaic_write_pos
+                                .store(mosaic_write_pos as u32, Ordering::Relaxed);
+                        }
+                    }
+                }
             } else if engine_type == 4 {
                 Self::process_voidseed(
                     track,
@@ -12214,10 +13251,10 @@ const MODUL8_TARGET_IDS_VOID: [u32; 55] = [
     73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
     95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
 ];
-const MODUL8_TARGET_IDS_FMMI: [u32; 54] = [
-    0, 16, 17, 18, 19, 20, 21, 22, 23, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
-    73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
-    95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+const MODUL8_TARGET_IDS_FMMI: [u32; 59] = [
+    0, 16, 17, 18, 19, 20, 21, 22, 23, 152, 153, 154, 155, 156, 60, 61, 62, 63, 64, 65, 66,
+    67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
+    89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
 ];
 
 fn modul8_target_ids_for_engine(engine_type: u32) -> &'static [u32] {
@@ -12262,6 +13299,11 @@ macro_rules! modul8_targets {
             21, "FMMI: Feedback", 0.0, 1.0, fmmi_feedback;
             22, "FMMI: Drive", 0.0, 1.0, fmmi_drive;
             23, "FMMI: Out Level", 0.0, 1.0, fmmi_out_level;
+            152, "FMMI: Amp Attack", 0.0, 127.0, fmmi_amp_attack;
+            153, "FMMI: Amp Decay", 0.0, 127.0, fmmi_amp_decay;
+            154, "FMMI: Amp Sustain", 0.0, 127.0, fmmi_amp_sustain;
+            155, "FMMI: Amp Release", 0.0, 127.0, fmmi_amp_release;
+            156, "FMMI: Gate Length", 0.0, 3000.0, fmmi_gate_length;
             24, "SynDRM Kick: Pitch", 0.0, 1.0, kick_pitch;
             25, "SynDRM Kick: Decay", 0.0, 1.0, kick_decay;
             26, "SynDRM Kick: Attack", 0.0, 1.0, kick_attack;
@@ -12560,10 +13602,17 @@ fn fmmi_note_index_to_midi(index: i32) -> i32 {
 }
 
 fn fmmi_randomize_pattern(track: &Track, rng_state: &mut u32) {
+    let amount = f32::from_bits(track.fmmi_randomize_steps_amount.load(Ordering::Relaxed))
+        .clamp(0.0, 1.0);
+    if amount <= 0.0 {
+        return;
+    }
     for step in 0..FMMI_STEPS {
-        track
-            .fmmi_sequencer_grid[step]
-            .store(fmmi_rand_unit(rng_state) > 0.5, Ordering::Relaxed);
+        if amount >= 1.0 || fmmi_rand_unit(rng_state) <= amount {
+            track
+                .fmmi_sequencer_grid[step]
+                .store(fmmi_rand_unit(rng_state) > 0.5, Ordering::Relaxed);
+        }
     }
 }
 
@@ -12601,6 +13650,21 @@ fn fmmi_reset_pattern(track: &Track) {
         track
             .fmmi_step_out_level[step]
             .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_attack[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_decay[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_sustain[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_release[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_gate_length[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
     }
 }
 
@@ -12637,6 +13701,21 @@ fn fmmi_clear_page(track: &Track, page: usize) {
         track
             .fmmi_step_out_level[step]
             .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_attack[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_decay[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_sustain[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_release[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_gate_length[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
     }
 }
 
@@ -12670,6 +13749,21 @@ fn fmmi_clear_sequence(track: &Track) {
             .store((-1.0f32).to_bits(), Ordering::Relaxed);
         track
             .fmmi_step_out_level[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_attack[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_decay[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_sustain[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_release[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_gate_length[step]
             .store((-1.0f32).to_bits(), Ordering::Relaxed);
     }
 }
@@ -12720,6 +13814,21 @@ fn fmmi_clear_params_page(track: &Track, page: usize) {
         track
             .fmmi_step_out_level[step]
             .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_attack[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_decay[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_sustain[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_release[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_gate_length[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
     }
 }
 
@@ -12753,11 +13862,36 @@ fn fmmi_clear_params_all(track: &Track) {
         track
             .fmmi_step_out_level[step]
             .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_attack[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_decay[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_sustain[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_amp_release[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track
+            .fmmi_step_gate_length[step]
+            .store((-1.0f32).to_bits(), Ordering::Relaxed);
     }
 }
 
-fn fmmi_randomize_step_params(track: &Track, step: usize, _mod_mode: u32, rng_state: &mut u32) {
+fn fmmi_randomize_step_params(
+    track: &Track,
+    step: usize,
+    _mod_mode: u32,
+    rng_state: &mut u32,
+) {
     if step >= FMMI_STEPS {
+        return;
+    }
+    let amount = f32::from_bits(track.fmmi_randomize_amount.load(Ordering::Relaxed))
+        .clamp(0.0, 1.0);
+    if amount <= 0.0 {
         return;
     }
     let rand_note = track.fmmi_rand_note_enabled.load(Ordering::Relaxed);
@@ -12772,21 +13906,48 @@ fn fmmi_randomize_step_params(track: &Track, step: usize, _mod_mode: u32, rng_st
     let rand_feedback = track.fmmi_rand_feedback_enabled.load(Ordering::Relaxed);
     let rand_drive = track.fmmi_rand_drive_enabled.load(Ordering::Relaxed);
     let rand_out_level = track.fmmi_rand_out_level_enabled.load(Ordering::Relaxed);
+    let rand_amp_attack = track.fmmi_rand_amp_attack_enabled.load(Ordering::Relaxed);
+    let rand_amp_decay = track.fmmi_rand_amp_decay_enabled.load(Ordering::Relaxed);
+    let rand_amp_sustain = track.fmmi_rand_amp_sustain_enabled.load(Ordering::Relaxed);
+    let rand_amp_release = track.fmmi_rand_amp_release_enabled.load(Ordering::Relaxed);
+    let rand_gate_length = track.fmmi_rand_gate_length_enabled.load(Ordering::Relaxed);
+    let lerp = |base: f32, target: f32| base + (target - base) * amount;
+    let base_car_freq =
+        f32::from_bits(track.fmmi_car_freq.load(Ordering::Relaxed)).clamp(10.0, 20000.0);
+    let base_car_detune =
+        f32::from_bits(track.fmmi_car_detune.load(Ordering::Relaxed)).clamp(-1200.0, 1200.0);
+    let base_mod_value = f32::from_bits(track.fmmi_mod_value.load(Ordering::Relaxed));
+    let base_mod_detune =
+        f32::from_bits(track.fmmi_mod_detune.load(Ordering::Relaxed)).clamp(-1200.0, 1200.0);
+    let base_index = f32::from_bits(track.fmmi_index.load(Ordering::Relaxed)).max(0.0);
+    let base_feedback = f32::from_bits(track.fmmi_feedback.load(Ordering::Relaxed)).max(0.0);
+    let base_drive = f32::from_bits(track.fmmi_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+    let base_out_level =
+        f32::from_bits(track.fmmi_out_level.load(Ordering::Relaxed)).clamp(0.0, 1.5);
+    let base_amp_attack =
+        f32::from_bits(track.fmmi_amp_attack.load(Ordering::Relaxed)).clamp(0.0, 127.0);
+    let base_amp_decay =
+        f32::from_bits(track.fmmi_amp_decay.load(Ordering::Relaxed)).clamp(0.0, 127.0);
+    let base_amp_sustain =
+        f32::from_bits(track.fmmi_amp_sustain.load(Ordering::Relaxed)).clamp(0.0, 127.0);
+    let base_amp_release =
+        f32::from_bits(track.fmmi_amp_release.load(Ordering::Relaxed)).clamp(0.0, 127.0);
+    let base_gate_length = {
+        let v = f32::from_bits(track.fmmi_gate_length.load(Ordering::Relaxed));
+        if v.is_finite() && v >= 0.0 { v } else { 0.0 }
+    };
 
     let step_car_wave = (fmmi_rand_unit(rng_state) * 4.0).floor().min(3.0) as i32;
     let step_mod_wave = (fmmi_rand_unit(rng_state) * 4.0).floor().min(3.0) as i32;
     let step_mod_mode = if fmmi_rand_unit(rng_state) < 0.5 { 0 } else { 1 };
-    let effective_mod_mode = if rand_mod_mode {
+    let mod_mode_change = rand_mod_mode && (amount >= 1.0 || fmmi_rand_unit(rng_state) <= amount);
+    let effective_mod_mode = if mod_mode_change {
         step_mod_mode as u32
     } else {
-        let existing = track.fmmi_step_mod_mode[step].load(Ordering::Relaxed);
-        if (0..=1).contains(&existing) {
-            existing as u32
-        } else {
-            track.fmmi_mod_mode.load(Ordering::Relaxed)
-        }
+        track.fmmi_mod_mode.load(Ordering::Relaxed)
     };
-    let note = FMMI_NOTE_BASE + (fmmi_rand_unit(rng_state) * 72.0).floor() as i32;
+    let scale_index = track.fmmi_scale_index.load(Ordering::Relaxed) as usize;
+    let note = fmmi_random_note_in_scale(rng_state, scale_index);
     let car_freq = 30.0 + fmmi_rand_unit(rng_state) * 2000.0;
     let car_detune = (fmmi_rand_unit(rng_state) * 200.0 - 100.0).floor();
     let mod_val = if effective_mod_mode == 1 {
@@ -12799,21 +13960,26 @@ fn fmmi_randomize_step_params(track: &Track, step: usize, _mod_mode: u32, rng_st
     let feedback = (fmmi_rand_unit(rng_state) * 600.0).floor();
     let drive = fmmi_rand_unit(rng_state);
     let out_level = fmmi_rand_unit(rng_state) * 1.5;
+    let amp_attack = fmmi_rand_unit(rng_state) * 127.0;
+    let amp_decay = fmmi_rand_unit(rng_state) * 127.0;
+    let amp_sustain = fmmi_rand_unit(rng_state) * 127.0;
+    let amp_release = fmmi_rand_unit(rng_state) * 127.0;
+    let gate_length = fmmi_rand_unit(rng_state) * 3000.0;
 
-    if rand_note {
+    if rand_note && (amount >= 1.0 || fmmi_rand_unit(rng_state) <= amount) {
         track.fmmi_step_note[step].store(note, Ordering::Relaxed);
     }
-    if rand_car_wave {
+    if rand_car_wave && (amount >= 1.0 || fmmi_rand_unit(rng_state) <= amount) {
         track
             .fmmi_step_car_wave[step]
             .store(step_car_wave, Ordering::Relaxed);
     }
-    if rand_mod_wave {
+    if rand_mod_wave && (amount >= 1.0 || fmmi_rand_unit(rng_state) <= amount) {
         track
             .fmmi_step_mod_wave[step]
             .store(step_mod_wave, Ordering::Relaxed);
     }
-    if rand_mod_mode {
+    if rand_mod_mode && mod_mode_change {
         track
             .fmmi_step_mod_mode[step]
             .store(step_mod_mode, Ordering::Relaxed);
@@ -12821,42 +13987,67 @@ fn fmmi_randomize_step_params(track: &Track, step: usize, _mod_mode: u32, rng_st
     if rand_car_freq {
         track
             .fmmi_step_car_freq[step]
-            .store(car_freq.to_bits(), Ordering::Relaxed);
+            .store(lerp(base_car_freq, car_freq).to_bits(), Ordering::Relaxed);
     }
     if rand_car_detune {
         track
             .fmmi_step_car_detune[step]
-            .store(car_detune.to_bits(), Ordering::Relaxed);
+            .store(lerp(base_car_detune, car_detune).to_bits(), Ordering::Relaxed);
     }
     if rand_mod_value {
         track
             .fmmi_step_mod_value[step]
-            .store(mod_val.to_bits(), Ordering::Relaxed);
+            .store(lerp(base_mod_value, mod_val).to_bits(), Ordering::Relaxed);
     }
     if rand_mod_detune {
         track
             .fmmi_step_mod_detune[step]
-            .store(mod_detune.to_bits(), Ordering::Relaxed);
+            .store(lerp(base_mod_detune, mod_detune).to_bits(), Ordering::Relaxed);
     }
     if rand_index {
         track
             .fmmi_step_index[step]
-            .store(index.to_bits(), Ordering::Relaxed);
+            .store(lerp(base_index, index).to_bits(), Ordering::Relaxed);
     }
     if rand_feedback {
         track
             .fmmi_step_feedback[step]
-            .store(feedback.to_bits(), Ordering::Relaxed);
+            .store(lerp(base_feedback, feedback).to_bits(), Ordering::Relaxed);
     }
     if rand_drive {
         track
             .fmmi_step_drive[step]
-            .store(drive.to_bits(), Ordering::Relaxed);
+            .store(lerp(base_drive, drive).to_bits(), Ordering::Relaxed);
     }
     if rand_out_level {
         track
             .fmmi_step_out_level[step]
-            .store(out_level.to_bits(), Ordering::Relaxed);
+            .store(lerp(base_out_level, out_level).to_bits(), Ordering::Relaxed);
+    }
+    if rand_amp_attack {
+        track
+            .fmmi_step_amp_attack[step]
+            .store(lerp(base_amp_attack, amp_attack).to_bits(), Ordering::Relaxed);
+    }
+    if rand_amp_decay {
+        track
+            .fmmi_step_amp_decay[step]
+            .store(lerp(base_amp_decay, amp_decay).to_bits(), Ordering::Relaxed);
+    }
+    if rand_amp_sustain {
+        track
+            .fmmi_step_amp_sustain[step]
+            .store(lerp(base_amp_sustain, amp_sustain).to_bits(), Ordering::Relaxed);
+    }
+    if rand_amp_release {
+        track
+            .fmmi_step_amp_release[step]
+            .store(lerp(base_amp_release, amp_release).to_bits(), Ordering::Relaxed);
+    }
+    if rand_gate_length {
+        track
+            .fmmi_step_gate_length[step]
+            .store(lerp(base_gate_length, gate_length).to_bits(), Ordering::Relaxed);
     }
 }
 
@@ -12877,14 +14068,35 @@ fn fmmi_randomize_all_params(track: &Track, mod_mode: u32, rng_state: &mut u32) 
 fn fmmi_randomize_steps_page(track: &Track, page: usize, rng_state: &mut u32) {
     let start = page * FMMI_PAGE_SIZE;
     let end = (start + FMMI_PAGE_SIZE).min(FMMI_STEPS);
+    let amount = f32::from_bits(track.fmmi_randomize_steps_amount.load(Ordering::Relaxed))
+        .clamp(0.0, 1.0);
+    if amount <= 0.0 {
+        return;
+    }
     for step in start..end {
-        track
-            .fmmi_sequencer_grid[step]
-            .store(fmmi_rand_unit(rng_state) > 0.5, Ordering::Relaxed);
+        if amount >= 1.0 || fmmi_rand_unit(rng_state) <= amount {
+            track
+                .fmmi_sequencer_grid[step]
+                .store(fmmi_rand_unit(rng_state) > 0.5, Ordering::Relaxed);
+        }
     }
 }
 
 fn fmmi_randomize_global(track: &Track, rng_state: &mut u32) {
+    let amount = f32::from_bits(track.fmmi_randomize_amount.load(Ordering::Relaxed))
+        .clamp(0.0, 1.0);
+    if amount <= 0.0 {
+        return;
+    }
+    let lerp = |base: f32, target: f32| base + (target - base) * amount;
+    let base_car_detune =
+        f32::from_bits(track.fmmi_car_detune.load(Ordering::Relaxed)).clamp(-1200.0, 1200.0);
+    let base_mod_detune =
+        f32::from_bits(track.fmmi_mod_detune.load(Ordering::Relaxed)).clamp(-1200.0, 1200.0);
+    let base_mod_value = f32::from_bits(track.fmmi_mod_value.load(Ordering::Relaxed));
+    let base_index = f32::from_bits(track.fmmi_index.load(Ordering::Relaxed)).max(0.0);
+    let base_feedback = f32::from_bits(track.fmmi_feedback.load(Ordering::Relaxed)).max(0.0);
+    let base_drive = f32::from_bits(track.fmmi_drive.load(Ordering::Relaxed)).clamp(0.0, 1.0);
     let wave = (fmmi_rand_unit(rng_state) * 4.0).floor().min(3.0) as u32;
     let mod_wave = (fmmi_rand_unit(rng_state) * 4.0).floor().min(3.0) as u32;
     let mod_mode = if fmmi_rand_unit(rng_state) < 0.6 { 1 } else { 0 };
@@ -12899,19 +14111,33 @@ fn fmmi_randomize_global(track: &Track, rng_state: &mut u32) {
     let car_detune = (fmmi_rand_unit(rng_state) * 200.0 - 100.0).floor();
     let mod_detune = (fmmi_rand_unit(rng_state) * 200.0 - 100.0).floor();
 
-    track.fmmi_car_wave.store(wave, Ordering::Relaxed);
-    track.fmmi_mod_wave.store(mod_wave, Ordering::Relaxed);
-    track.fmmi_mod_mode.store(mod_mode, Ordering::Relaxed);
-    track.fmmi_mod_value.store(mod_val.to_bits(), Ordering::Relaxed);
-    track.fmmi_index.store(index.to_bits(), Ordering::Relaxed);
-    track.fmmi_feedback.store(feedback.to_bits(), Ordering::Relaxed);
-    track.fmmi_drive.store(drive.to_bits(), Ordering::Relaxed);
+    if amount >= 1.0 || fmmi_rand_unit(rng_state) <= amount {
+        track.fmmi_car_wave.store(wave, Ordering::Relaxed);
+    }
+    if amount >= 1.0 || fmmi_rand_unit(rng_state) <= amount {
+        track.fmmi_mod_wave.store(mod_wave, Ordering::Relaxed);
+    }
+    if amount >= 1.0 || fmmi_rand_unit(rng_state) <= amount {
+        track.fmmi_mod_mode.store(mod_mode, Ordering::Relaxed);
+    }
+    track
+        .fmmi_mod_value
+        .store(lerp(base_mod_value, mod_val).to_bits(), Ordering::Relaxed);
+    track
+        .fmmi_index
+        .store(lerp(base_index, index).to_bits(), Ordering::Relaxed);
+    track
+        .fmmi_feedback
+        .store(lerp(base_feedback, feedback).to_bits(), Ordering::Relaxed);
+    track
+        .fmmi_drive
+        .store(lerp(base_drive, drive).to_bits(), Ordering::Relaxed);
     track
         .fmmi_car_detune
-        .store(car_detune.to_bits(), Ordering::Relaxed);
+        .store(lerp(base_car_detune, car_detune).to_bits(), Ordering::Relaxed);
     track
         .fmmi_mod_detune
-        .store(mod_detune.to_bits(), Ordering::Relaxed);
+        .store(lerp(base_mod_detune, mod_detune).to_bits(), Ordering::Relaxed);
 }
 
 fn fmmi_copy_apply(
@@ -12959,6 +14185,11 @@ fn fmmi_copy_apply(
                     feedback: track.fmmi_step_feedback[idx].load(Ordering::Relaxed),
                     drive: track.fmmi_step_drive[idx].load(Ordering::Relaxed),
                     out_level: track.fmmi_step_out_level[idx].load(Ordering::Relaxed),
+                    amp_attack: track.fmmi_step_amp_attack[idx].load(Ordering::Relaxed),
+                    amp_decay: track.fmmi_step_amp_decay[idx].load(Ordering::Relaxed),
+                    amp_sustain: track.fmmi_step_amp_sustain[idx].load(Ordering::Relaxed),
+                    amp_release: track.fmmi_step_amp_release[idx].load(Ordering::Relaxed),
+                    gate_length: track.fmmi_step_gate_length[idx].load(Ordering::Relaxed),
                 });
             }
         }
@@ -13024,6 +14255,21 @@ fn fmmi_paste_apply(track: &Track, target_page: usize) {
                 track
                     .fmmi_step_out_level[idx]
                     .store(params.out_level, Ordering::Relaxed);
+                track
+                    .fmmi_step_amp_attack[idx]
+                    .store(params.amp_attack, Ordering::Relaxed);
+                track
+                    .fmmi_step_amp_decay[idx]
+                    .store(params.amp_decay, Ordering::Relaxed);
+                track
+                    .fmmi_step_amp_sustain[idx]
+                    .store(params.amp_sustain, Ordering::Relaxed);
+                track
+                    .fmmi_step_amp_release[idx]
+                    .store(params.amp_release, Ordering::Relaxed);
+                track
+                    .fmmi_step_gate_length[idx]
+                    .store(params.gate_length, Ordering::Relaxed);
             }
         }
     }
@@ -15273,7 +16519,13 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("fmmi_feedback".to_string(), f(&track.fmmi_feedback));
     params.insert("fmmi_drive".to_string(), f(&track.fmmi_drive));
     params.insert("fmmi_out_level".to_string(), f(&track.fmmi_out_level));
+    params.insert("fmmi_amp_attack".to_string(), f(&track.fmmi_amp_attack));
+    params.insert("fmmi_amp_decay".to_string(), f(&track.fmmi_amp_decay));
+    params.insert("fmmi_amp_sustain".to_string(), f(&track.fmmi_amp_sustain));
+    params.insert("fmmi_amp_release".to_string(), f(&track.fmmi_amp_release));
+    params.insert("fmmi_gate_length".to_string(), f(&track.fmmi_gate_length));
     params.insert("fmmi_prob".to_string(), f(&track.fmmi_prob));
+    params.insert("fmmi_poly_enabled".to_string(), b(&track.fmmi_poly_enabled));
     params.insert("fmmi_page".to_string(), u(&track.fmmi_page));
     params.insert("fmmi_edit_step".to_string(), u(&track.fmmi_edit_step));
     params.insert(
@@ -15324,6 +16576,35 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
         "fmmi_rand_out_level_enabled".to_string(),
         b(&track.fmmi_rand_out_level_enabled),
     );
+    params.insert(
+        "fmmi_rand_amp_attack_enabled".to_string(),
+        b(&track.fmmi_rand_amp_attack_enabled),
+    );
+    params.insert(
+        "fmmi_rand_amp_decay_enabled".to_string(),
+        b(&track.fmmi_rand_amp_decay_enabled),
+    );
+    params.insert(
+        "fmmi_rand_amp_sustain_enabled".to_string(),
+        b(&track.fmmi_rand_amp_sustain_enabled),
+    );
+    params.insert(
+        "fmmi_rand_amp_release_enabled".to_string(),
+        b(&track.fmmi_rand_amp_release_enabled),
+    );
+    params.insert(
+        "fmmi_rand_gate_length_enabled".to_string(),
+        b(&track.fmmi_rand_gate_length_enabled),
+    );
+    params.insert(
+        "fmmi_randomize_amount".to_string(),
+        f(&track.fmmi_randomize_amount),
+    );
+    params.insert(
+        "fmmi_randomize_steps_amount".to_string(),
+        f(&track.fmmi_randomize_steps_amount),
+    );
+    params.insert("fmmi_scale_index".to_string(), u(&track.fmmi_scale_index));
     for i in 0..FMMI_STEPS {
         params.insert(
             format!("fmmi_step_note_{}", i),
@@ -15357,6 +16638,26 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
         params.insert(
             format!("fmmi_step_out_level_{}", i),
             f(&track.fmmi_step_out_level[i]),
+        );
+        params.insert(
+            format!("fmmi_step_amp_attack_{}", i),
+            f(&track.fmmi_step_amp_attack[i]),
+        );
+        params.insert(
+            format!("fmmi_step_amp_decay_{}", i),
+            f(&track.fmmi_step_amp_decay[i]),
+        );
+        params.insert(
+            format!("fmmi_step_amp_sustain_{}", i),
+            f(&track.fmmi_step_amp_sustain[i]),
+        );
+        params.insert(
+            format!("fmmi_step_amp_release_{}", i),
+            f(&track.fmmi_step_amp_release[i]),
+        );
+        params.insert(
+            format!("fmmi_step_gate_length_{}", i),
+            f(&track.fmmi_step_gate_length[i]),
         );
     }
 
@@ -16143,7 +17444,13 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.fmmi_feedback, "fmmi_feedback");
     sf(&track.fmmi_drive, "fmmi_drive");
     sf(&track.fmmi_out_level, "fmmi_out_level");
+    sf(&track.fmmi_amp_attack, "fmmi_amp_attack");
+    sf(&track.fmmi_amp_decay, "fmmi_amp_decay");
+    sf(&track.fmmi_amp_sustain, "fmmi_amp_sustain");
+        sf(&track.fmmi_amp_release, "fmmi_amp_release");
+    sf(&track.fmmi_gate_length, "fmmi_gate_length");
     sf(&track.fmmi_prob, "fmmi_prob");
+    sb(&track.fmmi_poly_enabled, "fmmi_poly_enabled");
     su(&track.fmmi_page, "fmmi_page");
     su(&track.fmmi_edit_step, "fmmi_edit_step");
     track.fmmi_rand_note_enabled.store(true, Ordering::Relaxed);
@@ -16197,6 +17504,32 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         &track.fmmi_rand_out_level_enabled,
         "fmmi_rand_out_level_enabled",
     );
+    sb(
+        &track.fmmi_rand_amp_attack_enabled,
+        "fmmi_rand_amp_attack_enabled",
+    );
+    sb(
+        &track.fmmi_rand_amp_decay_enabled,
+        "fmmi_rand_amp_decay_enabled",
+    );
+    sb(
+        &track.fmmi_rand_amp_sustain_enabled,
+        "fmmi_rand_amp_sustain_enabled",
+    );
+    sb(
+        &track.fmmi_rand_amp_release_enabled,
+        "fmmi_rand_amp_release_enabled",
+    );
+    sb(
+        &track.fmmi_rand_gate_length_enabled,
+        "fmmi_rand_gate_length_enabled",
+    );
+    sf_clamp_0_1(&track.fmmi_randomize_amount, "fmmi_randomize_amount");
+    sf_clamp_0_1(
+        &track.fmmi_randomize_steps_amount,
+        "fmmi_randomize_steps_amount",
+    );
+    su(&track.fmmi_scale_index, "fmmi_scale_index");
     for i in 0..FMMI_STEPS {
         track.fmmi_step_car_wave[i].store(-1, Ordering::Relaxed);
         track.fmmi_step_mod_wave[i].store(-1, Ordering::Relaxed);
@@ -16205,6 +17538,11 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         track.fmmi_step_car_detune[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
         track.fmmi_step_mod_detune[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
         track.fmmi_step_out_level[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.fmmi_step_amp_attack[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.fmmi_step_amp_decay[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.fmmi_step_amp_sustain[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.fmmi_step_amp_release[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
+        track.fmmi_step_gate_length[i].store((-1.0f32).to_bits(), Ordering::Relaxed);
         if let Some(&v) = params.get(&format!("fmmi_step_note_{}", i)) {
             track.fmmi_step_note[i].store(v as i32, Ordering::Relaxed);
         }
@@ -16248,6 +17586,26 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
         sf(
             &track.fmmi_step_out_level[i],
             &format!("fmmi_step_out_level_{}", i),
+        );
+        sf(
+            &track.fmmi_step_amp_attack[i],
+            &format!("fmmi_step_amp_attack_{}", i),
+        );
+        sf(
+            &track.fmmi_step_amp_decay[i],
+            &format!("fmmi_step_amp_decay_{}", i),
+        );
+        sf(
+            &track.fmmi_step_amp_sustain[i],
+            &format!("fmmi_step_amp_sustain_{}", i),
+        );
+        sf(
+            &track.fmmi_step_amp_release[i],
+            &format!("fmmi_step_amp_release_{}", i),
+        );
+        sf(
+            &track.fmmi_step_gate_length[i],
+            &format!("fmmi_step_gate_length_{}", i),
         );
     }
     track.fmmi_current_car_freq.store(
@@ -18506,9 +19864,19 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].fmmi_drive.load(Ordering::Relaxed));
         let fmmi_out_level =
             f32::from_bits(self.tracks[track_idx].fmmi_out_level.load(Ordering::Relaxed));
+        let fmmi_amp_attack =
+            f32::from_bits(self.tracks[track_idx].fmmi_amp_attack.load(Ordering::Relaxed));
+        let fmmi_amp_decay =
+            f32::from_bits(self.tracks[track_idx].fmmi_amp_decay.load(Ordering::Relaxed));
+        let fmmi_amp_sustain =
+            f32::from_bits(self.tracks[track_idx].fmmi_amp_sustain.load(Ordering::Relaxed));
+        let fmmi_amp_release =
+            f32::from_bits(self.tracks[track_idx].fmmi_amp_release.load(Ordering::Relaxed));
         let fmmi_prob = (f32::from_bits(self.tracks[track_idx].fmmi_prob.load(Ordering::Relaxed))
             .clamp(0.0, 1.0))
             * 100.0;
+        let fmmi_poly_enabled =
+            self.tracks[track_idx].fmmi_poly_enabled.load(Ordering::Relaxed);
         let fmmi_sequencer_current_step =
             self.tracks[track_idx].fmmi_sequencer_step.load(Ordering::Relaxed);
         let mut fmmi_sequencer_grid = Vec::with_capacity(FMMI_STEPS);
@@ -18604,6 +19972,56 @@ impl SlintWindow {
             );
             if v >= 0.0 { v } else { fmmi_out_level }
         };
+        let fmmi_step_amp_attack = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].fmmi_step_amp_attack[fmmi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { fmmi_amp_attack }
+        };
+        let fmmi_step_amp_decay = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].fmmi_step_amp_decay[fmmi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { fmmi_amp_decay }
+        };
+        let fmmi_step_amp_sustain = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].fmmi_step_amp_sustain[fmmi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { fmmi_amp_sustain }
+        };
+        let fmmi_step_amp_release = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].fmmi_step_amp_release[fmmi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { fmmi_amp_release }
+        };
+        let tempo_raw = f32::from_bits(self.global_tempo.load(Ordering::Relaxed));
+        let tempo = if tempo_raw.is_finite() {
+            tempo_raw.clamp(20.0, 240.0)
+        } else {
+            120.0
+        };
+        let master_sr = self.tracks[track_idx]
+            .sample_rate
+            .load(Ordering::Relaxed)
+            .max(1) as f32;
+        let mut samples_per_step = (master_sr * 60.0) / (tempo * 4.0);
+        if !samples_per_step.is_finite() || samples_per_step <= 0.0 {
+            samples_per_step = (master_sr * 60.0) / (120.0 * 4.0);
+        }
+        let default_gate_ms = (samples_per_step / master_sr) * 1000.0;
+        let fmmi_step_gate_length = {
+            let v = f32::from_bits(
+                self.tracks[track_idx].fmmi_step_gate_length[fmmi_edit_idx]
+                    .load(Ordering::Relaxed),
+            );
+            if v >= 0.0 { v } else { default_gate_ms }
+        };
         let fmmi_rand_note_enabled =
             self.tracks[track_idx].fmmi_rand_note_enabled.load(Ordering::Relaxed);
         let fmmi_rand_car_wave_enabled =
@@ -18628,6 +20046,34 @@ impl SlintWindow {
             self.tracks[track_idx].fmmi_rand_drive_enabled.load(Ordering::Relaxed);
         let fmmi_rand_out_level_enabled =
             self.tracks[track_idx].fmmi_rand_out_level_enabled.load(Ordering::Relaxed);
+        let fmmi_rand_amp_attack_enabled =
+            self.tracks[track_idx].fmmi_rand_amp_attack_enabled.load(Ordering::Relaxed);
+        let fmmi_rand_amp_decay_enabled =
+            self.tracks[track_idx].fmmi_rand_amp_decay_enabled.load(Ordering::Relaxed);
+        let fmmi_rand_amp_sustain_enabled =
+            self.tracks[track_idx].fmmi_rand_amp_sustain_enabled.load(Ordering::Relaxed);
+        let fmmi_rand_amp_release_enabled =
+            self.tracks[track_idx].fmmi_rand_amp_release_enabled.load(Ordering::Relaxed);
+        let fmmi_rand_gate_length_enabled =
+            self.tracks[track_idx].fmmi_rand_gate_length_enabled.load(Ordering::Relaxed);
+        let fmmi_randomize_amount =
+            f32::from_bits(self.tracks[track_idx].fmmi_randomize_amount.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let fmmi_randomize_steps_amount = f32::from_bits(
+            self.tracks[track_idx]
+                .fmmi_randomize_steps_amount
+                .load(Ordering::Relaxed),
+        )
+        .clamp(0.0, 1.0);
+        let fmmi_scale_index =
+            self.tracks[track_idx].fmmi_scale_index.load(Ordering::Relaxed) as usize;
+        let fmmi_scales = fmmi_scales();
+        let fmmi_scale_index = if fmmi_scale_index < fmmi_scales.len() {
+            fmmi_scale_index
+        } else {
+            0
+        };
+        let fmmi_scale_mask = fmmi_scale_mask(&fmmi_scales[fmmi_scale_index].notes);
 
         let void_base_freq = f32::from_bits(self.tracks[track_idx].void_base_freq.load(Ordering::Relaxed));
         let void_chaos_depth = f32::from_bits(self.tracks[track_idx].void_chaos_depth.load(Ordering::Relaxed));
@@ -19349,7 +20795,12 @@ impl SlintWindow {
         self.ui.set_fmmi_feedback(fmmi_feedback);
         self.ui.set_fmmi_drive(fmmi_drive);
         self.ui.set_fmmi_out_level(fmmi_out_level);
+        self.ui.set_fmmi_amp_attack(fmmi_amp_attack);
+        self.ui.set_fmmi_amp_decay(fmmi_amp_decay);
+        self.ui.set_fmmi_amp_sustain(fmmi_amp_sustain);
+        self.ui.set_fmmi_amp_release(fmmi_amp_release);
         self.ui.set_fmmi_prob(fmmi_prob);
+        self.ui.set_fmmi_poly_enabled(fmmi_poly_enabled);
         self.ui
             .set_fmmi_sequencer_current_step(fmmi_sequencer_current_step);
         self.ui
@@ -19374,6 +20825,11 @@ impl SlintWindow {
         self.ui.set_fmmi_step_feedback(fmmi_step_feedback);
         self.ui.set_fmmi_step_drive(fmmi_step_drive);
         self.ui.set_fmmi_step_out_level(fmmi_step_out_level);
+        self.ui.set_fmmi_step_amp_attack(fmmi_step_amp_attack);
+        self.ui.set_fmmi_step_amp_decay(fmmi_step_amp_decay);
+        self.ui.set_fmmi_step_amp_sustain(fmmi_step_amp_sustain);
+        self.ui.set_fmmi_step_amp_release(fmmi_step_amp_release);
+        self.ui.set_fmmi_step_gate_length(fmmi_step_gate_length);
         self.ui.set_fmmi_rand_note_enabled(fmmi_rand_note_enabled);
         self.ui
             .set_fmmi_rand_car_wave_enabled(fmmi_rand_car_wave_enabled);
@@ -19395,6 +20851,21 @@ impl SlintWindow {
         self.ui.set_fmmi_rand_drive_enabled(fmmi_rand_drive_enabled);
         self.ui
             .set_fmmi_rand_out_level_enabled(fmmi_rand_out_level_enabled);
+        self.ui
+            .set_fmmi_rand_amp_attack_enabled(fmmi_rand_amp_attack_enabled);
+        self.ui
+            .set_fmmi_rand_amp_decay_enabled(fmmi_rand_amp_decay_enabled);
+        self.ui
+            .set_fmmi_rand_amp_sustain_enabled(fmmi_rand_amp_sustain_enabled);
+        self.ui
+            .set_fmmi_rand_amp_release_enabled(fmmi_rand_amp_release_enabled);
+        self.ui
+            .set_fmmi_rand_gate_length_enabled(fmmi_rand_gate_length_enabled);
+        self.ui.set_fmmi_randomize_amount(fmmi_randomize_amount);
+        self.ui
+            .set_fmmi_randomize_steps_amount(fmmi_randomize_steps_amount);
+        self.ui.set_fmmi_scale_index(fmmi_scale_index as i32);
+        self.ui.set_fmmi_scale_mask(fmmi_scale_mask);
 
         self.ui.set_void_base_freq(void_base_freq);
         self.ui.set_void_chaos_depth(void_chaos_depth);
@@ -19843,6 +21314,11 @@ fn initialize_ui(
         SharedString::from("Major"),
         SharedString::from("Minor"),
     ])));
+    let fmmi_scale_options: Vec<SharedString> = fmmi_scales()
+        .iter()
+        .map(|scale| SharedString::from(scale.name.clone()))
+        .collect();
+    ui.set_fmmi_scale_options(ModelRc::new(VecModel::from(fmmi_scale_options)));
     ui.set_syndrm_filter_types(ModelRc::new(VecModel::from(vec![
         SharedString::from("Moog LP"),
         SharedString::from("Lowpass"),
@@ -26069,6 +27545,50 @@ fn initialize_ui(
 
     let tracks_fmmi = Arc::clone(tracks);
     let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_amp_attack_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_amp_attack
+                .store(value.clamp(0.0, 127.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_amp_decay_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_amp_decay
+                .store(value.clamp(0.0, 127.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_amp_sustain_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_amp_sustain
+                .store(value.clamp(0.0, 127.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_amp_release_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_amp_release
+                .store(value.clamp(0.0, 127.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
     ui.on_fmmi_prob_changed(move |value| {
         let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -26076,6 +27596,31 @@ fn initialize_ui(
             tracks_fmmi[track_idx]
                 .fmmi_prob
                 .store(normalized.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_poly_enabled_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_poly_enabled
+                .store(value, Ordering::Relaxed);
+            if value {
+                tracks_fmmi[track_idx]
+                    .fmmi_gate_stage
+                    .store(0, Ordering::Relaxed);
+                tracks_fmmi[track_idx]
+                    .fmmi_gate_pos
+                    .store(0, Ordering::Relaxed);
+                tracks_fmmi[track_idx]
+                    .fmmi_gate_level
+                    .store(0.0f32.to_bits(), Ordering::Relaxed);
+                tracks_fmmi[track_idx]
+                    .fmmi_gate_hold
+                    .store(0, Ordering::Relaxed);
+            }
         }
     });
 
@@ -26577,6 +28122,77 @@ fn initialize_ui(
 
     let tracks_fmmi = Arc::clone(tracks);
     let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_step_amp_attack_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_fmmi[track_idx].fmmi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < FMMI_STEPS {
+                tracks_fmmi[track_idx]
+                    .fmmi_step_amp_attack[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_step_amp_decay_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_fmmi[track_idx].fmmi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < FMMI_STEPS {
+                tracks_fmmi[track_idx]
+                    .fmmi_step_amp_decay[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_step_amp_sustain_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_fmmi[track_idx].fmmi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < FMMI_STEPS {
+                tracks_fmmi[track_idx]
+                    .fmmi_step_amp_sustain[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_step_amp_release_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_fmmi[track_idx].fmmi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < FMMI_STEPS {
+                tracks_fmmi[track_idx]
+                    .fmmi_step_amp_release[step]
+                    .store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_step_gate_length_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let step = tracks_fmmi[track_idx].fmmi_edit_step.load(Ordering::Relaxed) as usize;
+            if step < FMMI_STEPS {
+                let clamped = value.max(0.0);
+                tracks_fmmi[track_idx]
+                    .fmmi_step_gate_length[step]
+                    .store(clamped.to_bits(), Ordering::Relaxed);
+            }
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
     ui.on_fmmi_rand_note_enabled_changed(move |value| {
         let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
@@ -26704,6 +28320,102 @@ fn initialize_ui(
             tracks_fmmi[track_idx]
                 .fmmi_rand_out_level_enabled
                 .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_rand_amp_attack_enabled_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_rand_amp_attack_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_rand_amp_decay_enabled_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_rand_amp_decay_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_rand_amp_sustain_enabled_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_rand_amp_sustain_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_rand_amp_release_enabled_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_rand_amp_release_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_rand_gate_length_enabled_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_fmmi[track_idx]
+                .fmmi_rand_gate_length_enabled
+                .store(value, Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_randomize_amount_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.clamp(0.0, 1.0);
+            tracks_fmmi[track_idx]
+                .fmmi_randomize_amount
+                .store(clamped.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_randomize_steps_amount_changed(move |value| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let clamped = value.clamp(0.0, 1.0);
+            tracks_fmmi[track_idx]
+                .fmmi_randomize_steps_amount
+                .store(clamped.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_fmmi = Arc::clone(tracks);
+    let params_fmmi = Arc::clone(params);
+    ui.on_fmmi_scale_selected(move |index| {
+        let track_idx = params_fmmi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            let scales = fmmi_scales();
+            let clamped = if scales.is_empty() {
+                0
+            } else {
+                index.max(0).min((scales.len() - 1) as i32) as u32
+            };
+            tracks_fmmi[track_idx]
+                .fmmi_scale_index
+                .store(clamped, Ordering::Relaxed);
         }
     });
 

@@ -37,7 +37,12 @@ export component FMMIEngine inherits Rectangle {
     in-out property <float> fmmi-feedback: 0;
     in-out property <float> fmmi-drive: 0;
     in-out property <float> fmmi-out-level: 0.5;
+    in-out property <float> fmmi-amp-attack: 63;
+    in-out property <float> fmmi-amp-decay: 63;
+    in-out property <float> fmmi-amp-sustain: 63;
+    in-out property <float> fmmi-amp-release: 63;
     in-out property <float> fmmi-prob: 100.0;
+    in-out property <bool> fmmi-poly-enabled: false;
 
     in-out property <int> fmmi-page: 0;
     in-out property <int> fmmi-edit-step: 0;
@@ -57,6 +62,11 @@ export component FMMIEngine inherits Rectangle {
     in-out property <float> fmmi-step-feedback: 0;
     in-out property <float> fmmi-step-drive: 0;
     in-out property <float> fmmi-step-out-level: 0;
+    in-out property <float> fmmi-step-amp-attack: 0;
+    in-out property <float> fmmi-step-amp-decay: 0;
+    in-out property <float> fmmi-step-amp-sustain: 0;
+    in-out property <float> fmmi-step-amp-release: 0;
+    in-out property <float> fmmi-step-gate-length: 100;
     in-out property <bool> fmmi-rand-note-enabled: true;
     in-out property <bool> fmmi-rand-car-wave-enabled: true;
     in-out property <bool> fmmi-rand-mod-wave-enabled: true;
@@ -69,6 +79,16 @@ export component FMMIEngine inherits Rectangle {
     in-out property <bool> fmmi-rand-feedback-enabled: true;
     in-out property <bool> fmmi-rand-drive-enabled: true;
     in-out property <bool> fmmi-rand-out-level-enabled: true;
+    in-out property <bool> fmmi-rand-amp-attack-enabled: true;
+    in-out property <bool> fmmi-rand-amp-decay-enabled: true;
+    in-out property <bool> fmmi-rand-amp-sustain-enabled: true;
+    in-out property <bool> fmmi-rand-amp-release-enabled: true;
+    in-out property <bool> fmmi-rand-gate-length-enabled: true;
+    in-out property <float> fmmi-randomize-amount: 1.0;
+    in-out property <float> fmmi-randomize-steps-amount: 1.0;
+    in property <[string]> fmmi-scale-options;
+    in-out property <int> fmmi-scale-index: 0;
+    in property <int> fmmi-scale-mask: 0;
 
     in property <[string]> ring-decay-modes;
     in-out property <bool> mosaic-enabled: true;
@@ -165,7 +185,12 @@ export component FMMIEngine inherits Rectangle {
     callback fmmi-feedback-changed(float);
     callback fmmi-drive-changed(float);
     callback fmmi-out-level-changed(float);
+    callback fmmi-amp-attack-changed(float);
+    callback fmmi-amp-decay-changed(float);
+    callback fmmi-amp-sustain-changed(float);
+    callback fmmi-amp-release-changed(float);
     callback fmmi-prob-changed(float);
+    callback fmmi-poly-enabled-changed(bool);
     callback fmmi-page-changed(int);
     callback fmmi-edit-step-changed(int);
     callback fmmi-sequencer-grid-toggled(int);
@@ -205,6 +230,11 @@ export component FMMIEngine inherits Rectangle {
     callback fmmi-step-feedback-changed(float);
     callback fmmi-step-drive-changed(float);
     callback fmmi-step-out-level-changed(float);
+    callback fmmi-step-amp-attack-changed(float);
+    callback fmmi-step-amp-decay-changed(float);
+    callback fmmi-step-amp-sustain-changed(float);
+    callback fmmi-step-amp-release-changed(float);
+    callback fmmi-step-gate-length-changed(float);
     callback fmmi-rand-note-enabled-changed(bool);
     callback fmmi-rand-car-wave-enabled-changed(bool);
     callback fmmi-rand-mod-wave-enabled-changed(bool);
@@ -217,6 +247,14 @@ export component FMMIEngine inherits Rectangle {
     callback fmmi-rand-feedback-enabled-changed(bool);
     callback fmmi-rand-drive-enabled-changed(bool);
     callback fmmi-rand-out-level-enabled-changed(bool);
+    callback fmmi-rand-amp-attack-enabled-changed(bool);
+    callback fmmi-rand-amp-decay-enabled-changed(bool);
+    callback fmmi-rand-amp-sustain-enabled-changed(bool);
+    callback fmmi-rand-amp-release-enabled-changed(bool);
+    callback fmmi-rand-gate-length-enabled-changed(bool);
+    callback fmmi-randomize-amount-changed(float);
+    callback fmmi-randomize-steps-amount-changed(float);
+    callback fmmi-scale-selected(index: int);
     callback toggle-mosaic-enabled();
     callback toggle-mosaic-loop-lock();
     callback mosaic-pitch-changed(float);
@@ -324,6 +362,21 @@ export component FMMIEngine inherits Rectangle {
                     label-font-weight: 500;
                     clicked => root.toggle-track-mute();
                 }
+                RDSCircleToggle {
+                    y: 2px;
+                    active: root.fmmi-poly-enabled;
+                    label: "Mono";
+                    label-active: "Poly";
+                    label-pos: "left";
+                    label-color: Theme.active.text_secondary;
+                    label-active-color: Theme.active.text_primary;
+                    label-font-size: 11px;
+                    label-font-weight: 500;
+                    clicked => {
+                        root.fmmi-poly-enabled = !root.fmmi-poly-enabled;
+                        root.fmmi-poly-enabled-changed(root.fmmi-poly-enabled);
+                    }
+                }
             }
         }
 
@@ -336,7 +389,6 @@ export component FMMIEngine inherits Rectangle {
             VerticalLayout {
                 padding: 12px;
                 spacing: 16px;
-
                 HorizontalLayout {
                     GridLayout {
                         spacing: 12px;
@@ -345,15 +397,14 @@ export component FMMIEngine inherits Rectangle {
                             // Carrier controls
                             VerticalLayout {
                                 spacing: 6px;
-                                RDSHeaderLabel { bg-color: #fff; text: "Carrier"; }
+                                RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Carrier"; }
                                 HorizontalLayout {
-                                    spacing: 8px;
+                                    spacing: 5px;
                                     VerticalLayout {
-                                        padding-top: 6px;
+                                        padding-top: 26px;
                                         height: 60px;
-                                        Text { text: "Wave"; color: Theme.active.text_secondary; font-size: 11px; }
                                         RDSComboBox {
-                                            width: 140px;
+                                            width: 100px;
                                             model: root.fmmi-waveforms;
                                             current-index: root.fmmi-car-wave;
                                             selected => {
@@ -369,8 +420,8 @@ export component FMMIEngine inherits Rectangle {
                                             value: root.fmmi-car-freq;
                                             min-value: 10;
                                             max-value: 20000;
-                                            size: 102px;
-                                            indicator-position: 36px;
+                                            size: 76px;
+                                            indicator-position: 26px;
                                             sensitivity: 1.0;
                                             scroll-sensitivity: 1.0;
                                             label: "Freq";
@@ -388,8 +439,8 @@ export component FMMIEngine inherits Rectangle {
                                             value: root.fmmi-car-detune;
                                             min-value: -1200;
                                             max-value: 1200;
-                                            size: 102px;
-                                            indicator-position: 36px;
+                                            size: 76px;
+                                            indicator-position: 26px;
                                             sensitivity: 1.0;
                                             scroll-sensitivity: 1.0;
                                             label: "Detune";
@@ -407,8 +458,8 @@ export component FMMIEngine inherits Rectangle {
                                             value: root.fmmi-out-level;
                                             min-value: 0.0;
                                             max-value: 1.5;
-                                            size: 102px;
-                                            indicator-position: 36px;
+                                            size: 76px;
+                                            indicator-position: 26px;
                                             sensitivity: 0.01;
                                             scroll-sensitivity: 0.01;
                                             label: "Output";
@@ -426,8 +477,8 @@ export component FMMIEngine inherits Rectangle {
                                             value: root.fmmi-drive;
                                             min-value: 0.0;
                                             max-value: 1.0;
-                                            size: 102px;
-                                            indicator-position: 36px;
+                                            size: 76px;
+                                            indicator-position: 26px;
                                             sensitivity: 0.01;
                                             scroll-sensitivity: 0.01;
                                             label: "Drive";
@@ -444,17 +495,15 @@ export component FMMIEngine inherits Rectangle {
                             // Modulator controls
                             VerticalLayout {
                                 spacing: 6px;
-                                RDSHeaderLabel { bg-color: #fff; text: "Modulator"; }
+                                RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Modulator"; }
                                 HorizontalLayout {
-                                    spacing: 8px;
-
+                                    spacing: 5px;
                                     VerticalLayout {
                                         VerticalLayout {
-                                            height: 60px;
-                                            padding-top: 6px;
-                                            Text { text: "Wave"; color: Theme.active.text_secondary; font-size: 11px; }
+                                            height: 40px;
+                                            padding-top: 26px;
                                             RDSComboBox {
-                                                width: 140px;
+                                                width: 100px;
                                                 model: root.fmmi-waveforms;
                                                 current-index: root.fmmi-mod-wave;
                                                 selected => {
@@ -463,13 +512,11 @@ export component FMMIEngine inherits Rectangle {
                                                 }
                                             }
                                         }
-
                                         VerticalLayout {
                                             height: 60px;
-                                            padding-top: 6px;
-                                            Text { text: "Mode"; color: Theme.active.text_secondary; font-size: 11px; }
+                                            padding-top: 26px;
                                             RDSComboBox {
-                                                width: 120px;
+                                                width: 100px;
                                                 model: ["Hz", "Ratio"];
                                                 current-index: root.fmmi-mod-mode;
                                                 selected => {
@@ -486,8 +533,8 @@ export component FMMIEngine inherits Rectangle {
                                             value: root.fmmi-mod-value;
                                             min-value: mod-min;
                                             max-value: mod-max;
-                                            size: 102px;
-                                            indicator-position: 36px;
+                                            size: 76px;
+                                            indicator-position: 26px;
                                             sensitivity: mod-step;
                                             scroll-sensitivity: mod-step;
                                             label: mod-label;
@@ -505,8 +552,8 @@ export component FMMIEngine inherits Rectangle {
                                             value: root.fmmi-mod-detune;
                                             min-value: -1200;
                                             max-value: 1200;
-                                            size: 102px;
-                                            indicator-position: 36px;
+                                            size: 76px;
+                                            indicator-position: 26px;
                                             sensitivity: 1.0;
                                             scroll-sensitivity: 1.0;
                                             label: "Detune";
@@ -524,8 +571,8 @@ export component FMMIEngine inherits Rectangle {
                                             value: root.fmmi-index;
                                             min-value: 0;
                                             max-value: 3000;
-                                            size: 102px;
-                                            indicator-position: 36px;
+                                            size: 76px;
+                                            indicator-position: 26px;
                                             sensitivity: 1.0;
                                             scroll-sensitivity: 1.0;
                                             label: "Index";
@@ -543,8 +590,8 @@ export component FMMIEngine inherits Rectangle {
                                             value: root.fmmi-feedback;
                                             min-value: 0;
                                             max-value: 2000;
-                                            size: 102px;
-                                            indicator-position: 36px;
+                                            size: 76px;
+                                            indicator-position: 26px;
                                             sensitivity: 1.0;
                                             scroll-sensitivity: 1.0;
                                             label: "Feedback";
@@ -552,6 +599,91 @@ export component FMMIEngine inherits Rectangle {
                                             value-changed(v) => {
                                                 root.fmmi-feedback = v;
                                                 root.fmmi-feedback-changed(v);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Envelope controls
+                            VerticalLayout {
+                                spacing: 6px;
+                                RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Envelope"; }
+                                HorizontalLayout {
+                                    spacing: 5px;
+                                    VerticalLayout {
+                                        padding-top: 24px;
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.fmmi-amp-attack;
+                                            min-value: 0;
+                                            max-value: 127;
+                                            size: 76px;
+                                            indicator-position: 26px;
+                                            sensitivity: 1.0;
+                                            scroll-sensitivity: 1.0;
+                                            label: "Attack";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.fmmi-amp-attack = v;
+                                                root.fmmi-amp-attack-changed(v);
+                                            }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        padding-top: 24px;
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.fmmi-amp-decay;
+                                            min-value: 0;
+                                            max-value: 127;
+                                            size: 76px;
+                                            indicator-position: 26px;
+                                            sensitivity: 1.0;
+                                            scroll-sensitivity: 1.0;
+                                            label: "Decay";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.fmmi-amp-decay = v;
+                                                root.fmmi-amp-decay-changed(v);
+                                            }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        padding-top: 24px;
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.fmmi-amp-sustain;
+                                            min-value: 0;
+                                            max-value: 127;
+                                            size: 76px;
+                                            indicator-position: 26px;
+                                            sensitivity: 1.0;
+                                            scroll-sensitivity: 1.0;
+                                            label: "Sustain";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.fmmi-amp-sustain = v;
+                                                root.fmmi-amp-sustain-changed(v);
+                                            }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        padding-top: 24px;
+                                        RDSKnob {
+                                            renderer: "lo-fi";
+                                            value: root.fmmi-amp-release;
+                                            min-value: 0;
+                                            max-value: 127;
+                                            size: 76px;
+                                            indicator-position: 26px;
+                                            sensitivity: 1.0;
+                                            scroll-sensitivity: 1.0;
+                                            label: "Release";
+                                            label-pos: "top-center";
+                                            value-changed(v) => {
+                                                root.fmmi-amp-release = v;
+                                                root.fmmi-amp-release-changed(v);
                                             }
                                         }
                                     }
@@ -580,18 +712,15 @@ export component FMMIEngine inherits Rectangle {
             padding-vertical: 6px;
             right-padding: 12px;
         }
-
         HorizontalLayout {
             spacing: 12px;
-            height: 522px;
-
+            height: 604px;
             Rectangle {
                 background: Theme.active.ui_device_panel_bg;
                 border-width: 2px;
                 border-radius: 6px;
                 border-color: Theme.active.border-strong;
                 width: parent.width / 1.4 + 8px;
-
                 HorizontalLayout {
                     padding: 12px;
                     spacing: 16px;
@@ -638,22 +767,32 @@ export component FMMIEngine inherits Rectangle {
                         }
                     }
                 }
-
                 HorizontalLayout {
                     Rectangle {
                         height: 100px;
                         y: 80px;
-
                         VerticalLayout {
                             padding: 12px;
                             spacing: 8px;
-                            RDSHeaderLabel {
-                                bg-color: #fff;
-                                text: "Step Params";
-                            }
-
+                            RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Step Params"; }
                             HorizontalLayout {
                                 spacing: 8px;
+                                VerticalLayout {
+                                    padding-top: 6px;
+                                    VerticalLayout {
+                                        padding-bottom: 12px;
+                                        Text { text: "Scale"; color: Theme.active.text_secondary; font-size: 11px; }
+                                    }
+                                    RDSComboBox {
+                                        width: 140px;
+                                        model: root.fmmi_scale_options;
+                                        current-index: root.fmmi_scale_index;
+                                        selected => {
+                                            root.fmmi_scale_index = self.current-index;
+                                            root.fmmi-scale-selected(root.fmmi_scale_index);
+                                        }
+                                    }
+                                }
                                 VerticalLayout {
                                     padding-top: 6px;
                                     VerticalLayout {
@@ -719,7 +858,6 @@ export component FMMIEngine inherits Rectangle {
                                     }
                                 }
                             }
-
                             HorizontalLayout {
                                 spacing: 8px;
                                 VerticalLayout {
@@ -875,38 +1013,154 @@ export component FMMIEngine inherits Rectangle {
                                     }
                                 }
                             }
-
-                            Text { text: "Randomize Params"; color: Theme.active.text_secondary; font-size: 11px; }
                             HorizontalLayout {
-                                spacing: 10px;
-                                RDSCircleToggle { label: "Note"; active: root.fmmi-rand-note-enabled; clicked => { root.fmmi-rand-note-enabled = !root.fmmi-rand-note-enabled; root.fmmi-rand-note-enabled-changed(root.fmmi-rand-note-enabled); } }
-                                RDSCircleToggle { label: "CarW"; active: root.fmmi-rand-car-wave-enabled; clicked => { root.fmmi-rand-car-wave-enabled = !root.fmmi-rand-car-wave-enabled; root.fmmi-rand-car-wave-enabled-changed(root.fmmi-rand-car-wave-enabled); } }
-                                RDSCircleToggle { label: "ModW"; active: root.fmmi-rand-mod-wave-enabled; clicked => { root.fmmi-rand-mod-wave-enabled = !root.fmmi-rand-mod-wave-enabled; root.fmmi-rand-mod-wave-enabled-changed(root.fmmi-rand-mod-wave-enabled); } }
-                                RDSCircleToggle { label: "Mode"; active: root.fmmi-rand-mod-mode-enabled; clicked => { root.fmmi-rand-mod-mode-enabled = !root.fmmi-rand-mod-mode-enabled; root.fmmi-rand-mod-mode-enabled-changed(root.fmmi-rand-mod-mode-enabled); } }
-                                RDSCircleToggle { label: "CarF"; active: root.fmmi-rand-car-freq-enabled; clicked => { root.fmmi-rand-car-freq-enabled = !root.fmmi-rand-car-freq-enabled; root.fmmi-rand-car-freq-enabled-changed(root.fmmi-rand-car-freq-enabled); } }
-                                RDSCircleToggle { label: "CarD"; active: root.fmmi-rand-car-detune-enabled; clicked => { root.fmmi-rand-car-detune-enabled = !root.fmmi-rand-car-detune-enabled; root.fmmi-rand-car-detune-enabled-changed(root.fmmi-rand-car-detune-enabled); } }
-                                RDSCircleToggle { label: "ModV"; active: root.fmmi-rand-mod-value-enabled; clicked => { root.fmmi-rand-mod-value-enabled = !root.fmmi-rand-mod-value-enabled; root.fmmi-rand-mod-value-enabled-changed(root.fmmi-rand-mod-value-enabled); } }
-                                RDSCircleToggle { label: "ModD"; active: root.fmmi-rand-mod-detune-enabled; clicked => { root.fmmi-rand-mod-detune-enabled = !root.fmmi-rand-mod-detune-enabled; root.fmmi-rand-mod-detune-enabled-changed(root.fmmi-rand-mod-detune-enabled); } }
-                                RDSCircleToggle { label: "Index"; active: root.fmmi-rand-index-enabled; clicked => { root.fmmi-rand-index-enabled = !root.fmmi-rand-index-enabled; root.fmmi-rand-index-enabled-changed(root.fmmi-rand-index-enabled); } }
-                                RDSCircleToggle { label: "Feed"; active: root.fmmi-rand-feedback-enabled; clicked => { root.fmmi-rand-feedback-enabled = !root.fmmi-rand-feedback-enabled; root.fmmi-rand-feedback-enabled-changed(root.fmmi-rand-feedback-enabled); } }
-                                RDSCircleToggle { label: "Drive"; active: root.fmmi-rand-drive-enabled; clicked => { root.fmmi-rand-drive-enabled = !root.fmmi-rand-drive-enabled; root.fmmi-rand-drive-enabled-changed(root.fmmi-rand-drive-enabled); } }
-                                RDSCircleToggle { label: "Out"; active: root.fmmi-rand-out-level-enabled; clicked => { root.fmmi-rand-out-level-enabled = !root.fmmi-rand-out-level-enabled; root.fmmi-rand-out-level-enabled-changed(root.fmmi-rand-out-level-enabled); } }
+                                spacing: 8px;
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-amp-attack;
+                                        min-value: 0;
+                                        max-value: 127;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Atk";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-amp-attack = v;
+                                            root.fmmi-step-amp-attack-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-amp-decay;
+                                        min-value: 0;
+                                        max-value: 127;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Dec";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-amp-decay = v;
+                                            root.fmmi-step-amp-decay-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-amp-sustain;
+                                        min-value: 0;
+                                        max-value: 127;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Sus";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-amp-sustain = v;
+                                            root.fmmi-step-amp-sustain-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-amp-release;
+                                        min-value: 0;
+                                        max-value: 127;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Rel";
+                                        label-pos: "top-center";
+                                        value-changed(v) => {
+                                            root.fmmi-step-amp-release = v;
+                                            root.fmmi-step-amp-release-changed(v);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 24px;
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-step-gate-length;
+                                        min-value: 0;
+                                        max-value: 0;
+                                        infinite-rotary: true;
+                                        size: 100px;
+                                        indicator-position: 34px;
+                                        sensitivity: 1.0;
+                                        scroll-sensitivity: 1.0;
+                                        label: "Gate";
+                                        label-pos: "top-center";
+                                        readout-suffix: "ms";
+                                        value-changed(v) => {
+                                            let clamped = Math.max(0, v);
+                                            root.fmmi-step-gate-length = clamped;
+                                            root.fmmi-step-gate-length-changed(clamped);
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    padding-top: 6px;
+                                    Text { text: "Randomize Params"; horizontal-alignment: center; color: Theme.active.text_secondary; font-size: 11px; }
+                                    GridLayout {
+                                        width: 280px;
+                                        spacing: 10px;
+                                        Row {
+                                            RDSCircleToggle { label: "Note"; active: root.fmmi-rand-note-enabled; clicked => { root.fmmi-rand-note-enabled = !root.fmmi-rand-note-enabled; root.fmmi-rand-note-enabled-changed(root.fmmi-rand-note-enabled); } }
+                                            RDSCircleToggle { label: "CarW"; active: root.fmmi-rand-car-wave-enabled; clicked => { root.fmmi-rand-car-wave-enabled = !root.fmmi-rand-car-wave-enabled; root.fmmi-rand-car-wave-enabled-changed(root.fmmi-rand-car-wave-enabled); } }
+                                            RDSCircleToggle { label: "ModW"; active: root.fmmi-rand-mod-wave-enabled; clicked => { root.fmmi-rand-mod-wave-enabled = !root.fmmi-rand-mod-wave-enabled; root.fmmi-rand-mod-wave-enabled-changed(root.fmmi-rand-mod-wave-enabled); } }
+                                            RDSCircleToggle { label: "Mode"; active: root.fmmi-rand-mod-mode-enabled; clicked => { root.fmmi-rand-mod-mode-enabled = !root.fmmi-rand-mod-mode-enabled; root.fmmi-rand-mod-mode-enabled-changed(root.fmmi-rand-mod-mode-enabled); } }
+                                            RDSCircleToggle { label: "CarF"; active: root.fmmi-rand-car-freq-enabled; clicked => { root.fmmi-rand-car-freq-enabled = !root.fmmi-rand-car-freq-enabled; root.fmmi-rand-car-freq-enabled-changed(root.fmmi-rand-car-freq-enabled); } }
+                                        }
+                                        Row {
+                                            RDSCircleToggle { label: "CarD"; active: root.fmmi-rand-car-detune-enabled; clicked => { root.fmmi-rand-car-detune-enabled = !root.fmmi-rand-car-detune-enabled; root.fmmi-rand-car-detune-enabled-changed(root.fmmi-rand-car-detune-enabled); } }
+                                            RDSCircleToggle { label: "ModV"; active: root.fmmi-rand-mod-value-enabled; clicked => { root.fmmi-rand-mod-value-enabled = !root.fmmi-rand-mod-value-enabled; root.fmmi-rand-mod-value-enabled-changed(root.fmmi-rand-mod-value-enabled); } }
+                                            RDSCircleToggle { label: "ModD"; active: root.fmmi-rand-mod-detune-enabled; clicked => { root.fmmi-rand-mod-detune-enabled = !root.fmmi-rand-mod-detune-enabled; root.fmmi-rand-mod-detune-enabled-changed(root.fmmi-rand-mod-detune-enabled); } }
+                                            RDSCircleToggle { label: "Index"; active: root.fmmi-rand-index-enabled; clicked => { root.fmmi-rand-index-enabled = !root.fmmi-rand-index-enabled; root.fmmi-rand-index-enabled-changed(root.fmmi-rand-index-enabled); } }
+                                            RDSCircleToggle { label: "Feed"; active: root.fmmi-rand-feedback-enabled; clicked => { root.fmmi-rand-feedback-enabled = !root.fmmi-rand-feedback-enabled; root.fmmi-rand-feedback-enabled-changed(root.fmmi-rand-feedback-enabled); } }
+                                        }
+                                        Row {
+                                            RDSCircleToggle { label: "Drive"; active: root.fmmi-rand-drive-enabled; clicked => { root.fmmi-rand-drive-enabled = !root.fmmi-rand-drive-enabled; root.fmmi-rand-drive-enabled-changed(root.fmmi-rand-drive-enabled); } }
+                                            RDSCircleToggle { label: "Out"; active: root.fmmi-rand-out-level-enabled; clicked => { root.fmmi-rand-out-level-enabled = !root.fmmi-rand-out-level-enabled; root.fmmi-rand-out-level-enabled-changed(root.fmmi-rand-out-level-enabled); } }
+                                            RDSCircleToggle { label: "Atk"; active: root.fmmi-rand-amp-attack-enabled; clicked => { root.fmmi-rand-amp-attack-enabled = !root.fmmi-rand-amp-attack-enabled; root.fmmi-rand-amp-attack-enabled-changed(root.fmmi-rand-amp-attack-enabled); } }
+                                            RDSCircleToggle { label: "Dec"; active: root.fmmi-rand-amp-decay-enabled; clicked => { root.fmmi-rand-amp-decay-enabled = !root.fmmi-rand-amp-decay-enabled; root.fmmi-rand-amp-decay-enabled-changed(root.fmmi-rand-amp-decay-enabled); } }
+                                            RDSCircleToggle { label: "Sus"; active: root.fmmi-rand-amp-sustain-enabled; clicked => { root.fmmi-rand-amp-sustain-enabled = !root.fmmi-rand-amp-sustain-enabled; root.fmmi-rand-amp-sustain-enabled-changed(root.fmmi-rand-amp-sustain-enabled); } }
+                                        }
+                                        Row {
+                                            RDSCircleToggle { label: "Rel"; active: root.fmmi-rand-amp-release-enabled; clicked => { root.fmmi-rand-amp-release-enabled = !root.fmmi-rand-amp-release-enabled; root.fmmi-rand-amp-release-enabled-changed(root.fmmi-rand-amp-release-enabled); } }
+                                            RDSCircleToggle { label: "Gate"; active: root.fmmi-rand-gate-length-enabled; clicked => { root.fmmi-rand-gate-length-enabled = !root.fmmi-rand-gate-length-enabled; root.fmmi-rand-gate-length-enabled-changed(root.fmmi-rand-gate-length-enabled); } }
+                                        }
+                                    }
+                                }
                             }
-
                             HorizontalLayout {
                                 spacing: 8px;
                                 RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand Step"; clicked => root.fmmi-rand-step-params(); }
                                 RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand Page"; clicked => root.fmmi-rand-page-params(); }
                                 RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand All"; clicked => root.fmmi-rand-all-params(); }
                             }
-
                             HorizontalLayout {
-                                RDSKeybed {
-                                    octaves: 5;
-                                    scale: "chromatic";
-                                    size: 24px;
-                                    note-triggered(note) => {
-                                        RDSKeybedBus.last-note = note;
+                                    RDSKeybed {
+                                        octaves: 5;
+                                        scale: "chromatic";
+                                        scale-mask: root.fmmi_scale_mask;
+                                        size: 24px;
+                                        note-triggered(note) => {
+                                            RDSKeybedBus.last-note = note;
                                         RDSKeybedBus.note-triggered(note);
                                     }
                                 }
@@ -915,23 +1169,17 @@ export component FMMIEngine inherits Rectangle {
                     }
                 }
             }
-
             Rectangle {
                 background: Theme.active.ui_device_panel_bg;
                 border-width: 2px;
                 border-radius: 6px;
                 border-color: Theme.active.border-strong;
                 width: parent.width / 3 - 80px;
-                height: 352px;
-
+                height: 422px;
                 VerticalLayout {
                     padding: 12px;
                     spacing: 12px;
-
-                    RDSHeaderLabel {
-                        bg-color: #fff;
-                        text: "Step Navigation";
-                    }
+                    RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Step Navigation"; }
                     HorizontalLayout {
                         spacing: 8px;
                         height: 46px;
@@ -982,16 +1230,11 @@ export component FMMIEngine inherits Rectangle {
                             }
                         }
                     }
-
-                    RDSHeaderLabel {
-                        bg-color: #fff;
-                        text: "Utility Functions";
-                    }
+                    RDSHeaderLabel { bg-color: Theme.active.accent_secondary; text: "Utility Functions"; }
                     HorizontalLayout {
                         spacing: 12px;
                         padding-top: 8px;
                         height: 20px;
-
                         RDSTextStepper {
                             width: 320px;
                             options: ["Randomize", "Clear", "Copy/Paste"];
@@ -1006,7 +1249,6 @@ export component FMMIEngine inherits Rectangle {
                             index-changed(v) => { root.fmmi-utility-mode = v; }
                         }
                     }
-
                     if root.fmmi-utility-mode == 0 : VerticalLayout {
                         spacing: 6px;
                         padding-top: 6px;
@@ -1033,8 +1275,40 @@ export component FMMIEngine inherits Rectangle {
                                 RDSSelectButton { label: "All"; width: 92px; active: false; clicked => { root.fmmi-randomize-both-all(); } }
                             }
                         }
+                        HorizontalLayout {
+                            padding-top: 42px;
+                            spacing: 12px;
+                            GridLayout {
+                                spacing: 46px;
+                                padding-left: 46px;
+                                padding-right: 46px;
+                                Row {
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-randomize-amount;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 80px; indicator-position: 24px;
+                                        label: "Param Amt";
+                                        label-pos: "top-center";
+                                        readout-enabled: false;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => { root.fmmi-randomize-amount = v; root.fmmi-randomize-amount-changed(v); }
+                                    }
+                                    RDSKnob {
+                                        renderer: "lo-fi";
+                                        value: root.fmmi-randomize-steps-amount;
+                                        min-value: 0.0; max-value: 1.0;
+                                        size: 80px; indicator-position: 24px;
+                                        label: "Step Amt";
+                                        label-pos: "top-center";
+                                        readout-enabled: false;
+                                        sensitivity: 0.01; scroll-sensitivity: 0.01;
+                                        value-changed(v) => { root.fmmi-randomize-steps-amount = v; root.fmmi-randomize-steps-amount-changed(v); }
+                                    }
+                                }
+                            }
+                        }
                     }
-
                     if root.fmmi-utility-mode == 1 : VerticalLayout {
                         spacing: 6px;
                         padding-top: 6px;
@@ -1062,7 +1336,6 @@ export component FMMIEngine inherits Rectangle {
                             }
                         }
                     }
-
                     if root.fmmi-utility-mode == 2 : VerticalLayout {
                         spacing: 6px;
                         padding-top: 6px;
@@ -1115,7 +1388,6 @@ export component FMMIEngine inherits Rectangle {
                 Rectangle {
                     width: parent.width / 2 - 16px;
                     height: 266px;
-
                     GranulatorDevice {
                         mosaic-enabled <=> root.mosaic-enabled;
                         mosaic-loop-lock <=> root.mosaic-loop-lock;
@@ -1152,11 +1424,10 @@ export component FMMIEngine inherits Rectangle {
                     }
                 }
 
+                // Silk Device
                 Rectangle {
                     width: parent.width / 2 - 16px;
                     height: 266px;
-
-                    // Silk Device
                     SilkDevice {
                         ring-enabled <=> root.ring-enabled;
                         ring-cutoff <=> root.ring-cutoff;
@@ -1203,7 +1474,6 @@ export component FMMIEngine inherits Rectangle {
                 Rectangle {
                     width: parent.width / 2 - 16px;
                     height: 266px;
-
                     TextureDevice {
                         texture-enabled <=> root.texture-enabled;
                         texture-gate <=> root.texture-gate;
@@ -1234,7 +1504,6 @@ export component FMMIEngine inherits Rectangle {
                 Rectangle {
                     width: parent.width / 2 - 16px;
                     height: 266px;
-
                     ReflectDevice {
                         reflect-enabled <=> root.reflect-enabled;
                         reflect-freeze <=> root.reflect-freeze;
@@ -1273,7 +1542,6 @@ export component FMMIEngine inherits Rectangle {
                 Rectangle {
                     width: 1216px;
                     height: 354px;
-
                     Modul8Device {
                         width: parent.width;
                         modul8-enabled <=> root.modul8-enabled;
@@ -1304,7 +1572,6 @@ export component FMMIEngine inherits Rectangle {
                 Rectangle {
                     width: 1216px;
                     height: 186px;
-
                     G8Device {
                         gate-enabled <=> root.g8-enabled;
                         gate-rate-index <=> root.g8-rate-index;

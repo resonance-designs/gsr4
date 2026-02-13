@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.25
+ * Version: 0.1.26
  * Component: UI Definitions
  */
 
@@ -118,7 +118,12 @@ export component TLBX1UI inherits Window {
     in-out property <float> fmmi-feedback: 0;
     in-out property <float> fmmi-drive: 0;
     in-out property <float> fmmi-out-level: 0.5;
+    in-out property <float> fmmi-amp-attack: 63;
+    in-out property <float> fmmi-amp-decay: 63;
+    in-out property <float> fmmi-amp-sustain: 63;
+    in-out property <float> fmmi-amp-release: 63;
     in-out property <float> fmmi-prob: 100.0;
+    in-out property <bool> fmmi-poly-enabled: false;
     in-out property <[bool]> fmmi-sequencer-grid;
     in property <int> fmmi-sequencer-current-step: -1;
     in-out property <int> fmmi-page: 0;
@@ -135,6 +140,11 @@ export component TLBX1UI inherits Window {
     in-out property <float> fmmi-step-feedback: 0;
     in-out property <float> fmmi-step-drive: 0;
     in-out property <float> fmmi-step-out-level: 0;
+    in-out property <float> fmmi-step-amp-attack: 0;
+    in-out property <float> fmmi-step-amp-decay: 0;
+    in-out property <float> fmmi-step-amp-sustain: 0;
+    in-out property <float> fmmi-step-amp-release: 0;
+    in-out property <float> fmmi-step-gate-length: 100;
     in-out property <bool> fmmi-rand-note-enabled: true;
     in-out property <bool> fmmi-rand-car-wave-enabled: true;
     in-out property <bool> fmmi-rand-mod-wave-enabled: true;
@@ -147,6 +157,16 @@ export component TLBX1UI inherits Window {
     in-out property <bool> fmmi-rand-feedback-enabled: true;
     in-out property <bool> fmmi-rand-drive-enabled: true;
     in-out property <bool> fmmi-rand-out-level-enabled: true;
+    in-out property <bool> fmmi-rand-amp-attack-enabled: true;
+    in-out property <bool> fmmi-rand-amp-decay-enabled: true;
+    in-out property <bool> fmmi-rand-amp-sustain-enabled: true;
+    in-out property <bool> fmmi-rand-amp-release-enabled: true;
+    in-out property <bool> fmmi-rand-gate-length-enabled: true;
+    in-out property <float> fmmi-randomize-amount: 1.0;
+    in-out property <float> fmmi-randomize-steps-amount: 1.0;
+    in property <[string]> fmmi-scale-options;
+    in-out property <int> fmmi-scale-index: 0;
+    in property <int> fmmi-scale-mask: 0;
     in-out property <int> fmmi-utility-mode: 0;
     in-out property <bool> texture-enabled: false;
     in-out property <bool> texture-gate: false;
@@ -1046,7 +1066,12 @@ export component TLBX1UI inherits Window {
     callback fmmi-feedback-changed(value: float);
     callback fmmi-drive-changed(value: float);
     callback fmmi-out-level-changed(value: float);
+    callback fmmi-amp-attack-changed(value: float);
+    callback fmmi-amp-decay-changed(value: float);
+    callback fmmi-amp-sustain-changed(value: float);
+    callback fmmi-amp-release-changed(value: float);
     callback fmmi-prob-changed(value: float);
+    callback fmmi-poly-enabled-changed(value: bool);
     callback fmmi-page-changed(page: int);
     callback fmmi-edit-step-changed(step: int);
     callback fmmi-sequencer-grid-toggled(step: int);
@@ -1086,6 +1111,11 @@ export component TLBX1UI inherits Window {
     callback fmmi-step-feedback-changed(value: float);
     callback fmmi-step-drive-changed(value: float);
     callback fmmi-step-out-level-changed(value: float);
+    callback fmmi-step-amp-attack-changed(value: float);
+    callback fmmi-step-amp-decay-changed(value: float);
+    callback fmmi-step-amp-sustain-changed(value: float);
+    callback fmmi-step-amp-release-changed(value: float);
+    callback fmmi-step-gate-length-changed(value: float);
     callback fmmi-rand-note-enabled-changed(value: bool);
     callback fmmi-rand-car-wave-enabled-changed(value: bool);
     callback fmmi-rand-mod-wave-enabled-changed(value: bool);
@@ -1098,6 +1128,14 @@ export component TLBX1UI inherits Window {
     callback fmmi-rand-feedback-enabled-changed(value: bool);
     callback fmmi-rand-drive-enabled-changed(value: bool);
     callback fmmi-rand-out-level-enabled-changed(value: bool);
+    callback fmmi-rand-amp-attack-enabled-changed(value: bool);
+    callback fmmi-rand-amp-decay-enabled-changed(value: bool);
+    callback fmmi-rand-amp-sustain-enabled-changed(value: bool);
+    callback fmmi-rand-amp-release-enabled-changed(value: bool);
+    callback fmmi-rand-gate-length-enabled-changed(value: bool);
+    callback fmmi-randomize-amount-changed(value: float);
+    callback fmmi-randomize-steps-amount-changed(value: float);
+    callback fmmi-scale-selected(index: int);
     callback fmmi-rand-step-params();
     callback fmmi-rand-page-params();
     callback fmmi-rand-all-params();
@@ -2675,7 +2713,12 @@ export component TLBX1UI inherits Window {
                                             fmmi-feedback <=> root.fmmi-feedback;
                                             fmmi-drive <=> root.fmmi-drive;
                                             fmmi-out-level <=> root.fmmi-out-level;
+                                            fmmi-amp-attack <=> root.fmmi-amp-attack;
+                                            fmmi-amp-decay <=> root.fmmi-amp-decay;
+                                            fmmi-amp-sustain <=> root.fmmi-amp-sustain;
+                                            fmmi-amp-release <=> root.fmmi-amp-release;
                                             fmmi-prob <=> root.fmmi-prob;
+                                            fmmi-poly-enabled <=> root.fmmi-poly-enabled;
                                             fmmi-sequencer-grid <=> root.fmmi-sequencer-grid;
                                             fmmi-sequencer-current-step: root.fmmi-sequencer-current-step;
                                             fmmi-page <=> root.fmmi-page;
@@ -2692,6 +2735,11 @@ export component TLBX1UI inherits Window {
                                             fmmi-step-feedback <=> root.fmmi-step-feedback;
                                             fmmi-step-drive <=> root.fmmi-step-drive;
                                             fmmi-step-out-level <=> root.fmmi-step-out-level;
+                                            fmmi-step-amp-attack <=> root.fmmi-step-amp-attack;
+                                            fmmi-step-amp-decay <=> root.fmmi-step-amp-decay;
+                                            fmmi-step-amp-sustain <=> root.fmmi-step-amp-sustain;
+                                            fmmi-step-amp-release <=> root.fmmi-step-amp-release;
+                                            fmmi-step-gate-length <=> root.fmmi-step-gate-length;
                                             fmmi-rand-note-enabled <=> root.fmmi-rand-note-enabled;
                                             fmmi-rand-car-wave-enabled <=> root.fmmi-rand-car-wave-enabled;
                                             fmmi-rand-mod-wave-enabled <=> root.fmmi-rand-mod-wave-enabled;
@@ -2704,6 +2752,16 @@ export component TLBX1UI inherits Window {
                                             fmmi-rand-feedback-enabled <=> root.fmmi-rand-feedback-enabled;
                                             fmmi-rand-drive-enabled <=> root.fmmi-rand-drive-enabled;
                                             fmmi-rand-out-level-enabled <=> root.fmmi-rand-out-level-enabled;
+                                            fmmi-rand-amp-attack-enabled <=> root.fmmi-rand-amp-attack-enabled;
+                                            fmmi-rand-amp-decay-enabled <=> root.fmmi-rand-amp-decay-enabled;
+                                            fmmi-rand-amp-sustain-enabled <=> root.fmmi-rand-amp-sustain-enabled;
+                                            fmmi-rand-amp-release-enabled <=> root.fmmi-rand-amp-release-enabled;
+                                            fmmi-rand-gate-length-enabled <=> root.fmmi-rand-gate-length-enabled;
+                                            fmmi-randomize-amount <=> root.fmmi-randomize-amount;
+                                            fmmi-randomize-steps-amount <=> root.fmmi-randomize-steps-amount;
+                                            fmmi-scale-options: root.fmmi_scale_options;
+                                            fmmi-scale-index <=> root.fmmi_scale_index;
+                                            fmmi-scale-mask: root.fmmi_scale_mask;
                                             fmmi-utility-mode <=> root.fmmi-utility-mode;
                                             ring-decay-modes: root.ring-decay-modes;
                                             mosaic-enabled <=> root.mosaic-enabled;
@@ -2785,7 +2843,12 @@ export component TLBX1UI inherits Window {
                                             fmmi-feedback-changed(value) => { root.fmmi-feedback-changed(value); }
                                             fmmi-drive-changed(value) => { root.fmmi-drive-changed(value); }
                                             fmmi-out-level-changed(value) => { root.fmmi-out-level-changed(value); }
+                                            fmmi-amp-attack-changed(value) => { root.fmmi-amp-attack-changed(value); }
+                                            fmmi-amp-decay-changed(value) => { root.fmmi-amp-decay-changed(value); }
+                                            fmmi-amp-sustain-changed(value) => { root.fmmi-amp-sustain-changed(value); }
+                                            fmmi-amp-release-changed(value) => { root.fmmi-amp-release-changed(value); }
                                             fmmi-prob-changed(value) => { root.fmmi-prob-changed(value); }
+                                            fmmi-poly-enabled-changed(value) => { root.fmmi-poly-enabled-changed(value); }
                                             fmmi-page-changed(page) => { root.fmmi-page-changed(page); }
                                             fmmi-edit-step-changed(step) => { root.fmmi-edit-step-changed(step); }
                                             fmmi-sequencer-grid-toggled(step) => { root.fmmi-sequencer-grid-toggled(step); }
@@ -2825,6 +2888,11 @@ export component TLBX1UI inherits Window {
                                             fmmi-step-feedback-changed(value) => { root.fmmi-step-feedback-changed(value); }
                                             fmmi-step-drive-changed(value) => { root.fmmi-step-drive-changed(value); }
                                             fmmi-step-out-level-changed(value) => { root.fmmi-step-out-level-changed(value); }
+                                            fmmi-step-amp-attack-changed(value) => { root.fmmi-step-amp-attack-changed(value); }
+                                            fmmi-step-amp-decay-changed(value) => { root.fmmi-step-amp-decay-changed(value); }
+                                            fmmi-step-amp-sustain-changed(value) => { root.fmmi-step-amp-sustain-changed(value); }
+                                            fmmi-step-amp-release-changed(value) => { root.fmmi-step-amp-release-changed(value); }
+                                            fmmi-step-gate-length-changed(value) => { root.fmmi-step-gate-length-changed(value); }
                                             fmmi-rand-note-enabled-changed(value) => { root.fmmi-rand-note-enabled-changed(value); }
                                             fmmi-rand-car-wave-enabled-changed(value) => { root.fmmi-rand-car-wave-enabled-changed(value); }
                                             fmmi-rand-mod-wave-enabled-changed(value) => { root.fmmi-rand-mod-wave-enabled-changed(value); }
@@ -2837,6 +2905,14 @@ export component TLBX1UI inherits Window {
                                             fmmi-rand-feedback-enabled-changed(value) => { root.fmmi-rand-feedback-enabled-changed(value); }
                                             fmmi-rand-drive-enabled-changed(value) => { root.fmmi-rand-drive-enabled-changed(value); }
                                             fmmi-rand-out-level-enabled-changed(value) => { root.fmmi-rand-out-level-enabled-changed(value); }
+                                            fmmi-rand-amp-attack-enabled-changed(value) => { root.fmmi-rand-amp-attack-enabled-changed(value); }
+                                            fmmi-rand-amp-decay-enabled-changed(value) => { root.fmmi-rand-amp-decay-enabled-changed(value); }
+                                            fmmi-rand-amp-sustain-enabled-changed(value) => { root.fmmi-rand-amp-sustain-enabled-changed(value); }
+                                            fmmi-rand-amp-release-enabled-changed(value) => { root.fmmi-rand-amp-release-enabled-changed(value); }
+                                            fmmi-rand-gate-length-enabled-changed(value) => { root.fmmi-rand-gate-length-enabled-changed(value); }
+                                            fmmi-randomize-amount-changed(value) => { root.fmmi-randomize-amount-changed(value); }
+                                            fmmi-randomize-steps-amount-changed(value) => { root.fmmi-randomize-steps-amount-changed(value); }
+                                            fmmi-scale-selected(index) => { root.fmmi-scale-selected(index); }
                                             fmmi-rand-step-params() => { root.fmmi-rand-step-params(); }
                                             fmmi-rand-page-params() => { root.fmmi-rand-page-params(); }
                                             fmmi-rand-all-params() => { root.fmmi-rand-all-params(); }

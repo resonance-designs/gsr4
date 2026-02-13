@@ -1,7 +1,7 @@
 !include "MUI2.nsh"
 
 !define PRODUCT_NAME "TLBX-1"
-!define PRODUCT_VERSION "0.1.25"
+!define PRODUCT_VERSION "0.1.26"
 !define COMPANY_NAME "TLBX-1"
 
 !define STANDALONE_SRC "dist\\windows\\standalone\\tlbx-1.exe"
@@ -39,6 +39,7 @@ SectionEnd
 Section "Uninstall"
   Delete "$DESKTOP\\TLBX-1.lnk"
   Delete "$INSTDIR\\tlbx-1.exe"
+  RMDir /r "$INSTDIR\\documentation"
   RMDir "$INSTDIR"
   RMDir /r "$COMMONFILES\\VST3\\TLBX-1.vst3"
 SectionEnd

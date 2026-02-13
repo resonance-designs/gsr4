@@ -27,7 +27,7 @@ Engines are responsible for generating or manipulating raw audio data.
 - **Animate**: A vector synthesis engine with sequencing.
 - **SynDRM**: A percussion-focused multi-lane drum engine.
 - **Void Seed**: A generative drone/noise engine.
-- **FMMI**: A two-operator FM engine with per-step parameter overrides.
+- **FMMI**: A two-operator FM engine with ADSR amp envelope, mono/poly modes, scale-based note randomization, and per-step parameter overrides.
 
 ### Devices (The Effects)
 Each track can run a downstream chain of effect devices.
