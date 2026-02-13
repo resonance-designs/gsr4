@@ -51,7 +51,7 @@ component KeybedKey inherits Rectangle {
     border-width: 1px;
     background: root.is-black ? Theme.active.background_raised : Theme.active.background_main;
 
-    private property <int> scale_divisor: (
+    private property <int> scale-divisor: (
         root.semitone == 0 ? 1 :
         root.semitone == 1 ? 2 :
         root.semitone == 2 ? 4 :
@@ -67,7 +67,8 @@ component KeybedKey inherits Rectangle {
 
     private property <bool> allowed: (
         root.scale_mask != 0
-            ? (Math.mod(Math.floor(root.scale_mask / root.scale_divisor), 2) == 1)
+            // Bit-extract: allowed if bit [semitone] is set in scale_mask
+            ? (Math.mod(Math.floor(root.scale_mask / root.scale-divisor), 2) == 1)
             : (root.scale == "" || root.scale == "chromatic")
                 ? true
                 : root.scale == "major"

@@ -1854,6 +1854,12 @@ struct Track {
     monomi_filter_intensity: AtomicU32,
     /// MonoMI filter envelope polarity (-1 or 1).
     monomi_filter_polarity: AtomicU32,
+    /// MonoMI filter saturation amount (0..1).
+    monomi_filter_saturation: AtomicU32,
+    /// MonoMI filter saturation env follower amount (0..1).
+    monomi_filter_sat_env: AtomicU32,
+    /// MonoMI filter saturation placement (true=pre-filter, false=post-filter).
+    monomi_filter_sat_pre: AtomicBool,
     /// MonoMI mix compressor mode (0=gentle,1=hard,2=limiter).
     monomi_mix_comp_mode: AtomicU32,
     /// MonoMI glide (ms).
@@ -2726,6 +2732,9 @@ impl Default for Track {
             monomi_filter_release: AtomicU32::new(12.0f32.to_bits()),
             monomi_filter_intensity: AtomicU32::new(2.0f32.to_bits()),
             monomi_filter_polarity: AtomicU32::new(1.0f32.to_bits()),
+            monomi_filter_saturation: AtomicU32::new(0.0f32.to_bits()),
+            monomi_filter_sat_env: AtomicU32::new(0.0f32.to_bits()),
+            monomi_filter_sat_pre: AtomicBool::new(false),
             monomi_mix_comp_mode: AtomicU32::new(0),
             monomi_glide: AtomicU32::new(0.0f32.to_bits()),
             monomi_prob: AtomicU32::new(1.0f32.to_bits()),
@@ -2735,9 +2744,9 @@ impl Default for Track {
             monomi_lfo_shape: [AtomicU32::new(0), AtomicU32::new(1), AtomicU32::new(4)],
             monomi_lfo_target: [AtomicU32::new(0), AtomicU32::new(6), AtomicU32::new(5)],
             monomi_lfo_amount: [
-                AtomicU32::new(0.5f32.to_bits()),
-                AtomicU32::new(0.25f32.to_bits()),
-                AtomicU32::new(0.1f32.to_bits()),
+                AtomicU32::new(0.0f32.to_bits()),
+                AtomicU32::new(0.0f32.to_bits()),
+                AtomicU32::new(0.0f32.to_bits()),
             ],
             monomi_lfo_rate: [
                 AtomicU32::new(0.5f32.to_bits()),
@@ -2999,6 +3008,7 @@ struct MonomiDspState {
     current_filter_sustain: f32,
     current_filter_release: f32,
     current_gate_steps: f32,
+    filter_sat_env: [f32; 2],
 }
 
 impl MonomiDspState {
@@ -3048,6 +3058,7 @@ impl MonomiDspState {
             current_filter_sustain: 64.0,
             current_filter_release: 12.0,
             current_gate_steps: 1.0,
+            filter_sat_env: [0.0; 2],
         }
     }
 }
@@ -10009,13 +10020,14 @@ impl TLBX1 {
 
         let cutoff = f32::from_bits(track.monomi_cutoff.load(Ordering::Relaxed))
             .clamp(20.0, 12_000.0);
+        let filter_mode = track.monomi_filter_mode.load(Ordering::Relaxed);
+        let resonance_max = if filter_mode == 0 { 1.0 } else { 8.0 };
         let resonance = f32::from_bits(track.monomi_resonance.load(Ordering::Relaxed))
-            .clamp(0.1, 12.0);
+            .clamp(0.0, resonance_max);
         let filter_morph = f32::from_bits(track.monomi_filter_morph.load(Ordering::Relaxed))
             .clamp(0.0, 1.0);
-        let filter_mode = track.monomi_filter_mode.load(Ordering::Relaxed);
         let volume = f32::from_bits(track.monomi_volume.load(Ordering::Relaxed))
-            .clamp(0.0, 2.0);
+            .clamp(0.0, 1.0);
 
         let amp_attack = f32::from_bits(track.monomi_amp_attack.load(Ordering::Relaxed));
         let amp_decay = f32::from_bits(track.monomi_amp_decay.load(Ordering::Relaxed));
@@ -10029,6 +10041,13 @@ impl TLBX1 {
             f32::from_bits(track.monomi_filter_intensity.load(Ordering::Relaxed));
         let filter_polarity =
             f32::from_bits(track.monomi_filter_polarity.load(Ordering::Relaxed));
+        let filter_saturation =
+            f32::from_bits(track.monomi_filter_saturation.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let filter_sat_env =
+            f32::from_bits(track.monomi_filter_sat_env.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let filter_sat_pre = track.monomi_filter_sat_pre.load(Ordering::Relaxed);
         let glide = f32::from_bits(track.monomi_glide.load(Ordering::Relaxed))
             .clamp(0.0, 1000.0);
         let prob = f32::from_bits(track.monomi_prob.load(Ordering::Relaxed))
@@ -10064,7 +10083,7 @@ impl TLBX1 {
                 dsp_state.current_freq = freq;
             }
             dsp_state.current_cutoff = step_cutoff;
-            dsp_state.current_resonance = step_resonance;
+            dsp_state.current_resonance = step_resonance.clamp(0.0, resonance_max);
             dsp_state.current_morph = step_morph;
             dsp_state.current_filter_intensity = step_filter_intensity;
             dsp_state.current_filter_polarity = step_filter_polarity;
@@ -10162,6 +10181,8 @@ impl TLBX1 {
         let num_channels = output.len().max(1);
 
         let amp_smooth_coeff = (-1.0 / (0.003 * sr)).exp();
+        // Hidden decay for saturation env follower to emphasize transients.
+        let sat_env_decay_coeff = (-1.0 / (0.020 * sr)).exp();
         for sample_idx in 0..num_buffer_samples {
             if transport_running {
                 sequencer_phase += 1.0;
@@ -10193,7 +10214,11 @@ impl TLBX1 {
                             let v = f32::from_bits(
                                 track.monomi_step_resonance[step_idx].load(Ordering::Relaxed),
                             );
-                            if v >= 0.0 { v } else { resonance }
+                            if v >= 0.0 {
+                                v.clamp(0.0, resonance_max)
+                            } else {
+                                resonance
+                            }
                         };
                         let step_morph = {
                             let v = f32::from_bits(
@@ -10355,7 +10380,7 @@ impl TLBX1 {
                     }
                     1 => {
                         let base = dsp_state.current_resonance;
-                        let modded = (base + scaled * 2.0).clamp(0.1, 12.0);
+                        let modded = (base + scaled * 2.0).clamp(0.0, 1.0);
                         lfo_res_mod = modded - base;
                     }
                     2 => {
@@ -10513,7 +10538,8 @@ impl TLBX1 {
             sample /= mix_sum;
 
             let cutoff_base = (dsp_state.current_cutoff + lfo_cutoff_mod).clamp(20.0, 20_000.0);
-            let res = (dsp_state.current_resonance + lfo_res_mod).clamp(0.1, 4.0);
+            let res_max = if filter_mode == 0 { 1.0 } else { 8.0 };
+            let res = (dsp_state.current_resonance + lfo_res_mod).clamp(0.0, res_max);
             let morph = (dsp_state.current_morph + lfo_morph_mod).clamp(0.0, 1.0);
             let env_octaves = (dsp_state.current_filter_intensity + lfo_filter_int_mod)
                 * (dsp_state.current_filter_polarity + lfo_filter_pol_mod);
@@ -10526,22 +10552,43 @@ impl TLBX1 {
                 for ch in 0..num_channels.min(2) {
                     let mut lp_out = [0.0f32];
                     let mut hp_out = [0.0f32];
-                    let q = res.clamp(0.1, 4.0);
+                    let q = if filter_mode == 0 {
+                        res.clamp(0.1, 1.0)
+                    } else {
+                        res.clamp(0.1, 8.0)
+                    };
+                    let env_input = channel_samples[ch].abs();
+                    let env_decay = dsp_state.filter_sat_env[ch] * sat_env_decay_coeff;
+                    dsp_state.filter_sat_env[ch] = env_input.max(env_decay);
+                    let sat_amt =
+                        (filter_saturation + filter_sat_env * dsp_state.filter_sat_env[ch])
+                            .clamp(0.0, 1.0);
+                    let sat_drive = 1.0 + sat_amt * 8.0;
+                    let sat_norm = sat_drive.tanh().max(1.0e-6);
+                    let sat = |x: f32| (x * sat_drive).tanh() / sat_norm;
+                    let filter_input = if filter_sat_pre {
+                        sat(channel_samples[ch])
+                    } else {
+                        channel_samples[ch]
+                    };
                     match filter_mode {
                         0 => {
-                            dsp_state.filter_moog[ch].tick(&[channel_samples[ch], cutoff, q], &mut lp_out);
-                            dsp_state.filter_hp[ch].tick(&[channel_samples[ch], cutoff, q], &mut hp_out);
+                            dsp_state.filter_moog[ch].tick(&[filter_input, cutoff, q], &mut lp_out);
+                            dsp_state.filter_hp[ch].tick(&[filter_input, cutoff, q], &mut hp_out);
                             channel_samples[ch] = lp_out[0] * (1.0 - morph) + hp_out[0] * morph;
                         }
                         1 => {
-                            dsp_state.filter_lp[ch].tick(&[channel_samples[ch], cutoff, q], &mut lp_out);
-                            dsp_state.filter_hp[ch].tick(&[channel_samples[ch], cutoff, q], &mut hp_out);
+                            dsp_state.filter_lp[ch].tick(&[filter_input, cutoff, q], &mut lp_out);
+                            dsp_state.filter_hp[ch].tick(&[filter_input, cutoff, q], &mut hp_out);
                             channel_samples[ch] = lp_out[0] * (1.0 - morph) + hp_out[0] * morph;
                         }
                         _ => {
-                            dsp_state.filter_hp[ch].tick(&[channel_samples[ch], cutoff, q], &mut hp_out);
+                            dsp_state.filter_hp[ch].tick(&[filter_input, cutoff, q], &mut hp_out);
                             channel_samples[ch] = hp_out[0];
                         }
+                    }
+                    if !filter_sat_pre {
+                        channel_samples[ch] = sat(channel_samples[ch]);
                     }
                 }
             } else {
@@ -14394,7 +14441,7 @@ macro_rules! modul8_targets {
             155, "FMMI: Amp Release", 0.0, 127.0, fmmi_amp_release;
             156, "FMMI: Gate Length", 0.0, 3000.0, fmmi_gate_length;
             157, "MonoMI: Cutoff", 200.0, 8000.0, monomi_cutoff;
-            158, "MonoMI: Resonance", 0.1, 8.0, monomi_resonance;
+            158, "MonoMI: Resonance", 0.0, 8.0, monomi_resonance;
             159, "MonoMI: Morph", 0.0, 1.0, monomi_filter_morph;
             160, "MonoMI: F Env Int", 0.0, 4.0, monomi_filter_intensity;
             161, "MonoMI: F Env Pol", -1.0, 1.0, monomi_filter_polarity;
@@ -17930,6 +17977,9 @@ fn capture_track_params(track: &Track, params: &mut HashMap<String, f32>) {
     params.insert("monomi_filter_release".to_string(), f(&track.monomi_filter_release));
     params.insert("monomi_filter_intensity".to_string(), f(&track.monomi_filter_intensity));
     params.insert("monomi_filter_polarity".to_string(), f(&track.monomi_filter_polarity));
+    params.insert("monomi_filter_saturation".to_string(), f(&track.monomi_filter_saturation));
+    params.insert("monomi_filter_sat_env".to_string(), f(&track.monomi_filter_sat_env));
+    params.insert("monomi_filter_sat_pre".to_string(), b(&track.monomi_filter_sat_pre));
     params.insert("monomi_mix_comp_mode".to_string(), u(&track.monomi_mix_comp_mode));
     params.insert("monomi_glide".to_string(), f(&track.monomi_glide));
     params.insert("monomi_prob".to_string(), f(&track.monomi_prob));
@@ -19019,7 +19069,7 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.monomi_resonance, "monomi_resonance");
     sf(&track.monomi_filter_morph, "monomi_filter_morph");
     su(&track.monomi_filter_mode, "monomi_filter_mode");
-    sf(&track.monomi_volume, "monomi_volume");
+    sf_clamp_0_1(&track.monomi_volume, "monomi_volume");
     sf(&track.monomi_amp_attack, "monomi_amp_attack");
     sf(&track.monomi_amp_decay, "monomi_amp_decay");
     sf(&track.monomi_amp_sustain, "monomi_amp_sustain");
@@ -19030,6 +19080,9 @@ fn apply_track_params(track: &Track, params: &HashMap<String, f32>) {
     sf(&track.monomi_filter_release, "monomi_filter_release");
     sf(&track.monomi_filter_intensity, "monomi_filter_intensity");
     sf(&track.monomi_filter_polarity, "monomi_filter_polarity");
+    sf(&track.monomi_filter_saturation, "monomi_filter_saturation");
+    sf(&track.monomi_filter_sat_env, "monomi_filter_sat_env");
+    sb(&track.monomi_filter_sat_pre, "monomi_filter_sat_pre");
     su(&track.monomi_mix_comp_mode, "monomi_mix_comp_mode");
     sf(&track.monomi_glide, "monomi_glide");
     sf(&track.monomi_prob, "monomi_prob");
@@ -21575,12 +21628,14 @@ impl SlintWindow {
 
         let monomi_cutoff =
             f32::from_bits(self.tracks[track_idx].monomi_cutoff.load(Ordering::Relaxed));
-        let monomi_resonance =
-            f32::from_bits(self.tracks[track_idx].monomi_resonance.load(Ordering::Relaxed));
-        let monomi_filter_morph =
-            f32::from_bits(self.tracks[track_idx].monomi_filter_morph.load(Ordering::Relaxed));
         let monomi_filter_mode =
             self.tracks[track_idx].monomi_filter_mode.load(Ordering::Relaxed) as i32;
+        let monomi_resonance_max = if monomi_filter_mode == 0 { 1.0 } else { 8.0 };
+        let monomi_resonance =
+            f32::from_bits(self.tracks[track_idx].monomi_resonance.load(Ordering::Relaxed))
+                .clamp(0.0, monomi_resonance_max);
+        let monomi_filter_morph =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_morph.load(Ordering::Relaxed));
         let monomi_volume =
             f32::from_bits(self.tracks[track_idx].monomi_volume.load(Ordering::Relaxed));
         let monomi_amp_attack =
@@ -21603,6 +21658,14 @@ impl SlintWindow {
             f32::from_bits(self.tracks[track_idx].monomi_filter_intensity.load(Ordering::Relaxed));
         let monomi_filter_polarity =
             f32::from_bits(self.tracks[track_idx].monomi_filter_polarity.load(Ordering::Relaxed));
+        let monomi_filter_saturation =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_saturation.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let monomi_filter_sat_env =
+            f32::from_bits(self.tracks[track_idx].monomi_filter_sat_env.load(Ordering::Relaxed))
+                .clamp(0.0, 1.0);
+        let monomi_filter_sat_pre =
+            self.tracks[track_idx].monomi_filter_sat_pre.load(Ordering::Relaxed);
         let monomi_mix_comp_mode =
             self.tracks[track_idx].monomi_mix_comp_mode.load(Ordering::Relaxed) as i32;
         let monomi_glide =
@@ -21665,7 +21728,11 @@ impl SlintWindow {
                 self.tracks[track_idx].monomi_step_resonance[monomi_edit_idx]
                     .load(Ordering::Relaxed),
             );
-            if v >= 0.0 { v } else { monomi_resonance }
+            if v >= 0.0 {
+                v.clamp(0.0, monomi_resonance_max)
+            } else {
+                monomi_resonance
+            }
         };
         let monomi_step_env_attack = {
             let v = f32::from_bits(
@@ -22643,7 +22710,7 @@ impl SlintWindow {
         self.ui.set_monomi_resonance(monomi_resonance);
         self.ui.set_monomi_filter_morph(monomi_filter_morph);
         self.ui.set_monomi_filter_mode(monomi_filter_mode);
-        self.ui.set_monomi_volume(monomi_volume);
+        self.ui.set_monomi_volume(monomi_volume.clamp(0.0, 1.0));
         self.ui.set_monomi_amp_attack(monomi_amp_attack);
         self.ui.set_monomi_amp_decay(monomi_amp_decay);
         self.ui.set_monomi_amp_sustain(monomi_amp_sustain);
@@ -22654,6 +22721,9 @@ impl SlintWindow {
         self.ui.set_monomi_filter_release(monomi_filter_release);
         self.ui.set_monomi_filter_intensity(monomi_filter_intensity);
         self.ui.set_monomi_filter_polarity(monomi_filter_polarity);
+        self.ui.set_monomi_filter_saturation(monomi_filter_saturation);
+        self.ui.set_monomi_filter_sat_env(monomi_filter_sat_env);
+        self.ui.set_monomi_filter_sat_pre(monomi_filter_sat_pre);
         self.ui.set_monomi_mix_comp_mode(monomi_mix_comp_mode);
         self.ui.set_monomi_glide(monomi_glide);
         self.ui.set_monomi_prob(monomi_prob);
@@ -30437,6 +30507,8 @@ fn initialize_ui(
     ui.on_monomi_resonance_changed(move |value| {
         let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
         if track_idx < NUM_TRACKS {
+            let filter_mode = tracks_monomi[track_idx].monomi_filter_mode.load(Ordering::Relaxed);
+            let value = value.clamp(0.0, if filter_mode == 0 { 1.0 } else { 8.0 });
             tracks_monomi[track_idx]
                 .monomi_resonance
                 .store(value.to_bits(), Ordering::Relaxed);
@@ -30472,7 +30544,7 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             tracks_monomi[track_idx]
                 .monomi_volume
-                .store(value.to_bits(), Ordering::Relaxed);
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
         }
     });
 
@@ -30583,6 +30655,39 @@ fn initialize_ui(
             tracks_monomi[track_idx]
                 .monomi_filter_polarity
                 .store(value.to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_saturation_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_saturation
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_sat_env_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_sat_env
+                .store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        }
+    });
+
+    let tracks_monomi = Arc::clone(tracks);
+    let params_monomi = Arc::clone(params);
+    ui.on_monomi_filter_sat_pre_changed(move |value| {
+        let track_idx = params_monomi.selected_track.value().saturating_sub(1) as usize;
+        if track_idx < NUM_TRACKS {
+            tracks_monomi[track_idx]
+                .monomi_filter_sat_pre
+                .store(value, Ordering::Relaxed);
         }
     });
 
@@ -30789,6 +30894,8 @@ fn initialize_ui(
         if track_idx < NUM_TRACKS {
             let step = tracks_monomi[track_idx].monomi_edit_step.load(Ordering::Relaxed) as usize;
             if step < MONOMI_STEPS {
+                let filter_mode = tracks_monomi[track_idx].monomi_filter_mode.load(Ordering::Relaxed);
+                let value = value.clamp(0.0, if filter_mode == 0 { 1.0 } else { 8.0 });
                 tracks_monomi[track_idx].monomi_step_resonance[step]
                     .store(value.to_bits(), Ordering::Relaxed);
             }

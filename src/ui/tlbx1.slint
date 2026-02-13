@@ -195,12 +195,15 @@ export component TLBX1UI inherits Window {
     in-out property <float> monomi-filter-release: 12;
     in-out property <float> monomi-filter-intensity: 2;
     in-out property <float> monomi-filter-polarity: 1;
+    in-out property <float> monomi-filter-saturation: 0;
+    in-out property <float> monomi-filter-sat-env: 0;
+    in-out property <bool> monomi-filter-sat-pre: false;
     in-out property <int> monomi-mix-comp-mode: 0;
     in-out property <float> monomi-glide: 0;
     in-out property <float> monomi-prob: 100;
     in-out property <[int]> monomi-lfo-shape: [0, 1, 4];
     in-out property <[int]> monomi-lfo-target: [0, 6, 5];
-    in-out property <[float]> monomi-lfo-amount: [0.5, 0.25, 0.1];
+    in-out property <[float]> monomi-lfo-amount: [0.0, 0.0, 0.0];
     in-out property <[float]> monomi-lfo-rate: [0.5, 0.25, 1.0];
     in-out property <[bool]> monomi-lfo-sync: [true, true, false];
     in-out property <[int]> monomi-lfo-steps: [4, 8, 4];
@@ -1239,6 +1242,9 @@ export component TLBX1UI inherits Window {
     callback monomi-filter-release-changed(value: float);
     callback monomi-filter-intensity-changed(value: float);
     callback monomi-filter-polarity-changed(value: float);
+    callback monomi-filter-saturation-changed(value: float);
+    callback monomi-filter-sat-env-changed(value: float);
+    callback monomi-filter-sat-pre-changed(value: bool);
     callback monomi-mix-comp-mode-changed(value: int);
     callback monomi-glide-changed(value: float);
     callback monomi-prob-changed(value: float);
@@ -3186,6 +3192,9 @@ export component TLBX1UI inherits Window {
                                             monomi-filter-release <=> root.monomi-filter-release;
                                             monomi-filter-intensity <=> root.monomi-filter-intensity;
                                             monomi-filter-polarity <=> root.monomi-filter-polarity;
+                                            monomi-filter-saturation <=> root.monomi-filter-saturation;
+                                            monomi-filter-sat-env <=> root.monomi-filter-sat-env;
+                                            monomi-filter-sat-pre <=> root.monomi-filter-sat-pre;
                                             monomi-mix-comp-mode <=> root.monomi-mix-comp-mode;
                                             monomi-glide <=> root.monomi-glide;
                                             monomi-prob <=> root.monomi-prob;
@@ -3327,6 +3336,9 @@ export component TLBX1UI inherits Window {
                                             monomi-filter-release-changed(value) => { root.monomi-filter-release-changed(value); }
                                             monomi-filter-intensity-changed(value) => { root.monomi-filter-intensity-changed(value); }
                                             monomi-filter-polarity-changed(value) => { root.monomi-filter-polarity-changed(value); }
+                                            monomi-filter-saturation-changed(value) => { root.monomi-filter-saturation-changed(value); }
+                                            monomi-filter-sat-env-changed(value) => { root.monomi-filter-sat-env-changed(value); }
+                                            monomi-filter-sat-pre-changed(value) => { root.monomi-filter-sat-pre-changed(value); }
                                             monomi-mix-comp-mode-changed(value) => { root.monomi-mix-comp-mode-changed(value); }
                                             monomi-glide-changed(value) => { root.monomi-glide-changed(value); }
                                             monomi-prob-changed(value) => { root.monomi-prob-changed(value); }
