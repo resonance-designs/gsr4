@@ -1,6 +1,6 @@
 [package]
 name = "tlbx-1"
-version = "0.1.26"
+version = "0.1.28"
 edition = "2024"
 license = "Proprietary"
 publish = false
@@ -22,6 +22,7 @@ symphonia = { version = "0.5", features = ["all"] }
 ffmpeg-next = "6"
 cpal = "0.15"
 parking_lot = "0.12"
+midir = "0.10"
 hound = "3.4"
 rfd = "0.15"
 serde = { version = "1", features = ["derive"] }

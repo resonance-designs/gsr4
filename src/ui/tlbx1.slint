@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.26
+ * Version: 0.1.28
  * Component: UI Definitions
  */
 
@@ -679,6 +679,12 @@ export component TLBX1UI inherits Window {
     in-out property <int> sample-rate-index: 0;
     in property <[string]> buffer-sizes;
     in-out property <int> buffer-size-index: 0;
+    in property <[string]> midi-input-devices;
+    in-out property <int> midi-input-device-index: 0;
+    in property <[string]> midi-output-devices;
+    in-out property <int> midi-output-device-index: 0;
+    in-out property <bool> midi-transport-receive-enabled: false;
+    in-out property <bool> midi-transport-send-enabled: false;
     in property <string> settings-status: "";
 
     callback select-track(track: int);
@@ -800,6 +806,10 @@ export component TLBX1UI inherits Window {
     callback input-device-selected(index: int);
     callback sample-rate-selected(index: int);
     callback buffer-size-selected(index: int);
+    callback midi-input-device-selected(index: int);
+    callback midi-output-device-selected(index: int);
+    callback toggle-midi-transport-receive();
+    callback toggle-midi-transport-send();
     callback refresh-devices();
     callback apply-settings();
     callback load-engine();
@@ -2925,9 +2935,9 @@ export component TLBX1UI inherits Window {
                                             fmmi-rand-gate-length-enabled <=> root.fmmi-rand-gate-length-enabled;
                                             fmmi-randomize-amount <=> root.fmmi-randomize-amount;
                                             fmmi-randomize-steps-amount <=> root.fmmi-randomize-steps-amount;
-                                            fmmi-scale-options: root.fmmi_scale_options;
-                                            fmmi-scale-index <=> root.fmmi_scale_index;
-                                            fmmi-scale-mask: root.fmmi_scale_mask;
+                                            fmmi-scale-options: root.fmmi-scale-options;
+                                            fmmi-scale-index <=> root.fmmi-scale-index;
+                                            fmmi-scale-mask: root.fmmi-scale-mask;
                                             fmmi-utility-mode <=> root.fmmi-utility-mode;
                                             ring-decay-modes: root.ring-decay-modes;
                                             mosaic-enabled <=> root.mosaic-enabled;
@@ -3751,7 +3761,7 @@ export component TLBX1UI inherits Window {
 
                     Rectangle {
                         width: Math.min(520px, parent.width - 40px);
-                        height: Math.min(520px, parent.height - 40px);
+                        height: Math.min(620px, parent.height - 40px);
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
                         background: #15151c;
@@ -3826,6 +3836,46 @@ export component TLBX1UI inherits Window {
                                         root.buffer-size-index = self.current-index;
                                         root.buffer-size-selected(self.current-index);
                                     }
+                                }
+                            }
+
+                            Text { text: "MIDI Transport"; color: #e4e4ea; font-size: 15px; }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "MIDI input"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
+                                RDSComboBox {
+                                    model: root.midi-input-devices;
+                                    current-index: root.midi-input-device-index;
+                                    selected => {
+                                        root.midi-input-device-index = self.current-index;
+                                        root.midi-input-device-selected(self.current-index);
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: "MIDI output"; color: #9c9ca4; font-size: 13px; width: 110px; vertical-alignment: center; }
+                                RDSComboBox {
+                                    model: root.midi-output-devices;
+                                    current-index: root.midi-output-device-index;
+                                    selected => {
+                                        root.midi-output-device-index = self.current-index;
+                                        root.midi-output-device-selected(self.current-index);
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Button {
+                                    text: root.midi-transport-receive-enabled ? "Receive Start/Stop On" : "Receive Start/Stop Off";
+                                    clicked => root.toggle-midi-transport-receive();
+                                }
+                                Button {
+                                    text: root.midi-transport-send-enabled ? "Send Start/Stop On" : "Send Start/Stop Off";
+                                    clicked => root.toggle-midi-transport-send();
                                 }
                             }
 

@@ -3,6 +3,7 @@ import { RDSTheme } from "theme.slint";
 import { DarkTheme } from "dark_theme.slint";
 
 export global Theme {
+    // Keep `active` and `is-dark` updates routed through ThemeManager callbacks to avoid drift.
     in-out property <RDSTheme> active: DarkTheme.values;
     in-out property <bool> is-dark: true;
 }

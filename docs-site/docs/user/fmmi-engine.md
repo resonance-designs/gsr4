@@ -30,7 +30,7 @@ The top randomization button in this section randomizes **global FMMI engine par
 
 - **Scale**: Select a scale to constrain randomized notes.
 - **Keybed Highlight**: Notes in the selected scale are highlighted.
-- **Scales JSON**: Add/edit scales in `src/ui/assets/scales.json`.
+- **Scale List**: Scales are managed as part of the app configuration; use the scale selector in the UI.
 
 ## Utility Functions
 

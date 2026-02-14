@@ -1154,13 +1154,13 @@ export component FMMIEngine inherits Rectangle {
                                 RDSButton { button-width: 90px; button-height: 24px; border-width: 2px; label: "Rand All"; clicked => root.fmmi-rand-all-params(); }
                             }
                             HorizontalLayout {
-                                    RDSKeybed {
-                                        octaves: 5;
-                                        scale: "chromatic";
-                                        scale-mask: root.fmmi_scale_mask;
-                                        size: 24px;
-                                        note-triggered(note) => {
-                                            RDSKeybedBus.last-note = note;
+                                RDSKeybed {
+                                    octaves: 5;
+                                    scale: "chromatic";
+                                    scale-mask: root.fmmi_scale_mask;
+                                    size: 24px;
+                                    note-triggered(note) => {
+                                        RDSKeybedBus.last-note = note;
                                         RDSKeybedBus.note-triggered(note);
                                     }
                                 }

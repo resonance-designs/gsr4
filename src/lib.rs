@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Richard Bakos @ Resonance Designs.
  * Author: Richard Bakos <info@resonancedesigns.dev>
  * Website: https://resonancedesigns.dev
- * Version: 0.1.26
+ * Version: 0.1.28
  * Component: Core Logic
  */
 
@@ -25,6 +25,7 @@ use baseview::{
     WindowHandler as BaseWindowHandler, WindowOpenOptions, WindowScalePolicy,
 };
 use keyboard_types::{Key, KeyState};
+use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use raw_window_handle_06 as raw_window_handle_06;
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,107 @@ struct PendingProjectParams {
     master_comp: f32,
 }
 
+struct MidiTransportShared {
+    receive_enabled: AtomicBool,
+    send_enabled: AtomicBool,
+    pending_command: AtomicI32,
+}
+
+impl Default for MidiTransportShared {
+    fn default() -> Self {
+        Self {
+            receive_enabled: AtomicBool::new(false),
+            send_enabled: AtomicBool::new(false),
+            pending_command: AtomicI32::new(MIDI_TRANSPORT_NONE),
+        }
+    }
+}
+
+struct MidiTransportManager {
+    shared: Arc<MidiTransportShared>,
+    input_connection: Option<MidiInputConnection<()>>,
+    output_connection: Option<MidiOutputConnection>,
+}
+
+impl MidiTransportManager {
+    fn new(shared: Arc<MidiTransportShared>) -> Self {
+        Self {
+            shared,
+            input_connection: None,
+            output_connection: None,
+        }
+    }
+
+    fn connect(&mut self, input_name: Option<&str>, output_name: Option<&str>) -> Result<(), String> {
+        self.input_connection = None;
+        self.output_connection = None;
+
+        if let Some(input_name) = input_name.filter(|name| !name.is_empty() && *name != "None") {
+            let mut midi_in = MidiInput::new("tlbx1-midi-in").map_err(|err| err.to_string())?;
+            midi_in.ignore(Ignore::None);
+            let in_port = midi_in
+                .ports()
+                .into_iter()
+                .find(|port| midi_in.port_name(port).map(|name| name == input_name).unwrap_or(false))
+                .ok_or_else(|| format!("MIDI input device not found: {input_name}"))?;
+            let shared = Arc::clone(&self.shared);
+            let conn = midi_in
+                .connect(
+                    &in_port,
+                    "tlbx1-midi-transport-in",
+                    move |_timestamp, message, _| {
+                        if !shared.receive_enabled.load(Ordering::Relaxed) || message.len() != 1 {
+                            return;
+                        }
+                        let command = match message[0] {
+                            0xFA => MIDI_TRANSPORT_START,
+                            0xFC => MIDI_TRANSPORT_STOP,
+                            0xFB => MIDI_TRANSPORT_CONTINUE,
+                            _ => MIDI_TRANSPORT_NONE,
+                        };
+                        if command != MIDI_TRANSPORT_NONE {
+                            shared.pending_command.store(command, Ordering::Relaxed);
+                        }
+                    },
+                    (),
+                )
+                .map_err(|err| err.to_string())?;
+            self.input_connection = Some(conn);
+        }
+
+        if let Some(output_name) = output_name.filter(|name| !name.is_empty() && *name != "None") {
+            let midi_out = MidiOutput::new("tlbx1-midi-out").map_err(|err| err.to_string())?;
+            let out_port = midi_out
+                .ports()
+                .into_iter()
+                .find(|port| midi_out.port_name(port).map(|name| name == output_name).unwrap_or(false))
+                .ok_or_else(|| format!("MIDI output device not found: {output_name}"))?;
+            let conn = midi_out
+                .connect(&out_port, "tlbx1-midi-transport-out")
+                .map_err(|err| err.to_string())?;
+            self.output_connection = Some(conn);
+        }
+
+        Ok(())
+    }
+
+    fn send_transport(&mut self, command: i32) {
+        if !self.shared.send_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        let Some(conn) = self.output_connection.as_mut() else {
+            return;
+        };
+        let status = match command {
+            MIDI_TRANSPORT_START => 0xFA,
+            MIDI_TRANSPORT_STOP => 0xFC,
+            MIDI_TRANSPORT_CONTINUE => 0xFB,
+            _ => return,
+        };
+        let _ = conn.send(&[status]);
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 struct FmmiScaleDef {
     name: String,
@@ -90,6 +192,10 @@ pub const MONOMI_PAGES: usize = 8;
 pub const MONOMI_STEPS: usize = MONOMI_PAGE_SIZE * MONOMI_PAGES;
 
 const FMMI_SCALES_PATH: &str = "src/ui/assets/scales.json";
+const MIDI_TRANSPORT_NONE: i32 = 0;
+const MIDI_TRANSPORT_START: i32 = 1;
+const MIDI_TRANSPORT_STOP: i32 = 2;
+const MIDI_TRANSPORT_CONTINUE: i32 = 3;
 pub const MODUL8_LFOS: usize = 8;
 pub const MODUL8_TARGET_COUNT: u32 = 172;
 const FMMI_VOICES: usize = 8;
@@ -237,6 +343,50 @@ fn default_fmmi_scales() -> Vec<FmmiScaleDef> {
         FmmiScaleDef {
             name: "Blues".to_string(),
             notes: vec![0, 3, 5, 6, 7, 10],
+        },
+        FmmiScaleDef {
+            name: "Ionian".to_string(),
+            notes: vec![0, 2, 4, 5, 7, 9, 11],
+        },
+        FmmiScaleDef {
+            name: "Dorian".to_string(),
+            notes: vec![0, 2, 3, 5, 7, 9, 10],
+        },
+        FmmiScaleDef {
+            name: "Phrygian".to_string(),
+            notes: vec![0, 1, 3, 5, 7, 8, 10],
+        },
+        FmmiScaleDef {
+            name: "Lydian".to_string(),
+            notes: vec![0, 2, 4, 6, 7, 9, 11],
+        },
+        FmmiScaleDef {
+            name: "Mixolydian".to_string(),
+            notes: vec![0, 2, 4, 5, 7, 9, 10],
+        },
+        FmmiScaleDef {
+            name: "Aeolian".to_string(),
+            notes: vec![0, 2, 3, 5, 7, 8, 10],
+        },
+        FmmiScaleDef {
+            name: "Locrian".to_string(),
+            notes: vec![0, 1, 3, 5, 6, 8, 10],
+        },
+        FmmiScaleDef {
+            name: "Byzantine (Double Harmonic)".to_string(),
+            notes: vec![0, 1, 4, 5, 7, 8, 11],
+        },
+        FmmiScaleDef {
+            name: "Hirajoshi".to_string(),
+            notes: vec![0, 2, 3, 7, 8],
+        },
+        FmmiScaleDef {
+            name: "Persian".to_string(),
+            notes: vec![0, 1, 4, 5, 6, 8, 11],
+        },
+        FmmiScaleDef {
+            name: "Hungarian Gypsy Minor".to_string(),
+            notes: vec![0, 2, 3, 6, 7, 8, 11],
         },
     ]
 }
@@ -2876,6 +3026,8 @@ pub struct TLBX1 {
     fmmi_dsp: [FmmiDspState; NUM_TRACKS],
     monomi_dsp: [MonomiDspState; NUM_TRACKS],
     last_host_playing: bool,
+    midi_transport_shared: Arc<MidiTransportShared>,
+    midi_transport_manager: Arc<Mutex<MidiTransportManager>>,
 }
 
 #[derive(Clone, Copy)]
@@ -3399,6 +3551,9 @@ impl Default for TLBX1 {
             Track::default(),
             Track::default(),
         ];
+        let midi_transport_shared = Arc::new(MidiTransportShared::default());
+        let midi_transport_manager =
+            Arc::new(Mutex::new(MidiTransportManager::new(Arc::clone(&midi_transport_shared))));
         
         Self {
             params: Arc::new(TLBX1Params::default()),
@@ -3427,6 +3582,8 @@ impl Default for TLBX1 {
             fmmi_dsp: std::array::from_fn(|_| FmmiDspState::new()),
             monomi_dsp: std::array::from_fn(|_| MonomiDspState::new()),
             last_host_playing: false,
+            midi_transport_shared,
+            midi_transport_manager,
         }
     }
 }
@@ -12606,6 +12763,8 @@ impl Plugin for TLBX1 {
             async_executor,
             pending_project_params: self.pending_project_params.clone(),
             animate_library: self.animate_library.clone(),
+            midi_transport_manager: self.midi_transport_manager.clone(),
+            midi_transport_shared: self.midi_transport_shared.clone(),
         }))
     }
 
@@ -12785,6 +12944,37 @@ impl Plugin for TLBX1 {
             }
         }
         self.last_host_playing = host_playing;
+        if !self.follow_host_tempo.load(Ordering::Relaxed) {
+            match self
+                .midi_transport_shared
+                .pending_command
+                .swap(MIDI_TRANSPORT_NONE, Ordering::Relaxed)
+            {
+                MIDI_TRANSPORT_START | MIDI_TRANSPORT_CONTINUE => {
+                    let any_playing = self
+                        .tracks
+                        .iter()
+                        .any(|track| track.is_playing.load(Ordering::Relaxed));
+                    let any_pending = self
+                        .tracks
+                        .iter()
+                        .any(|track| track.pending_play.load(Ordering::Relaxed));
+                    if !any_playing && !any_pending {
+                        start_transport_tracks(
+                            self.tracks.as_ref(),
+                            self.global_tempo.as_ref(),
+                            self.metronome_enabled.as_ref(),
+                            self.metronome_count_in_ticks.as_ref(),
+                            self.metronome_count_in_playback.as_ref(),
+                        );
+                    }
+                }
+                MIDI_TRANSPORT_STOP => {
+                    stop_transport_tracks(self.tracks.as_ref());
+                }
+                _ => {}
+            }
+        }
 
         let mut keep_alive = false;
         let mut global_tempo =
@@ -19928,6 +20118,8 @@ struct SlintEditor {
     async_executor: AsyncExecutor<TLBX1>,
     pending_project_params: Arc<Mutex<Option<PendingProjectParams>>>,
     animate_library: Arc<AnimateLibrary>,
+    midi_transport_manager: Arc<Mutex<MidiTransportManager>>,
+    midi_transport_shared: Arc<MidiTransportShared>,
 }
 
 impl Editor for SlintEditor {
@@ -19949,6 +20141,8 @@ impl Editor for SlintEditor {
         let async_executor = self.async_executor.clone();
         let pending_project_params = self.pending_project_params.clone();
         let animate_library = self.animate_library.clone();
+        let midi_transport_manager = self.midi_transport_manager.clone();
+        let midi_transport_shared = self.midi_transport_shared.clone();
 
         let initial_size = default_window_size();
         let window_handle = baseview::Window::open_parented(
@@ -19977,6 +20171,8 @@ impl Editor for SlintEditor {
                     async_executor,
                     pending_project_params,
                     animate_library,
+                    midi_transport_manager,
+                    midi_transport_shared,
                 )
             },
         );
@@ -20048,6 +20244,8 @@ struct SlintWindow {
     _library_folders_model: std::rc::Rc<VecModel<SharedString>>,
     current_folder_content_model: std::rc::Rc<VecModel<BrowserEntry>>,
     _animate_library: Arc<AnimateLibrary>,
+    midi_transport_manager: Arc<Mutex<MidiTransportManager>>,
+    midi_transport_shared: Arc<MidiTransportShared>,
     last_modul8_engine_type: Option<u32>,
     last_modul8_track_idx: Option<usize>,
 }
@@ -20070,6 +20268,8 @@ impl SlintWindow {
         async_executor: AsyncExecutor<TLBX1>,
         pending_project_params: Arc<Mutex<Option<PendingProjectParams>>>,
         animate_library: Arc<AnimateLibrary>,
+        midi_transport_manager: Arc<Mutex<MidiTransportManager>>,
+        midi_transport_shared: Arc<MidiTransportShared>,
     ) -> Self {
         ensure_slint_platform();
         let (slint_window, ui) = create_slint_ui();
@@ -20171,6 +20371,8 @@ impl SlintWindow {
             &library_folders_model,
             &current_folder_content_model,
             &animate_library,
+            &midi_transport_manager,
+            &midi_transport_shared,
         );
 
         ui.set_library_folders(ModelRc::from(library_folders_model.clone()));
@@ -20217,6 +20419,8 @@ impl SlintWindow {
             _library_folders_model: library_folders_model,
             current_folder_content_model,
             _animate_library: animate_library,
+            midi_transport_manager,
+            midi_transport_shared,
             last_modul8_engine_type: None,
             last_modul8_track_idx: None,
         }
@@ -23166,6 +23370,129 @@ where
         .spawn(f);
 }
 
+fn stop_transport_tracks(tracks: &[Track; NUM_TRACKS]) {
+    for track in tracks.iter() {
+        track.is_playing.store(false, Ordering::Relaxed);
+        track.pending_play.store(false, Ordering::Relaxed);
+        track.count_in_remaining.store(0, Ordering::Relaxed);
+        track.void_enabled.store(false, Ordering::Relaxed);
+    }
+}
+
+fn start_transport_tracks(
+    tracks: &[Track; NUM_TRACKS],
+    global_tempo: &AtomicU32,
+    metronome_enabled: &AtomicBool,
+    metronome_count_in_ticks: &AtomicU32,
+    metronome_count_in_playback: &AtomicBool,
+) {
+    let tempo = f32::from_bits(global_tempo.load(Ordering::Relaxed)).clamp(20.0, 240.0);
+    let count_in_ticks = metronome_count_in_ticks.load(Ordering::Relaxed);
+    let use_count_in = metronome_enabled.load(Ordering::Relaxed)
+        && metronome_count_in_playback.load(Ordering::Relaxed)
+        && count_in_ticks > 0;
+    for track in tracks.iter() {
+        let loop_enabled = track.loop_enabled.load(Ordering::Relaxed);
+        let loop_mode = track.loop_mode.load(Ordering::Relaxed);
+        let loop_start_norm =
+            f32::from_bits(track.loop_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
+        let rotate_norm =
+            f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+        let reverse_active = track.tape_reverse.load(Ordering::Relaxed) || loop_mode == 3;
+        let loop_start = if loop_enabled {
+            if let Some(samples) = track.samples.try_lock() {
+                let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
+                let rotate_offset = (rotate_norm * len as f32) as usize;
+                if reverse_active {
+                    let base_end = ((1.0 - loop_start_norm) * len as f32) as usize;
+                    let loop_end = (base_end + rotate_offset).min(len);
+                    let mut loop_len =
+                        (f32::from_bits(track.loop_length.load(Ordering::Relaxed)) * len as f32)
+                            as usize;
+                    if loop_len == 0 {
+                        loop_len = loop_end.max(1);
+                    }
+                    loop_end.saturating_sub(loop_len) as f32
+                } else {
+                    let base_start = (loop_start_norm * len as f32) as usize;
+                    ((base_start + rotate_offset) % len.max(1)) as f32
+                }
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+        let trigger_start_norm =
+            f32::from_bits(track.trigger_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
+        let trigger_start = if let Some(samples) = track.samples.try_lock() {
+            let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
+            let start_norm = if reverse_active {
+                (1.0 - trigger_start_norm).clamp(0.0, 0.999)
+            } else {
+                trigger_start_norm
+            };
+            (start_norm * len as f32) as f32
+        } else {
+            0.0
+        };
+        let direction = if loop_mode == 3 { -1 } else { 1 };
+        track.loop_dir.store(direction, Ordering::Relaxed);
+        if loop_mode == 4 {
+            if let Some(samples) = track.samples.try_lock() {
+                let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
+                let loop_len =
+                    (f32::from_bits(track.loop_length.load(Ordering::Relaxed)) * len as f32)
+                        as usize;
+                let loop_len = loop_len.max(1);
+                let loop_end = (loop_start as usize + loop_len).min(len).max(1);
+                let loop_start_usize = loop_start as usize;
+                if loop_end > loop_start_usize {
+                    let rand_pos =
+                        loop_start_usize + fastrand::usize(..(loop_end - loop_start_usize));
+                    track.play_pos.store((rand_pos as f32).to_bits(), Ordering::Relaxed);
+                } else {
+                    track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
+                }
+            } else {
+                track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
+            }
+        } else {
+            track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
+        }
+        track
+            .loop_start_last
+            .store(loop_start as u32, Ordering::Relaxed);
+        let mut direction = if loop_mode == 3 { -1 } else { 1 };
+        if track.tape_reverse.load(Ordering::Relaxed) {
+            direction *= -1;
+        }
+        let start_pos = f32::from_bits(track.play_pos.load(Ordering::Relaxed));
+        track.keylock_phase.store(0.0f32.to_bits(), Ordering::Relaxed);
+        track
+            .keylock_grain_a
+            .store(start_pos.to_bits(), Ordering::Relaxed);
+        track.keylock_grain_b.store(
+            (start_pos + direction as f32 * KEYLOCK_GRAIN_HOP as f32).to_bits(),
+            Ordering::Relaxed,
+        );
+        track.debug_logged.store(false, Ordering::Relaxed);
+        if use_count_in {
+            let sr = track.sample_rate.load(Ordering::Relaxed).max(1);
+            let count_in_samples = count_in_samples(tempo, sr, count_in_ticks);
+            track.pending_play.store(true, Ordering::Relaxed);
+            track
+                .count_in_remaining
+                .store(count_in_samples, Ordering::Relaxed);
+            track.is_playing.store(false, Ordering::Relaxed);
+        } else {
+            track.pending_play.store(false, Ordering::Relaxed);
+            track.count_in_remaining.store(0, Ordering::Relaxed);
+            track.is_playing.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
 fn initialize_ui(
     ui: &TLBX1UI,
     gui_context: &Arc<dyn GuiContext>,
@@ -23189,6 +23516,8 @@ fn initialize_ui(
     _library_folders_model: &std::rc::Rc<VecModel<SharedString>>,
     current_folder_content_model: &std::rc::Rc<VecModel<BrowserEntry>>,
     animate_library: &Arc<AnimateLibrary>,
+    midi_transport_manager: &Arc<Mutex<MidiTransportManager>>,
+    midi_transport_shared: &Arc<MidiTransportShared>,
 ) {
     ui.set_output_devices(ModelRc::new(VecModel::from(
         output_devices
@@ -23216,6 +23545,24 @@ fn initialize_ui(
             .map(|size| SharedString::from(size.to_string()))
             .collect::<Vec<_>>(),
     )));
+    let midi_input_devices = available_midi_input_devices();
+    let midi_output_devices = available_midi_output_devices();
+    let midi_input_model = std::iter::once(SharedString::from("None"))
+        .chain(
+            midi_input_devices
+                .iter()
+                .map(|device| SharedString::from(device.as_str())),
+        )
+        .collect::<Vec<_>>();
+    let midi_output_model = std::iter::once(SharedString::from("None"))
+        .chain(
+            midi_output_devices
+                .iter()
+                .map(|device| SharedString::from(device.as_str())),
+        )
+        .collect::<Vec<_>>();
+    ui.set_midi_input_devices(ModelRc::new(VecModel::from(midi_input_model)));
+    ui.set_midi_output_devices(ModelRc::new(VecModel::from(midi_output_model)));
     ui.set_loop_modes(ModelRc::new(VecModel::from(vec![
         SharedString::from("Forward"),
         SharedString::from("Ping-Pong"),
@@ -23404,11 +23751,39 @@ fn initialize_ui(
         .and_then(|value| value.parse::<u32>().ok())
         .and_then(|size| buffer_sizes.iter().position(|candidate| *candidate == size))
         .unwrap_or(3);
+    let midi_input_index = current_arg_value("--midi-input-device")
+        .and_then(|name| midi_input_devices.iter().position(|device| device == &name))
+        .map(|idx| (idx + 1) as i32)
+        .unwrap_or(0);
+    let midi_output_index = current_arg_value("--midi-output-device")
+        .and_then(|name| midi_output_devices.iter().position(|device| device == &name))
+        .map(|idx| (idx + 1) as i32)
+        .unwrap_or(0);
 
     ui.set_output_device_index(output_device_index as i32);
     ui.set_input_device_index(input_device_index as i32);
     ui.set_sample_rate_index(sample_rate_index as i32);
     ui.set_buffer_size_index(buffer_size_index as i32);
+    ui.set_midi_input_device_index(midi_input_index);
+    ui.set_midi_output_device_index(midi_output_index);
+    ui.set_midi_transport_receive_enabled(false);
+    ui.set_midi_transport_send_enabled(false);
+    let selected_midi_input = if midi_input_index > 0 {
+        midi_input_devices.get((midi_input_index - 1) as usize).map(|s| s.as_str())
+    } else {
+        None
+    };
+    let selected_midi_output = if midi_output_index > 0 {
+        midi_output_devices.get((midi_output_index - 1) as usize).map(|s| s.as_str())
+    } else {
+        None
+    };
+    if let Err(err) = midi_transport_manager
+        .lock()
+        .connect(selected_midi_input, selected_midi_output)
+    {
+        ui.set_settings_status(format!("MIDI setup failed: {err}").into());
+    }
 
     let ui_weak = ui.as_weak();
 
@@ -23610,6 +23985,7 @@ fn initialize_ui(
     let metronome_count_in_ticks_play = Arc::clone(metronome_count_in_ticks);
     let metronome_count_in_playback_for_play =
         Arc::clone(metronome_count_in_playback);
+    let midi_manager_play = Arc::clone(midi_transport_manager);
     ui.on_toggle_play(move || {
         let any_playing = tracks_play
             .iter()
@@ -23618,122 +23994,22 @@ fn initialize_ui(
             .iter()
             .any(|track| track.pending_play.load(Ordering::Relaxed));
         if any_playing || any_pending {
-            for track in tracks_play.iter() {
-                track.is_playing.store(false, Ordering::Relaxed);
-                track.pending_play.store(false, Ordering::Relaxed);
-                track.count_in_remaining.store(0, Ordering::Relaxed);
-                track.void_enabled.store(false, Ordering::Relaxed);
-            }
+            stop_transport_tracks(tracks_play.as_ref());
+            midi_manager_play
+                .lock()
+                .send_transport(MIDI_TRANSPORT_STOP);
             return;
         }
-
-        let tempo = f32::from_bits(global_tempo_play.load(Ordering::Relaxed)).clamp(20.0, 240.0);
-        let count_in_ticks = metronome_count_in_ticks_play.load(Ordering::Relaxed);
-        let use_count_in = metronome_enabled_play.load(Ordering::Relaxed)
-            && metronome_count_in_playback_for_play.load(Ordering::Relaxed)
-            && count_in_ticks > 0;
-        for track in tracks_play.iter() {
-            let loop_enabled = track.loop_enabled.load(Ordering::Relaxed);
-            let loop_mode = track.loop_mode.load(Ordering::Relaxed);
-            let loop_start_norm =
-                f32::from_bits(track.loop_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
-            let rotate_norm =
-                f32::from_bits(track.tape_rotate.load(Ordering::Relaxed)).clamp(0.0, 1.0);
-            let reverse_active = track.tape_reverse.load(Ordering::Relaxed) || loop_mode == 3;
-            let loop_start = if loop_enabled {
-                if let Some(samples) = track.samples.try_lock() {
-                    let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
-                    let rotate_offset = (rotate_norm * len as f32) as usize;
-                    if reverse_active {
-                        let base_end = ((1.0 - loop_start_norm) * len as f32) as usize;
-                        let loop_end = (base_end + rotate_offset).min(len);
-                        let mut loop_len =
-                            (f32::from_bits(track.loop_length.load(Ordering::Relaxed)) * len as f32)
-                                as usize;
-                        if loop_len == 0 {
-                            loop_len = loop_end.max(1);
-                        }
-                        loop_end.saturating_sub(loop_len) as f32
-                    } else {
-                        let base_start = (loop_start_norm * len as f32) as usize;
-                        ((base_start + rotate_offset) % len.max(1)) as f32
-                    }
-                } else {
-                    0.0
-                }
-            } else {
-                0.0
-            };
-            let trigger_start_norm =
-                f32::from_bits(track.trigger_start.load(Ordering::Relaxed)).clamp(0.0, 0.999);
-            let trigger_start = if let Some(samples) = track.samples.try_lock() {
-                let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
-                let start_norm = if reverse_active {
-                    (1.0 - trigger_start_norm).clamp(0.0, 0.999)
-                } else {
-                    trigger_start_norm
-                };
-                (start_norm * len as f32) as f32
-            } else {
-                0.0
-            };
-            let direction = if loop_mode == 3 { -1 } else { 1 };
-            track.loop_dir.store(direction, Ordering::Relaxed);
-            if loop_mode == 4 {
-                if let Some(samples) = track.samples.try_lock() {
-                    let len = samples.get(0).map(|ch| ch.len()).unwrap_or(0);
-                    let loop_len =
-                        (f32::from_bits(track.loop_length.load(Ordering::Relaxed)) * len as f32)
-                            as usize;
-                    let loop_len = loop_len.max(1);
-                    let loop_end = (loop_start as usize + loop_len).min(len).max(1);
-                    let loop_start_usize = loop_start as usize;
-                    if loop_end > loop_start_usize {
-                        let rand_pos =
-                            loop_start_usize + fastrand::usize(..(loop_end - loop_start_usize));
-                        track.play_pos.store((rand_pos as f32).to_bits(), Ordering::Relaxed);
-                    } else {
-                        track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
-                    }
-                } else {
-                    track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
-                }
-            } else {
-                track.play_pos.store(trigger_start.to_bits(), Ordering::Relaxed);
-            }
-            track
-                .loop_start_last
-                .store(loop_start as u32, Ordering::Relaxed);
-            let mut direction = if loop_mode == 3 { -1 } else { 1 };
-            if track.tape_reverse.load(Ordering::Relaxed) {
-                direction *= -1;
-            }
-            let start_pos = f32::from_bits(track.play_pos.load(Ordering::Relaxed));
-            track
-                .keylock_phase
-                .store(0.0f32.to_bits(), Ordering::Relaxed);
-            track
-                .keylock_grain_a
-                .store(start_pos.to_bits(), Ordering::Relaxed);
-            track.keylock_grain_b.store(
-                (start_pos + direction as f32 * KEYLOCK_GRAIN_HOP as f32).to_bits(),
-                Ordering::Relaxed,
-            );
-            track.debug_logged.store(false, Ordering::Relaxed);
-            if use_count_in {
-                let sr = track.sample_rate.load(Ordering::Relaxed).max(1);
-                let count_in_samples = count_in_samples(tempo, sr, count_in_ticks);
-                track
-                    .count_in_remaining
-                    .store(count_in_samples, Ordering::Relaxed);
-                track.pending_play.store(true, Ordering::Relaxed);
-                track.is_playing.store(false, Ordering::Relaxed);
-            } else {
-                track.pending_play.store(false, Ordering::Relaxed);
-                track.count_in_remaining.store(0, Ordering::Relaxed);
-                track.is_playing.store(true, Ordering::Relaxed);
-            }
-        }
+        start_transport_tracks(
+            tracks_play.as_ref(),
+            global_tempo_play.as_ref(),
+            metronome_enabled_play.as_ref(),
+            metronome_count_in_ticks_play.as_ref(),
+            metronome_count_in_playback_for_play.as_ref(),
+        );
+        midi_manager_play
+            .lock()
+            .send_transport(MIDI_TRANSPORT_START);
     });
 
     let tracks_audition = Arc::clone(tracks);
@@ -25130,11 +25406,91 @@ fn initialize_ui(
         }
     });
 
+    let ui_midi_input = ui_weak.clone();
+    let midi_manager_input = Arc::clone(midi_transport_manager);
+    ui.on_midi_input_device_selected(move |index| {
+        if let Some(ui) = ui_midi_input.upgrade() {
+            ui.set_midi_input_device_index(index);
+            let midi_inputs = available_midi_input_devices();
+            let midi_outputs = available_midi_output_devices();
+            let input_name = if index > 0 {
+                midi_inputs.get((index - 1) as usize).map(|s| s.as_str())
+            } else {
+                None
+            };
+            let output_name = if ui.get_midi_output_device_index() > 0 {
+                midi_outputs
+                    .get((ui.get_midi_output_device_index() - 1) as usize)
+                    .map(|s| s.as_str())
+            } else {
+                None
+            };
+            if let Err(err) = midi_manager_input.lock().connect(input_name, output_name) {
+                ui.set_settings_status(format!("MIDI setup failed: {err}").into());
+            } else {
+                ui.set_settings_status("MIDI transport devices updated.".into());
+            }
+        }
+    });
+
+    let ui_midi_output = ui_weak.clone();
+    let midi_manager_output = Arc::clone(midi_transport_manager);
+    ui.on_midi_output_device_selected(move |index| {
+        if let Some(ui) = ui_midi_output.upgrade() {
+            ui.set_midi_output_device_index(index);
+            let midi_inputs = available_midi_input_devices();
+            let midi_outputs = available_midi_output_devices();
+            let input_name = if ui.get_midi_input_device_index() > 0 {
+                midi_inputs
+                    .get((ui.get_midi_input_device_index() - 1) as usize)
+                    .map(|s| s.as_str())
+            } else {
+                None
+            };
+            let output_name = if index > 0 {
+                midi_outputs.get((index - 1) as usize).map(|s| s.as_str())
+            } else {
+                None
+            };
+            if let Err(err) = midi_manager_output.lock().connect(input_name, output_name) {
+                ui.set_settings_status(format!("MIDI setup failed: {err}").into());
+            } else {
+                ui.set_settings_status("MIDI transport devices updated.".into());
+            }
+        }
+    });
+
+    let ui_toggle_midi_receive = ui_weak.clone();
+    let midi_shared_for_receive = Arc::clone(midi_transport_shared);
+    ui.on_toggle_midi_transport_receive(move || {
+        if let Some(ui) = ui_toggle_midi_receive.upgrade() {
+            let enabled = !ui.get_midi_transport_receive_enabled();
+            ui.set_midi_transport_receive_enabled(enabled);
+            midi_shared_for_receive
+                .receive_enabled
+                .store(enabled, Ordering::Relaxed);
+        }
+    });
+
+    let ui_toggle_midi_send = ui_weak.clone();
+    let midi_shared_for_send = Arc::clone(midi_transport_shared);
+    ui.on_toggle_midi_transport_send(move || {
+        if let Some(ui) = ui_toggle_midi_send.upgrade() {
+            let enabled = !ui.get_midi_transport_send_enabled();
+            ui.set_midi_transport_send_enabled(enabled);
+            midi_shared_for_send
+                .send_enabled
+                .store(enabled, Ordering::Relaxed);
+        }
+    });
+
     let ui_refresh = ui_weak.clone();
     ui.on_refresh_devices(move || {
         let Some(ui) = ui_refresh.upgrade() else { return; };
         let devices = available_output_devices();
         let inputs = available_input_devices();
+        let midi_inputs = available_midi_input_devices();
+        let midi_outputs = available_midi_output_devices();
         let model = ModelRc::new(VecModel::from(
             devices
                 .iter()
@@ -25155,16 +25511,63 @@ fn initialize_ui(
         if ui.get_input_device_index() >= inputs.len() as i32 {
             ui.set_input_device_index(0);
         }
+        let midi_input_model = ModelRc::new(VecModel::from(
+            std::iter::once(SharedString::from("None"))
+                .chain(
+                    midi_inputs
+                        .iter()
+                        .map(|device| SharedString::from(device.as_str())),
+                )
+                .collect::<Vec<_>>(),
+        ));
+        ui.set_midi_input_devices(midi_input_model);
+        if ui.get_midi_input_device_index() > midi_inputs.len() as i32 {
+            ui.set_midi_input_device_index(0);
+        }
+        let midi_output_model = ModelRc::new(VecModel::from(
+            std::iter::once(SharedString::from("None"))
+                .chain(
+                    midi_outputs
+                        .iter()
+                        .map(|device| SharedString::from(device.as_str())),
+                )
+                .collect::<Vec<_>>(),
+        ));
+        ui.set_midi_output_devices(midi_output_model);
+        if ui.get_midi_output_device_index() > midi_outputs.len() as i32 {
+            ui.set_midi_output_device_index(0);
+        }
     });
 
     let ui_apply = ui_weak.clone();
     let sample_rates = sample_rates.to_vec();
     let buffer_sizes = buffer_sizes.to_vec();
     let gui_context_apply = Arc::clone(gui_context);
+    let midi_manager_apply = Arc::clone(midi_transport_manager);
     ui.on_apply_settings(move || {
         let Some(ui) = ui_apply.upgrade() else { return; };
+        let midi_inputs = available_midi_input_devices();
+        let midi_outputs = available_midi_output_devices();
+        let midi_input = if ui.get_midi_input_device_index() > 0 {
+            midi_inputs
+                .get((ui.get_midi_input_device_index() - 1) as usize)
+                .map(|s| s.as_str())
+        } else {
+            None
+        };
+        let midi_output = if ui.get_midi_output_device_index() > 0 {
+            midi_outputs
+                .get((ui.get_midi_output_device_index() - 1) as usize)
+                .map(|s| s.as_str())
+        } else {
+            None
+        };
+        if let Err(err) = midi_manager_apply.lock().connect(midi_input, midi_output) {
+            ui.set_settings_status(format!("MIDI setup failed: {err}").into());
+            return;
+        }
         if gui_context_apply.plugin_api() != PluginApi::Standalone {
-            ui.set_settings_status("Audio settings are only available in standalone.".into());
+            ui.set_settings_status("MIDI transport settings applied. Audio restart is standalone-only.".into());
             return;
         }
         let output_devices = available_output_devices();
@@ -25178,6 +25581,8 @@ fn initialize_ui(
             input_device,
             sample_rate,
             buffer_size,
+            midi_input.map(|s| s.to_string()),
+            midi_output.map(|s| s.to_string()),
         ) {
             ui.set_settings_status(format!("Failed to restart audio: {err}").into());
         }
@@ -31879,11 +32284,35 @@ fn available_input_devices() -> Vec<String> {
     }
 }
 
+fn available_midi_input_devices() -> Vec<String> {
+    let Ok(midi_input) = MidiInput::new("tlbx1-midi-enum-in") else {
+        return Vec::new();
+    };
+    midi_input
+        .ports()
+        .iter()
+        .filter_map(|port| midi_input.port_name(port).ok())
+        .collect()
+}
+
+fn available_midi_output_devices() -> Vec<String> {
+    let Ok(midi_output) = MidiOutput::new("tlbx1-midi-enum-out") else {
+        return Vec::new();
+    };
+    midi_output
+        .ports()
+        .iter()
+        .filter_map(|port| midi_output.port_name(port).ok())
+        .collect()
+}
+
 fn restart_with_audio_settings(
     output_device: Option<&String>,
     input_device: Option<&String>,
     sample_rate: Option<u32>,
     buffer_size: Option<u32>,
+    midi_input_device: Option<String>,
+    midi_output_device: Option<String>,
 ) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|err| err.to_string())?;
     let mut cmd = ProcessCommand::new(exe);
@@ -31899,6 +32328,12 @@ fn restart_with_audio_settings(
     }
     if let Some(size) = buffer_size {
         cmd.arg("--period-size").arg(size.to_string());
+    }
+    if let Some(device) = midi_input_device {
+        cmd.arg("--midi-input-device").arg(device);
+    }
+    if let Some(device) = midi_output_device {
+        cmd.arg("--midi-output-device").arg(device);
     }
 
     cmd.spawn().map_err(|err| err.to_string())?;

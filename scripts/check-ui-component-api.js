@@ -34,7 +34,11 @@ function walk(dir) {
 }
 
 function countChar(str, ch) {
-  return (str.match(new RegExp(`\\${ch}`, "g")) || []).length;
+  let count = 0;
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === ch) count++;
+  }
+  return count;
 }
 
 const componentProps = new Map();

@@ -1,7 +1,7 @@
 !include "MUI2.nsh"
 
 !define PRODUCT_NAME "TLBX-1"
-!define PRODUCT_VERSION "0.1.26"
+!define PRODUCT_VERSION "0.1.28"
 !define COMPANY_NAME "TLBX-1"
 
 !define STANDALONE_SRC "dist\\windows\\standalone\\tlbx-1.exe"
@@ -29,6 +29,14 @@ Section "Standalone App" SecStandalone
   SetOutPath "$INSTDIR\\documentation"
   File /r "dist\\windows\\documentation\\*"
   CreateShortCut "$DESKTOP\\TLBX-1.lnk" "$INSTDIR\\tlbx-1.exe"
+  WriteUninstaller "$INSTDIR\\uninstall.exe"
+  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_NAME}" "DisplayName" "${PRODUCT_NAME}"
+  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_NAME}" "DisplayVersion" "${PRODUCT_VERSION}"
+  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_NAME}" "Publisher" "${COMPANY_NAME}"
+  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_NAME}" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_NAME}" "UninstallString" "$\"$INSTDIR\\uninstall.exe$\""
+  WriteRegDWORD HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_NAME}" "NoModify" 1
+  WriteRegDWORD HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_NAME}" "NoRepair" 1
 SectionEnd
 
 Section "VST3 Plugin" SecVST3
@@ -39,7 +47,9 @@ SectionEnd
 Section "Uninstall"
   Delete "$DESKTOP\\TLBX-1.lnk"
   Delete "$INSTDIR\\tlbx-1.exe"
+  Delete "$INSTDIR\\uninstall.exe"
   RMDir /r "$INSTDIR\\documentation"
   RMDir "$INSTDIR"
   RMDir /r "$COMMONFILES\\VST3\\TLBX-1.vst3"
+  DeleteRegKey HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCT_NAME}"
 SectionEnd

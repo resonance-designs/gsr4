@@ -1,10 +1,17 @@
 # Changelog
 
+## [0.1.28] - 2026-02-13
+
+- Win Installer: Patched `installer.nsi` with uninstaller generation, and Add/Remove Programs registry entries (HKLM).
+- Win Installer: Updated uninstall section to match path and clean ARP entry.
+- MonoMI: Reformatted the dense MonoMI step knob rows into multiline blocks for readability and safer wiring review.
+- Updated documentation
+
 ## [0.1.27] - 2026-02-11
 
-- Added new **MonoMI** engine, a 3 oscillator subtractive monosynth and wired it to all downstream devices.
-- Updated 3rd party RDS UI Component Kit Slint library.
-- Added maintenance script to check if the UI library API is compatibale with current code-base, "scripts/check-ui-component-api.js"
+- Added new **MonoMI** engine, a 3-oscillator subtractive mono-synth and wired it to all downstream devices.
+- Updated 3rd-party RDS UI Component Kit Slint library.
+- Added maintenance script to check if the UI library API is compatible with current code-base, "scripts/check-ui-component-api.js"
 
 ## [0.1.26] - 2026-02-08
 
@@ -13,7 +20,7 @@
 - FMMI: Added control for adjusting the amount of randomness applied to params when a user initiates a randomization.
 - FMMI: Added control for adjusting the amount of randomness applied to note/step-trigger when a user initiates a randomization.
 - FMMI: Added a scale picker that drives the note randomization and keybed highlighting. Scales can be added to scales.json.
-- FMMI: Added a switchable mono/poly mode to switch between note/gate-cutting mono mode and a new mode with 8 voices with it's own phases/envelopes per voice.
+- FMMI: Added a switchable mono/poly mode to switch between note/gate-cutting mono mode and a new mode with 8 voices with its own phases/envelopes per voice.
 - Updated documentation
 
 ## [0.1.25] - 2026-02-08
